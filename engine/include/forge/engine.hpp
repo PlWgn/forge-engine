@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -40,7 +41,9 @@ extern Logger logger;
 struct Entity {
     std::string id, name, kind = "sprite", model, texture, material, text;
     glm::vec3 position{0}, rotation{0}, scale{1}, velocity{0}, collider{0};
-    glm::vec4 color{1};
+    glm::vec4 color{1}, clip{0};
+    bool clipped=false;
+    bool attached = false;
     bool visible = true, alive = true, dynamic = false, trigger = false, screen = false;
     float mass = 1, fontSize = 24;
     Json scripts = Json::array();
@@ -66,17 +69,24 @@ struct World {
 };
 struct Renderer {
     struct Impl;
-    std::unique_ptr<Impl> impl;
+    std::unique_ptr<Impl> impl, staged;
     Renderer(); ~Renderer();
     void init(const Config&, World&);
     void render(World&);
+    void validateWorld(const World&);
     void invalidate();
+    void stage();
+    void commit();
+    void discard();
+    void checkpointInput();
+    void rollbackInput();
     void poll();
     bool closing() const;
     bool key(const std::string&) const;
     bool pressed(const std::string&) const;
     bool mouse(int button) const;
     glm::vec2 cursor() const;
+    glm::vec2 scroll() const;
     glm::vec2 delta() const;
     void capture(bool);
     void quit();
@@ -85,12 +95,24 @@ struct Renderer {
 struct Audio {
     struct Impl; std::unique_ptr<Impl> impl;
     Audio(); ~Audio();
-    void play(const fs::path&, bool loop, float volume);
-    void stop();
+    bool silent = false;
+    unsigned play(const fs::path&, bool loop, float volume, const std::string& channel = "sfx", float fade = 0);
+    void stop(unsigned id = 0, const std::string& channel = "", float fade = 0);
+    void volume(const std::string& channel, float value);
+    float volume(const std::string& channel) const;
+    void fade(unsigned id, float target, float seconds, bool stopAfter = false);
+    bool playing(unsigned id) const;
+    float gain(unsigned id) const;
+    std::vector<unsigned> ids(const std::string&) const;
+    void pause(unsigned id, bool paused);
+    void update(float dt);
+    void begin(); void commit(); void rollback();
 };
+std::array<float,3> measureText(const Config&, const std::string&, float size);
+struct FrameListener { unsigned id; py::object callback; bool persistent; };
 struct Script { py::object module, instance; std::shared_ptr<Entity> entity; };
 struct Runtime {
-    Config config;
+    Config config, sceneConfig;
     World world;
     std::unique_ptr<Renderer> renderer;
     Audio audio;
@@ -98,7 +120,9 @@ struct Runtime {
     std::vector<py::object> startup;
     std::map<fs::path, fs::file_time_type> watched;
     std::string currentScene, pendingScene;
-    bool running = true, dev = false, headless = false;
+    bool running = true, dev = false, headless = false, gamePaused = false, initializing = false, tearingDown = false;
+    unsigned listenerIndex = 0;
+    std::vector<FrameListener> listeners;
     double time = 0;
     float dt = 0;
     unsigned moduleIndex = 0;
@@ -107,6 +131,9 @@ struct Runtime {
     void loadScene(const std::string&);
     py::object loadModule(const fs::path&);
     void attach(std::shared_ptr<Entity>);
+    void attachPending();
+    void destroyDead();
+    void reload();
     void start();
     int run(int frames);
     bool shutdown();

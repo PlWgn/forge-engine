@@ -14,6 +14,7 @@ static std::array<float,3> tuple(glm::vec3 v){return {v.x,v.y,v.z};}
 static glm::vec3 vector(std::array<float,3> v){return {v[0],v[1],v[2]};}
 static py::object toPython(const Json& j){return py::module_::import("json").attr("loads")(j.dump());}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
+    m.attr("__version__")=FORGE_VERSION;
     m.doc()="Forge native engine modules. Coordinates: 2D pixels; 3D world units.";
     py::class_<Entity,std::shared_ptr<Entity>>(m,"Entity")
         .def_readonly("id",&Entity::id).def_readwrite("name",&Entity::name)
@@ -29,6 +30,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){e.collider=vector(v);})
         .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color={v[0],v[1],v[2],v[3]};})
         .def_property("data",[](Entity& e){return toPython(e.data);},[](Entity& e,py::object v){e.data=fromPython(v);})
+        .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){e.clipped=!v.is_none();if(e.clipped){auto a=v.cast<std::array<float,4>>();e.clip={a[0],a[1],a[2],a[3]};}})
         .def("destroy",[](Entity& e){e.alive=false;})
         .def("move",[](Entity& e,float x,float y,float z){e.position+=glm::vec3(x,y,z);},py::arg("x"),py::arg("y"),py::arg("z")=0)
         .def("impulse",[](Entity& e,float x,float y,float z){e.velocity+=glm::vec3(x,y,z)/e.mass;},py::arg("x"),py::arg("y"),py::arg("z")=0);
@@ -43,8 +45,9 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("key_pressed",[](const std::string& k){return rt().renderer?rt().renderer->pressed(k):false;});
     m.def("mouse_down",[](int b){return rt().renderer?rt().renderer->mouse(b):false;},py::arg("button")=0);
     m.def("mouse_position",[](){auto v=rt().renderer?rt().renderer->cursor():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
+    m.def("mouse_scroll",[](){auto v=rt().renderer?rt().renderer->scroll():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
     m.def("mouse_delta",[](){auto v=rt().renderer?rt().renderer->delta():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
-    m.def("capture_mouse",[](bool e){if(rt().renderer)rt().renderer->capture(e);});
+    m.def("capture_mouse",[](bool e){if(rt().renderer && !rt().tearingDown)rt().renderer->capture(e);});
     m.def("window_size",[](){return std::array<int,2>{rt().world.width,rt().world.height};});
     m.def("set_camera",[](std::array<float,3> p,std::array<float,3> target){rt().world.cameraPosition=vector(p);rt().world.cameraTarget=vector(target);},py::arg("position"),py::arg("target")=std::array<float,3>{0,0,0});
     m.def("camera_position",[](){return tuple(rt().world.cameraPosition);});
@@ -53,8 +56,22 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("set_background",[](std::array<float,4> v){rt().world.background={v[0],v[1],v[2],v[3]};});
     m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),distance);},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
     m.def("overlaps",[](const Entity& a,const Entity& b){return rt().world.overlaps(a,b);});
-    m.def("play_sound",[](const std::string& path,bool loop,float volume){if(!rt().headless)rt().audio.play(rt().config.asset("audio",path),loop,volume);},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1);
-    m.def("screenshot",[](const std::string& file){if(rt().renderer)rt().renderer->screenshot(rt().config.resolve(file));else logger.write("WARN","Screenshot requires a window");});
+    m.def("play_sound",[](const std::string& path,bool loop,float volume,const std::string& channel,float fade){return rt().audio.play(rt().config.asset("audio",path),loop,volume,channel,fade);},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1,py::arg("channel")="sfx",py::arg("fade")=0);
+    m.def("stop_sound",[](unsigned id,float fade){rt().audio.stop(id,"",fade);},py::arg("id"),py::arg("fade")=0);
+    m.def("stop_channel",[](const std::string& channel,float fade){rt().audio.stop(0,channel,fade);},py::arg("channel"),py::arg("fade")=0);
+    m.def("channel_sounds",[](const std::string& channel){return rt().audio.ids(channel);});
+    m.def("channel_volume",[](const std::string& channel){return rt().audio.volume(channel);});
+    m.def("set_channel_volume",[](const std::string& channel,float value){rt().audio.volume(channel,value);});
+    m.def("fade_sound",[](unsigned id,float volume,float seconds,bool stop){rt().audio.fade(id,volume,seconds,stop);},py::arg("id"),py::arg("volume"),py::arg("seconds"),py::arg("stop_after")=false);
+    m.def("sound_volume",[](unsigned id){return rt().audio.gain(id);});
+    m.def("set_sound_volume",[](unsigned id,float value){rt().audio.fade(id,value,0);});
+    m.def("sound_playing",[](unsigned id){return rt().audio.playing(id);});
+    m.def("pause_sound",[](unsigned id,bool paused){rt().audio.pause(id,paused);},py::arg("id"),py::arg("paused")=true);
+    m.def("measure_text",[](const std::string& text,float size){return measureText(rt().config,text,size);},py::arg("text"),py::arg("size")=24);
+    m.def("set_paused",[](bool value){rt().gamePaused=value;});m.def("is_paused",[](){return rt().gamePaused;});
+    m.def("on_frame",[](py::object callback,bool persistent){if(!PyCallable_Check(callback.ptr()))throw std::runtime_error("Frame listener must be callable");unsigned id=++rt().listenerIndex;rt().listeners.push_back({id,callback,persistent});return id;},py::arg("callback"),py::arg("persistent")=false);
+    m.def("remove_listener",[](unsigned id){auto& list=rt().listeners;list.erase(std::remove_if(list.begin(),list.end(),[&](auto& l){return l.id==id;}),list.end());});
+    m.def("screenshot",[](const std::string& file){if(rt().tearingDown)return;if(rt().renderer)rt().renderer->screenshot(rt().config.resolve(file));else logger.write("WARN","Screenshot requires a window");});
     m.def("stop_sounds",[](){rt().audio.stop();});
     m.def("log",[](py::object value,const std::string& level){if(level!="INFO" && level!="WARN" && level!="ERROR" && level!="DEBUG")throw std::runtime_error("Unknown log level");logger.write(level,py::str(value));},py::arg("message"),py::arg("level")="INFO");
     m.def("open_log",[](){logger.open();});
@@ -65,8 +82,8 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("load",[](const std::string& name,py::object fallback){return rt().load(name,fallback);},py::arg("name"),py::arg("default")=py::none());
     for(auto init:nativeModules())init(m);
 }
-Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),dev(development),headless(noWindow){world.config=&config;active=this;}
-Runtime::~Runtime(){scripts.clear();startup.clear();active=nullptr;}
+Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;active=this;}
+Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();active=nullptr;}
 py::object Runtime::loadModule(const fs::path& file) {
     if(!fs::is_regular_file(file))throw std::runtime_error("Script not found: "+file.u8string());
     auto types=py::module_::import("types");auto module=types.attr("ModuleType")("_forge_script_"+std::to_string(++moduleIndex));
@@ -76,7 +93,11 @@ py::object Runtime::loadModule(const fs::path& file) {
     py::module_::import("builtins").attr("exec")(code,globals);return module;
 }
 void Runtime::attach(std::shared_ptr<Entity> e) {
-    for(auto& item:e->scripts) {
+    if(!e->alive || e->attached)return;
+    e->attached=true;
+    auto descriptors=e->scripts;
+    for(auto& item:descriptors) {
+        if(!e->alive)break;
         std::string file=item.is_string()?item.get<std::string>():item.at("file").get<std::string>();
         auto module=loadModule(config.asset("scripts",file));auto properties=toPython(item.is_string()?Json::object():item.value("properties",Json::object()));
         auto instance=py::hasattr(module,"Behavior")?module.attr("Behavior")(e,properties):module;
@@ -84,10 +105,31 @@ void Runtime::attach(std::shared_ptr<Entity> e) {
         if(py::hasattr(instance,"on_start"))instance.attr("on_start")();
     }
 }
+void Runtime::attachPending(){
+    // Each wave owns its pointers; callbacks may freely reallocate world.entities.
+    unsigned initializedCount=0;
+    for(;;){std::vector<std::shared_ptr<Entity>> pending;for(auto& e:world.entities)if(e->alive && !e->attached)pending.push_back(e);
+        if(pending.empty())break;
+        for(auto e:pending){if(++initializedCount>8192)throw std::runtime_error("Lifecycle spawn limit exceeded (8192 per attachment pass)");attach(e);}
+    }
+}
+void Runtime::destroyDead(){
+    std::exception_ptr failure;unsigned count=0;
+    for(;;){std::vector<Script> dead,keep;for(auto& s:scripts)(s.entity && !s.entity->alive?dead:keep).push_back(s);scripts=std::move(keep);if(dead.empty())break;
+        for(auto& s:dead){if(++count>8192)throw std::runtime_error("Lifecycle destroy limit exceeded");try{if(py::hasattr(s.instance,"on_destroy"))s.instance.attr("on_destroy")();}catch(...){if(!failure)failure=std::current_exception();}}
+    }
+    world.entities.erase(std::remove_if(world.entities.begin(),world.entities.end(),[](auto& e){return !e->alive;}),world.entities.end());
+    if(failure)std::rethrow_exception(failure);
+}
 void Runtime::loadScene(const std::string& name) {
     // Keep a usable world until the replacement scene and its Python scripts initialize.
     World replacement;replacement.config=&config;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
-    auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);world=std::move(replacement);scripts.clear();
+    auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
+    auto oldPending=pendingScene;bool oldRunning=running,oldPaused=gamePaused;
+    world=std::move(replacement);scripts.clear();pendingScene.clear();gamePaused=false;
+    listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[](auto& l){return !l.persistent;}),listeners.end());
+    if(renderer)renderer->checkpointInput();
+    audio.begin();initializing=true;
     try {
         py::object sceneModule;
         auto sceneFile=config.asset("scenes",name);
@@ -108,10 +150,19 @@ void Runtime::loadScene(const std::string& name) {
             }
         } else if(world.scene.contains("script"))sceneModule=loadModule(config.asset("scenes",world.scene["script"]));
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
-        auto initial=world.entities;for(auto& e:initial)attach(e);
-    } catch(...) {for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);throw;}
+        attachPending();destroyDead();if(renderer)renderer->validateWorld(world);
+    } catch(...) {
+        initializing=false;audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
+        listeners=std::move(oldListeners);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
+    }
+    initializing=false;audio.commit();
+    // Old callbacks see their own world. Their mutations cannot affect the new scene.
+    auto readyWorld=std::move(world);auto readyScripts=std::move(scripts);auto readyListeners=listeners;auto readyPending=pendingScene;bool readyRunning=running,readyPaused=gamePaused;
+    auto readyConfig=config;config=sceneConfig;sceneConfig=readyConfig;
+    world=std::move(oldWorld);listeners=std::move(oldListeners);scripts.clear();tearingDown=true;audio.begin();
     for(auto& script:oldScripts)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& ex){logger.error(ex.what());}
-    for(auto& e:oldWorld.entities)e->alive=false;
+    for(auto& e:world.entities)e->alive=false;
+    audio.rollback();tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
     currentScene=name;logger.write("INFO","Scene loaded: "+name);
 }
 std::map<fs::path,fs::file_time_type> Runtime::snapshot() const {
@@ -146,11 +197,31 @@ sys.stdout, sys.stderr = _ForgeStream('INFO'), _ForgeStream('ERROR')
     for(auto& item:config.data.value("startup_scripts",Json::array())){auto module=loadModule(config.asset("scripts",item.get<std::string>()));startup.push_back(module);if(py::hasattr(module,"on_start"))module.attr("on_start")();}
     loadScene(config.entry());watched=snapshot();
 }
-bool Runtime::shutdown(){bool failed=false;
-    for(auto& script:scripts)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
-    for(auto& module:startup)if(py::hasattr(module,"on_destroy"))try{module.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+bool Runtime::shutdown(){bool failed=false;tearingDown=true;
+    auto ending=std::move(scripts);scripts.clear();auto endingStartup=std::move(startup);startup.clear();
+    for(auto& script:ending)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+    for(auto& module:endingStartup)if(py::hasattr(module,"on_destroy"))try{module.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+    for(auto& e:world.entities)e->alive=false;
     for(auto name:{"stdout","stderr"})try{py::module_::import("sys").attr(name).attr("flush")();}catch(...){}
-    scripts.clear();startup.clear();audio.stop();renderer.reset();return !failed;
+    listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
+}
+void Runtime::reload(){
+    auto previousConfig=config;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
+    auto previousModules=modules.attr("copy")().cast<py::dict>();auto previousPath=sys.attr("path").attr("copy")();
+    try{
+        py::module_::import("importlib").attr("invalidate_caches")();py::list remove;
+        for(auto item:modules)if(py::hasattr(item.second,"__file__") && !item.second.attr("__file__").is_none()){
+            auto file=fs::weakly_canonical(fs::u8path(item.second.attr("__file__").cast<std::string>()));
+            for(auto group:{"modules","scripts","scenes"}){auto relative=file.lexically_relative(config.paths.at(group));if(!relative.empty() && *relative.begin()!=".."){remove.append(item.first);break;}}
+        }
+        for(auto item:remove)modules.attr("pop")(item,py::none());
+        auto previousEntry=config.entry();auto updated=Config::load(config.file);updated.validate();config=std::move(updated);world.config=&config;
+        for(auto group:{"modules","scripts","scenes"})sys.attr("path").attr("insert")(0,config.paths.at(group).u8string());
+        for(auto& path:config.data.value("python_paths",Json::array()))sys.attr("path").attr("insert")(0,config.resolve(path.get<std::string>()).u8string());
+        if(renderer)renderer->stage();
+        loadScene(previousEntry==config.entry()?currentScene:config.entry());
+        if(renderer)renderer->commit();
+    }catch(...){if(renderer)renderer->discard();config=std::move(previousConfig);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
 }
 int Runtime::run(int frames) {
     auto previous=std::chrono::steady_clock::now();double reloadClock=0;float physicsAccumulator=0;bool paused=false,pausedRenderFailed=false;int result=0;
@@ -160,29 +231,27 @@ int Runtime::run(int frames) {
             if(renderer){renderer->poll();if(renderer->closing())break;}
             if(dev && reloadClock>=.3){reloadClock=0;if(changed()) {
                 try {
-                    auto importlib=py::module_::import("importlib");importlib.attr("invalidate_caches")();
-                    // Imported Python helpers also reload; clear only modules under game code directories.
-                    auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();py::list remove;
-                    for(auto item:modules)if(py::hasattr(item.second,"__file__") && !item.second.attr("__file__").is_none()) {
-                        auto file=fs::weakly_canonical(fs::u8path(item.second.attr("__file__").cast<std::string>()));
-                        for(auto group:{"modules","scripts","scenes"}) {auto relative=file.lexically_relative(config.paths.at(group));if(!relative.empty() && *relative.begin()!="..") {remove.append(item.first);break;}}
-                    }
-                    for(auto item:remove)modules.attr("pop")(item,py::none());
-                    // Settings are reread; window settings take effect on the next launch.
-                    auto previousEntry=config.entry();auto updated=Config::load(config.file);updated.validate();config=std::move(updated);world.config=&config;
-                    for(auto group:{"modules","scripts","scenes"})sys.attr("path").attr("insert")(0,config.paths.at(group).u8string());
-                    if(renderer)renderer->invalidate();
-                    loadScene(previousEntry==config.entry()?currentScene:config.entry());
+                    reload();
                     paused=false;pausedRenderFailed=false;logger.write("INFO","Hot reload complete");
-                }catch(const std::exception& e){logger.error(e.what());paused=true;logger.write("WARN","Development paused. Edit a watched file to retry.");}
+                }catch(const std::exception& e){logger.error(e.what());paused=true;logger.write("WARN","Development paused. Edit a watched file to retry.");
+                    auto previousScripts=scripts;for(auto& script:previousScripts)if(py::hasattr(script.instance,"on_reload_failed"))try{script.instance.attr("on_reload_failed")(std::string(e.what()));}catch(const std::exception& failure){logger.error(failure.what());}
+                    auto previousStartup=startup;for(auto& module:previousStartup)if(py::hasattr(module,"on_reload_failed"))try{module.attr("on_reload_failed")(std::string(e.what()));}catch(const std::exception& failure){logger.error(failure.what());}
+                }
             }}
             if(paused){if(renderer && !pausedRenderFailed)try{renderer->render(world);}catch(const std::exception& e){logger.error(e.what());pausedRenderFailed=true;}if(headless)std::this_thread::sleep_for(std::chrono::milliseconds(2));continue;}
             try {
                 if(!pendingScene.empty()){auto name=pendingScene;pendingScene.clear();loadScene(name);physicsAccumulator=0;}
+                auto callbacks=listeners;
+                for(auto& listener:callbacks)if(std::any_of(listeners.begin(),listeners.end(),[&](auto& l){return l.id==listener.id;}))listener.callback(dt);
+                audio.update(dt);
+                destroyDead();attachPending();destroyDead();
+                if(!gamePaused){
                 // New objects can be spawned by lifecycle callbacks without invalidating iteration.
                 auto current=scripts;
                 for(auto& module:startup)if(py::hasattr(module,"on_update"))module.attr("on_update")(dt);
                 for(auto& script:current)if((!script.entity || script.entity->alive) && py::hasattr(script.instance,"on_update"))script.instance.attr("on_update")(dt);
+                destroyDead();attachPending();destroyDead();
+                current=scripts;
                 physicsAccumulator+=dt;
                 while(physicsAccumulator>=1.0f/120){
                     auto old=world.contacts;world.physics(1.0f/120);physicsAccumulator-=1.0f/120;
@@ -192,12 +261,8 @@ int Runtime::run(int frames) {
                         for(auto& pair:old)if(!world.contacts.count(pair) && (pair.first==id || pair.second==id) && py::hasattr(script.instance,"on_collision_exit"))script.instance.attr("on_collision_exit")(world.find(pair.first==id?pair.second:pair.first));
                     }
                 }
-                for(auto it=scripts.begin();it!=scripts.end();)if(it->entity && !it->entity->alive){if(py::hasattr(it->instance,"on_destroy"))it->instance.attr("on_destroy")();it=scripts.erase(it);}else ++it;
-                // Track all attached entities, including ones whose script list is empty.
-                for(auto& e:world.entities)if(e->alive && !e->scripts.empty() && !e->data.value("_forge_attached",false)) {
-                    bool exists=std::any_of(scripts.begin(),scripts.end(),[&](auto& s){return s.entity==e;});if(!exists)attach(e);e->data["_forge_attached"]=true;
                 }
-                world.entities.erase(std::remove_if(world.entities.begin(),world.entities.end(),[](auto& e){return !e->alive;}),world.entities.end());
+                destroyDead();attachPending();destroyDead();
                 if(renderer)renderer->render(world);
             }catch(const std::exception& e){logger.error(e.what());if(!dev){result=1;break;}paused=true;}
             if(headless && dev)std::this_thread::sleep_for(std::chrono::milliseconds(2));

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "project": {"name": "Forge — New World", "version": "1.0.0", "icon": "textures/icon.png"},
+  "project": {"name": "Forge — New World", "version": "1.1.0", "icon": "textures/icon.png"},
   "entry_scene": "welcome.json",
   "paths": {
     "graphics": "graphics", "modules": "modules", "scenes": "scenes", "scripts": "scripts",

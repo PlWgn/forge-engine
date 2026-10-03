@@ -10,13 +10,13 @@
 #endif
 namespace forge::gl {
 using U=unsigned int; using I=int; using F=float; using B=unsigned char; using S=std::ptrdiff_t;
-constexpr U COLOR=0x4000,DEPTH=0x100,DEPTH_TEST=0xB71,BLEND=0xBE2,SRC_ALPHA=0x302,ONE_MINUS_SRC_ALPHA=0x303,
+constexpr U COLOR=0x4000,DEPTH=0x100,DEPTH_TEST=0xB71,SCISSOR_TEST=0xC11,BLEND=0xBE2,SRC_ALPHA=0x302,ONE_MINUS_SRC_ALPHA=0x303,
 ARRAY_BUFFER=0x8892,STATIC_DRAW=0x88E4,FLOAT=0x1406,TRIANGLES=4,VERTEX_SHADER=0x8B31,FRAGMENT_SHADER=0x8B30,
 COMPILE_STATUS=0x8B81,LINK_STATUS=0x8B82,TEXTURE_2D=0xDE1,TEXTURE0=0x84C0,RGBA=0x1908,RGB=0x1907,
 UNSIGNED_BYTE=0x1401,TEXTURE_MIN_FILTER=0x2801,TEXTURE_MAG_FILTER=0x2800,LINEAR=0x2601,
 TEXTURE_WRAP_S=0x2802,TEXTURE_WRAP_T=0x2803,CLAMP_TO_EDGE=0x812F,UNPACK_ALIGNMENT=0xCF5,PACK_ALIGNMENT=0xD05;
 #define GL_FUNC(ret,name,args) using name##Fn=ret(FORGE_GL_CALL*)args; inline name##Fn name=nullptr;
-GL_FUNC(void,Viewport,(I,I,I,I)) GL_FUNC(void,ClearColor,(F,F,F,F)) GL_FUNC(void,Clear,(U))
+GL_FUNC(void,Viewport,(I,I,I,I)) GL_FUNC(void,Scissor,(I,I,I,I)) GL_FUNC(void,ClearColor,(F,F,F,F)) GL_FUNC(void,Clear,(U))
 GL_FUNC(void,Enable,(U)) GL_FUNC(void,Disable,(U)) GL_FUNC(void,BlendFunc,(U,U))
 GL_FUNC(void,GenBuffers,(I,U*)) GL_FUNC(void,BindBuffer,(U,U)) GL_FUNC(void,BufferData,(U,S,const void*,U)) GL_FUNC(void,DeleteBuffers,(I,const U*))
 GL_FUNC(void,GenVertexArrays,(I,U*)) GL_FUNC(void,BindVertexArray,(U)) GL_FUNC(void,DeleteVertexArrays,(I,const U*))
@@ -33,7 +33,7 @@ GL_FUNC(void,TexParameteri,(U,U,I)) GL_FUNC(void,DeleteTextures,(I,const U*)) GL
 #undef GL_FUNC
 inline void load() {
 #define LOAD(name) name=reinterpret_cast<name##Fn>(glfwGetProcAddress("gl" #name)); if(!name) throw std::runtime_error("Missing OpenGL function gl" #name);
-LOAD(Viewport) LOAD(ClearColor) LOAD(Clear) LOAD(Enable) LOAD(Disable) LOAD(BlendFunc)
+LOAD(Scissor) LOAD(Viewport) LOAD(ClearColor) LOAD(Clear) LOAD(Enable) LOAD(Disable) LOAD(BlendFunc)
 LOAD(GenBuffers) LOAD(BindBuffer) LOAD(BufferData) LOAD(DeleteBuffers) LOAD(GenVertexArrays) LOAD(BindVertexArray) LOAD(DeleteVertexArrays)
 LOAD(EnableVertexAttribArray) LOAD(VertexAttribPointer) LOAD(CreateShader) LOAD(ShaderSource) LOAD(CompileShader) LOAD(GetShaderiv)
 LOAD(GetShaderInfoLog) LOAD(DeleteShader) LOAD(CreateProgram) LOAD(AttachShader) LOAD(LinkProgram) LOAD(GetProgramiv) LOAD(GetProgramInfoLog)

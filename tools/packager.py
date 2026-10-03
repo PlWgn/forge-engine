@@ -1,6 +1,7 @@
 """Standalone directory bundler. Runs INSIDE the engine's embedded interpreter."""
 from pathlib import Path
 import hashlib, json, os, platform, shutil, subprocess, sys, sysconfig, tempfile
+import forge
 
 def _copy_tree(src, dst):
     shutil.copytree(src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'site-packages', 'test', 'tests', 'idlelib', 'tkinter', 'turtledemo', '_tkinter*', '_test*', '.DS_Store'))
@@ -114,11 +115,11 @@ def build_bundle(config_file, engine_file, output):
             if f.exists(): shutil.copy2(f, licenses / (name + '.txt'))
         for filename in ['stb_image.h', 'stb_truetype.h', 'miniaudio.h', 'json.hpp']:
             if (vendor / filename).exists(): shutil.copy2(vendor / filename, licenses / filename) # license text is embedded in header
-        manifest = {'engine_version': '1.0.0', 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
+        (stage / 'START.txt').write_text('Run Game.exe (Windows) or ./Game (macOS).\nThe directory must be writable for forge.log and saves.\nKeep all files in this directory together.\n', encoding='utf-8')
+        manifest = {'engine_version': forge.__version__, 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
         for file in sorted(stage.rglob('*')):
             if file.is_file(): manifest['files'][file.relative_to(stage).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-        (stage / 'START.txt').write_text('Run Game.exe (Windows) or ./Game (macOS).\nThe directory must be writable for forge.log and saves.\nKeep all files in this directory together.\n', encoding='utf-8')
         stage.rename(output)
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)

@@ -24,11 +24,61 @@ class GraphicsTests(unittest.TestCase):
     def test_both_renderers_and_audio(self):
         (self.root/'scripts/capture.py').write_text("import forge\ndef on_start():\n    forge.screenshot('frame.ppm')\n    forge.play_sound('notify.wav', volume=.03)\n")
         self.config['startup_scripts']=['capture.py']
-        for scene in ('welcome.json','world3d.py'):
+        for scene in ('welcome.json','world3d.py','interface.py'):
             self.config['entry_scene']=scene;self.write_config()
             result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--frames','20','--no-open-log'],text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             frame=(self.root/'frame.ppm').read_bytes();self.assertTrue(frame.startswith(b'P6\n'));self.assertGreater(len(set(frame[100:])),4)
+    def test_responsive_ui_and_large_text(self):
+        (self.root/'scenes/capture_ui.py').write_text("""import forge, interface
+frames=0
+def on_start():
+    interface.on_start()
+    forge.on_frame(tick)
+def tick(dt):
+    global frames
+    frames+=1
+    if frames==3: forge.screenshot('ui.ppm')
+    if frames==5: interface.menus.show_settings()
+    if frames==7: forge.screenshot('settings.ppm')
+    if frames==9: interface.menus.show_slots(save=True)
+    if frames==11: forge.screenshot('slots.ppm')
+def on_destroy(): interface.on_destroy()
+""")
+        self.config['entry_scene']='capture_ui.py'
+        for width,height in [(640,480),(1280,720),(1920,1080)]:
+            self.config['window'].update(width=width,height=height);self.write_config()
+            result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--frames','14','--no-open-log'],text=True,capture_output=True,timeout=60)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            for file in ('ui.ppm','settings.ppm','slots.ppm'):
+                frame=(self.root/file).read_bytes();self.assertTrue(frame.startswith(b'P6\n'));self.assertGreater(len(set(frame[100:])),20)
+    def test_scene_failure_keeps_previous_shader_resources(self):
+        source="""import forge
+from pathlib import Path
+frames=0
+def on_start():
+    forge.spawn({'id':'stable','kind':'sprite','position':[100,100,0],'scale':[100,100,1],'color':[.2,.8,.3,1]})
+    forge.screenshot('before.ppm')
+def on_reload_failed(error):
+    assert forge.find('stable').alive
+    forge.screenshot('rollback.ppm')
+def on_update(dt):
+    if Path(forge.project_path('stop')).exists(): forge.quit()
+"""
+        scene=self.root/'scenes/stable.py';scene.write_text(source);self.config['entry_scene']='stable.py';self.write_config()
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            self.wait_log('before.ppm',process)
+            fragment=self.root/'graphics/default.frag'
+            fragment.write_text('#version 330 core\nout vec4 out_color;\nvoid main(){out_color=vec4(1,0,0,1);}')
+            scene.write_text("import forge\ndef on_start(): forge.spawn({'kind':'sprite','texture':'missing.png'})\n")
+            self.wait_log('rollback.ppm',process)
+            self.assertEqual((self.root/'before.ppm').read_bytes(),(self.root/'rollback.ppm').read_bytes())
+            scene.write_text(source.replace("'before.ppm'","'after.ppm'"));self.wait_log('after.ppm',process)
+            self.assertNotEqual((self.root/'before.ppm').read_bytes(),(self.root/'after.ppm').read_bytes())
+            (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
     def test_shader_error_recovers_without_closing_window(self):
         (self.root/'scenes/control.py').write_text("import forge\ndef on_update(dt):\n    if __import__('pathlib').Path(forge.project_path('stop')).exists(): forge.quit()\n")
         scene=self.root/'scenes/welcome.json';data=json.loads(scene.read_text());data['script']='control.py';scene.write_text(json.dumps(data))

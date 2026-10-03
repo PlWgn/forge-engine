@@ -26,6 +26,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->scale=vec3(j.value("scale",Json()),e->scale); e->velocity=vec3(j.value("velocity",Json()),e->velocity);
     e->collider=vec3(j.value("collider",Json()),e->collider); e->color=vec4(j.value("color",Json()),e->color);
     e->dynamic=j.value("dynamic",false); e->trigger=j.value("trigger",false); e->visible=j.value("visible",true);
+    if(j.contains("clip")){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
     e->screen=j.value("screen",false); e->mass=j.value("mass",1.0f); if(e->mass<=0) throw std::runtime_error("mass must be positive");
     e->text=j.value("text",""); e->fontSize=j.value("font_size",24.0f); e->scripts=j.value("scripts",Json::array()); e->data=j.value("data",Json::object());
     entities.push_back(e); return e;

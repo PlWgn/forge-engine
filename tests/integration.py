@@ -1,6 +1,6 @@
 """Exercise the real native binary, Python bridge, physics, reload, and packaging."""
 from pathlib import Path
-import json, os, shutil, subprocess, sys, tempfile, time, unittest
+import hashlib, json, os, shutil, subprocess, sys, tempfile, time, unittest
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = Path(sys.argv.pop(1)).resolve()
 
@@ -114,9 +114,218 @@ def on_update(dt):
             self.assertIn('RECOVERED',(self.root/'forge.log').read_text())
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def test_reentrant_object_lifecycle(self):
+        (self.root/'scripts/tree.py').write_text("""import forge
+class Behavior:
+    def __init__(self, entity, props): self.entity, self.depth = entity, props.get('depth', 0)
+    def on_start(self):
+        forge.log('START '+self.entity.id)
+        if self.depth < 4:
+            for n in range(3):
+                forge.spawn({'id':self.entity.id+str(n), 'kind':'empty', 'data':[], 'scripts':[{'file':'tree.py','properties':{'depth':self.depth+1}}]})
+    def on_destroy(self):
+        forge.log('DESTROY '+self.entity.id)
+        if self.entity.id == 'root':
+            forge.spawn({'id':'after_destroy', 'kind':'empty', 'scripts':['after.py']})
+""")
+        (self.root/'scripts/after.py').write_text("import forge\ndef on_start(): forge.log('AFTER_START')\ndef on_destroy(): forge.log('AFTER_DESTROY')\n")
+        self.script_scene("""import forge
+frames=0
+def build(): return {'entities':[{'id':'root','kind':'empty','scripts':['tree.py']}]}
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==1:
+        assert len(forge.entities())==121, len(forge.entities())
+        for e in forge.entities(): e.destroy()
+    if frames==2:
+        assert forge.find('after_destroy').alive
+        forge.find('after_destroy').destroy()
+    if frames==3: forge.quit()
+""")
+        output=self.run_engine()
+        self.assertEqual(sum('] [INFO] START root' in l for l in output.splitlines()),121)
+        self.assertEqual(sum('] [INFO] DESTROY root' in l for l in output.splitlines()),121)
+        self.assertEqual(output.count('AFTER_START'),1);self.assertEqual(output.count('AFTER_DESTROY'),1)
+    def test_old_scene_teardown_is_isolated(self):
+        self.script_scene("""import forge
+def build(): return {'entities':[{'id':'same','kind':'empty'}]}
+def on_update(dt): forge.change_scene('second.py')
+def on_destroy():
+    forge.find('same').destroy()
+    forge.spawn({'id':'leak','kind':'empty'})
+    forge.set_paused(True)
+    forge.quit()
+    forge.change_scene('welcome.json')
+    forge.stop_sounds()
+""")
+        (self.root/'scenes/second.py').write_text("""import forge
+frames=0
+def build(): return {'entities':[{'id':'same','kind':'empty'}]}
+def on_update(dt):
+    assert forge.find('same').alive
+    assert forge.find('leak') is None
+    assert not forge.is_paused()
+    forge.log('ISOLATED_OK');forge.quit()
+""")
+        self.assertIn('ISOLATED_OK',self.run_engine())
+    def test_pause_and_frame_listener_removal(self):
+        self.script_scene("""import forge
+calls=updates=0
+second=None
+def tick(dt):
+    global calls
+    calls+=1
+    if calls==1:
+        forge.remove_listener(second)
+        forge.set_paused(True)
+    if calls==3: forge.set_paused(False)
+    if calls==5:
+        assert updates==2, updates
+        forge.log('PAUSE_OK');forge.quit()
+def forbidden(dt): raise AssertionError('removed listener was called')
+def on_start():
+    global second
+    forge.on_frame(tick)
+    second=forge.on_frame(forbidden)
+def on_update(dt):
+    global updates
+    updates+=1
+""")
+        self.assertIn('PAUSE_OK',self.run_engine())
+    def test_text_slots_audio_and_dialogue(self):
+        self.script_scene(r"""import forge, ui, audio, pathlib
+from saves import SaveManager, SaveError, SaveVersion
+from dialogue import Dialogue
+from menus import MenuController
+from settings import AudioSettings
+frames=0
+def on_start():
+    global slots, canvas, dialogue, music
+    w,h,line=forge.measure_text('Привет AV', 32)
+    assert w>0 and h>0 and line>0
+    assert abs(forge.measure_text('Привет AV',64)[0]-w*2)<.01
+    wrapped=ui.wrap('Привет мир оченьдлинноеслово12345',80,24)
+    assert '\n' in wrapped
+    assert all(forge.measure_text(l,24)[0]<=80.01 for l in wrapped.split('\n'))
+    slots=SaveManager(1, validate=lambda v: isinstance(v,dict) and 'n' in v)
+    slots.write('1',{'n':1},title='Первый')
+    slots.write('1',{'n':2},title='Второй')
+    assert slots.info('1')['title']=='Второй'
+    path=pathlib.Path(forge.project_path('saves/slots/1.json'))
+    path.write_text('{broken',encoding='utf-8')
+    assert slots.info('1')['status']=='corrupt'
+    assert slots.read('1')['n']==1
+    try: slots.read('1',recover=False)
+    except SaveError: pass
+    else: raise AssertionError('corruption accepted')
+    slots.write('1',{'n':3})
+    newer=SaveManager(2,migrations={1:lambda d:{'n':d['n'],'migrated':True}})
+    assert newer.read('1')['migrated']
+    newer.write('future',{'n':4})
+    try: slots.read('future')
+    except SaveVersion: pass
+    else: raise AssertionError('future format accepted')
+    try: slots.write('../escape',{'n':0})
+    except SaveError: pass
+    else: raise AssertionError('slot traversal accepted')
+    slots.autosave(lambda:{'n':99},interval=.02)
+    root=ui.Column(padding=24)
+    dialogue=root.add(Dialogue(['Текст для автоматического чтения','Вторая страница'],characters_per_second=10000,auto_delay=0))
+    dialogue.toggle_auto()
+    root.add(ui.Row(ui.Button('Кнопка',lambda:None),ui.Slider(.4)))
+    canvas=ui.Canvas(root)
+    menus=MenuController(canvas,saves=slots,capture=lambda:{'n':8},restore=lambda d:None,journal=dialogue.journal)
+    menus.show_settings();assert forge.is_paused();menus.close_menu()
+    menus.settings.set('voice',.37);menus.settings.flush()
+    preferences=AudioSettings();assert abs(preferences.values['voice']-.37)<.001;preferences.close()
+    menus.show_slots();menus._slot('2',True);assert slots.read('2')['n']==8;menus.close_menu()
+    menus.show_journal();menus.close_menu()
+    audio.music.volume=.3;audio.master_volume(.5)
+    assert abs(forge.channel_volume('music')-.3)<.001
+    effect=audio.sfx.play('notify.wav',loop=True,volume=.25)
+    assert abs(effect.volume-.25)<.001
+    effect.volume=.4;assert abs(effect.volume-.4)<.001
+    effect.fade(.2,.02)
+    music=audio.music.crossfade('notify.wav',.02)
+    audio.music.crossfade('notify.wav',.02)
+    assert len(forge.channel_sounds('music'))==2
+    music.pause();assert not music.playing;music.resume()
+    try: forge.set_channel_volume('sfx',float('nan'))
+    except RuntimeError: pass
+    else: raise AssertionError('invalid volume')
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==5:
+        assert slots.read('auto')['n']==99
+        assert abs(forge.sound_volume(forge.channel_sounds('sfx')[0])-.2)<.001
+        assert len(forge.channel_sounds('music'))==1
+    if frames==100:
+        assert dialogue.finished
+        assert len(dialogue.journal.entries)==2
+        checkpoint=dialogue.capture();dialogue.restore(checkpoint)
+        canvas.close();forge.log('HIGH_LEVEL_OK');forge.quit()
+""")
+        self.assertIn('HIGH_LEVEL_OK',self.run_engine(frames=120))
+    def test_ui_input_layout_resize_and_cleanup(self):
+        shutil.copy2(ROOT/'tests/ui_components.py',self.root/'modules/ui_contract.py')
+        self.script_scene("import forge\nfrom ui_contract import verify\ndef on_start(): verify();forge.quit()\n")
+        self.assertIn('UI_INPUT_OK',self.run_engine())
+    def test_interface_example(self):
+        self.config['entry_scene']='interface.py';self.write_config()
+        self.assertIn('UI_READY',self.run_engine(frames=10))
+    def test_hot_reload_rolls_back_settings_imports_and_audio(self):
+        (self.root/'modules/helper.py').write_text('VALUE=1\n')
+        self.script_scene("""import forge, helper
+from pathlib import Path
+old_root=forge.settings()['project']['name']
+old_paths=list(__import__('sys').path)
+def on_reload_failed(message):
+    assert forge.settings()['project']['name']==old_root
+    assert __import__('helper').VALUE==1
+    assert __import__('sys').path==old_paths
+    assert forge.find('original').alive
+    assert forge.find('candidate') is None
+    assert abs(forge.channel_volume('music')-.4)<.001
+    assert forge.channel_sounds('music')==[original_sound]
+    assert not forge.channel_sounds('voice')
+    assert forge.sound_playing(original_sound)
+    forge.log('ROLLBACK_OK')
+def on_start():
+    global original_sound
+    original_sound=forge.play_sound('notify.wav',loop=True,channel='music')
+    forge.spawn({'id':'original','kind':'empty'})
+    forge.set_channel_volume('music',.4)
+    forge.log('READY_FOR_RELOAD')
+def on_destroy():
+    assert forge.settings()['project']['name']==old_root
+    assert forge.find('original').alive
+""")
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def wait(marker):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                file=self.root/'forge.log'
+                if file.exists() and marker in file.read_text(): return
+                if process.poll() is not None:self.fail(file.read_text())
+                time.sleep(.03)
+            self.fail('Missing '+marker)
+        try:
+            wait('READY_FOR_RELOAD')
+            (self.root/'modules/helper.py').write_text('VALUE=2\n')
+            (self.root/'scenes/test.py').write_text("import forge, helper\ndef on_start():\n    assert helper.VALUE==2\n    forge.spawn({'id':'candidate','kind':'empty'})\n    forge.set_channel_volume('music',.9)\n    forge.stop_sounds()\n    forge.play_sound('notify.wav',loop=True,channel='voice')\n    forge.on_frame(lambda dt: (_ for _ in ()).throw(RuntimeError('LEAKED_LISTENER')),persistent=True)\n    raise ValueError('CANDIDATE_FAILED')\n")
+            self.config['project']['name']='Changed';self.write_config();wait('ROLLBACK_OK')
+            # The previous on_reload_failed callback audited state before recovery.
+            # An unsuccessful candidate must not leak helper, config, audio or listener state.
+            (self.root/'scenes/test.py').write_text("import forge, helper\ndef on_start():\n    assert helper.VALUE==2\n    forge.log('RECOVERY_SETTINGS_'+forge.settings()['project']['name'])\ndef on_update(dt): forge.quit()\n")
+            wait('Hot reload complete');self.assertEqual(process.wait(timeout=15),0)
+            output=(self.root/'forge.log').read_text();self.assertIn('CANDIDATE_FAILED',output);self.assertIn('ROLLBACK_OK',output);self.assertIn('RECOVERY_SETTINGS_Changed',output)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
     def test_packaged_game(self):
         if sys.platform not in ('darwin','win32'):self.skipTest('packaging OS')
-        self.script_scene("import forge, json, math, sqlite3, ssl, zlib, ctypes, pathlib, sys\ndef on_start():\n    assert pathlib.Path(sys.prefix).samefile(forge.project_path('runtime'))\n    forge.save('packaged', {'works':True})\n    forge.log('PACKAGED_OK')\n    forge.quit()\n")
+        self.script_scene("import forge, json, math, sqlite3, ssl, zlib, ctypes, pathlib, sys\ndef on_start():\n    assert pathlib.Path(sys.prefix).samefile(forge.project_path('runtime'))\n    forge.save('packaged', {'works':True})\n    forge.log('PACKAGED_OK')\n    forge.log('PACKAGED_VERSION_'+forge.__version__)\n    forge.quit()\n")
         target=self.root/'dist/game'
         self.run_engine('build',extra=('--output',target))
         binary=target/('Game.exe' if os.name=='nt' else 'Game')
@@ -124,7 +333,11 @@ def on_update(dt):
         result=subprocess.run([str(binary),'--headless','--no-open-log'],cwd=tempfile.gettempdir(),env=env,text=True,capture_output=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('PACKAGED_OK',result.stdout)
         self.assertTrue((target/'saves/packaged.json').exists())
-        self.assertTrue((target/'manifest.json').exists())
+        manifest=json.loads((target/'manifest.json').read_text())
+        self.assertIn('PACKAGED_VERSION_'+manifest['engine_version'],result.stdout)
+        self.assertIn('START.txt',manifest['files'])
+        for relative, checksum in manifest['files'].items():
+            self.assertEqual(hashlib.sha256((target/relative).read_bytes()).hexdigest(),checksum,relative)
         for document in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md'):
             self.assertEqual((target/document).read_bytes(), (ROOT/document).read_bytes())
         self.assertIn('Output already exists',self.run_engine('build',expected=1,extra=('--output',target)))
