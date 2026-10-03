@@ -6,15 +6,16 @@ namespace forge {
 static glm::vec3 vec3(const Json& j, glm::vec3 fallback) {
     if(j.is_null()) return fallback;
     if(!j.is_array() || j.size()!=3) throw std::runtime_error("Expected three vector components");
-    return {j.at(0).get<float>(),j.at(1).get<float>(),j.at(2).get<float>()};
+    return {finiteNumber(j[0],"vector"),finiteNumber(j[1],"vector"),finiteNumber(j[2],"vector")};
 }
 static glm::vec4 vec4(const Json& j, glm::vec4 fallback) {
     if(j.is_null()) return fallback;
     if(!j.is_array() || j.size()!=4) throw std::runtime_error("Expected RGBA components");
-    return {j[0].get<float>(),j[1].get<float>(),j[2].get<float>(),j[3].get<float>()};
+    return {finiteNumber(j[0],"color/clip"),finiteNumber(j[1],"color/clip"),finiteNumber(j[2],"color/clip"),finiteNumber(j[3],"color/clip")};
 }
 std::shared_ptr<Entity> World::spawn(Json j) {
-    if(j.contains("prefab")) { auto base=readJson(config->asset("objects",j["prefab"])); j.erase("prefab"); base.merge_patch(j); j=base; }
+    if(!config)throw std::runtime_error("World needs a project configuration before spawn");
+    j=validateEntity(*config,std::move(j));
     auto e=std::make_shared<Entity>();
     if(j.contains("id"))e->id=j["id"].get<std::string>();else {do {e->id="entity_"+std::to_string(nextId++);}while(find(e->id));}
     if(find(e->id)) throw std::runtime_error("Duplicate entity id: "+e->id);
@@ -26,7 +27,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->scale=vec3(j.value("scale",Json()),e->scale); e->velocity=vec3(j.value("velocity",Json()),e->velocity);
     e->collider=vec3(j.value("collider",Json()),e->collider); e->color=vec4(j.value("color",Json()),e->color);
     e->dynamic=j.value("dynamic",false); e->trigger=j.value("trigger",false); e->visible=j.value("visible",true);
-    if(j.contains("clip")){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
+    if(j.contains("clip") && !j["clip"].is_null()){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
     e->screen=j.value("screen",false); e->mass=j.value("mass",1.0f); if(e->mass<=0) throw std::runtime_error("mass must be positive");
     e->text=j.value("text",""); e->fontSize=j.value("font_size",24.0f); e->scripts=j.value("scripts",Json::array()); e->data=j.value("data",Json::object());
     e->textKey=j.value("text_key","");e->textParams=j.value("text_params",Json::object());if(!e->textParams.is_object())throw std::runtime_error("text_params must be an object");

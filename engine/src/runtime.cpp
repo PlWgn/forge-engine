@@ -11,7 +11,9 @@ Runtime* active=nullptr;
 std::vector<ModuleInit>& nativeModules(){static std::vector<ModuleInit> list;return list;}
 static Runtime& rt(){if(!active)throw std::runtime_error("Engine runtime is not active");return *active;}
 static std::array<float,3> tuple(glm::vec3 v){return {v.x,v.y,v.z};}
-static glm::vec3 vector(std::array<float,3> v){return {v[0],v[1],v[2]};}
+static glm::vec3 vector(std::array<float,3> v,const std::string& field="vector"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field)};}
+static glm::vec4 color(std::array<float,4> v,const std::string& field="color"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field),finiteNumber(v[3],field)};}
+static float positive(float value,const std::string& field){finiteNumber(value,field);if(value<=0)throw std::runtime_error(field+" must be positive");return value;}
 static py::object toPython(const Json& j){return py::module_::import("json").attr("loads")(j.dump());}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
@@ -36,22 +38,23 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         })
         .def_readwrite("text_key",&Entity::textKey)
         .def_property("text_params",[](Entity& e){return toPython(e.textParams);},[](Entity& e,py::dict params){e.textParams=fromPython(params);})
-        .def("set_localized_text",[](Entity& e,const std::string& key,py::dict params){auto data=fromPython(params);auto text=rt().localization.translate(key,data);e.textKey=key;e.textParams=data;e.text=text;},py::arg("key"),py::arg("params")=py::dict()).def_readwrite("font_size",&Entity::fontSize)
+        .def("set_localized_text",[](Entity& e,const std::string& key,py::dict params){auto data=fromPython(params);auto text=rt().localization.translate(key,data);e.textKey=key;e.textParams=data;e.text=text;},py::arg("key"),py::arg("params")=py::dict())
+        .def_property("font_size",[](Entity& e){return e.fontSize;},[](Entity& e,float value){e.fontSize=positive(value,"font_size");})
         .def_readwrite("visible",&Entity::visible).def_readonly("alive",&Entity::alive)
         .def_readwrite("dynamic",&Entity::dynamic).def_readwrite("trigger",&Entity::trigger)
         .def_readwrite("texture",&Entity::texture).def_readwrite("model",&Entity::model)
-        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){if(v<=0)throw std::runtime_error("mass must be positive");e.mass=v;})
-        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){e.position=vector(v);})
-        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){e.rotation=vector(v);})
-        .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){e.scale=vector(v);})
-        .def_property("velocity",[](Entity& e){return tuple(e.velocity);},[](Entity& e,std::array<float,3> v){e.velocity=vector(v);})
-        .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){e.collider=vector(v);})
-        .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color={v[0],v[1],v[2],v[3]};})
+        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){e.mass=positive(v,"mass");})
+        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){e.position=vector(v,"position");})
+        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){e.rotation=vector(v,"rotation");})
+        .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){e.scale=vector(v,"scale");})
+        .def_property("velocity",[](Entity& e){return tuple(e.velocity);},[](Entity& e,std::array<float,3> v){e.velocity=vector(v,"velocity");})
+        .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){e.collider=vector(v,"collider");})
+        .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color=color(v);})
         .def_property("data",[](Entity& e){return toPython(e.data);},[](Entity& e,py::object v){e.data=fromPython(v);})
-        .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){e.clipped=!v.is_none();if(e.clipped){auto a=v.cast<std::array<float,4>>();e.clip={a[0],a[1],a[2],a[3]};}})
+        .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){if(v.is_none()){e.clipped=false;return;}auto next=color(v.cast<std::array<float,4>>(),"clip");e.clip=next;e.clipped=true;})
         .def("destroy",[](Entity& e){e.alive=false;})
-        .def("move",[](Entity& e,float x,float y,float z){e.position+=glm::vec3(x,y,z);},py::arg("x"),py::arg("y"),py::arg("z")=0)
-        .def("impulse",[](Entity& e,float x,float y,float z){e.velocity+=glm::vec3(x,y,z)/e.mass;},py::arg("x"),py::arg("y"),py::arg("z")=0);
+        .def("move",[](Entity& e,float x,float y,float z){auto next=e.position+vector({x,y,z},"move");e.position=vector(tuple(next),"position");},py::arg("x"),py::arg("y"),py::arg("z")=0)
+        .def("impulse",[](Entity& e,float x,float y,float z){auto next=e.velocity+vector({x,y,z},"impulse")/e.mass;e.velocity=vector(tuple(next),"velocity");},py::arg("x"),py::arg("y"),py::arg("z")=0);
     m.def("spawn",[](py::dict d){auto e=rt().world.spawn(fromPython(d));try{if(!e->textKey.empty())e->text=rt().localization.translate(e->textKey,e->textParams);}catch(...){e->alive=false;throw;}return e;});
     m.def("find",[](const std::string& id){return rt().world.find(id);});
     m.def("entities",[](){std::vector<std::shared_ptr<Entity>> result;for(auto& e:rt().world.entities)if(e->alive)result.push_back(e);return result;});
@@ -67,11 +70,11 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("mouse_delta",[](){auto v=rt().renderer?rt().renderer->delta():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
     m.def("capture_mouse",[](bool e){if(rt().renderer && !rt().tearingDown)rt().renderer->capture(e);});
     m.def("window_size",[](){return std::array<int,2>{rt().world.width,rt().world.height};});
-    m.def("set_camera",[](std::array<float,3> p,std::array<float,3> target){rt().world.cameraPosition=vector(p);rt().world.cameraTarget=vector(target);},py::arg("position"),py::arg("target")=std::array<float,3>{0,0,0});
+    m.def("set_camera",[](std::array<float,3> p,std::array<float,3> target){auto position=vector(p,"camera.position"),destination=vector(target,"camera.target");rt().world.cameraPosition=position;rt().world.cameraTarget=destination;},py::arg("position"),py::arg("target")=std::array<float,3>{0,0,0});
     m.def("camera_position",[](){return tuple(rt().world.cameraPosition);});
     m.def("set_gravity",[](std::array<float,3> v){rt().world.gravity=vector(v);});
     m.def("set_mode",[](const std::string& mode){if(mode!="2d" && mode!="3d")throw std::runtime_error("Mode must be 2d or 3d");rt().world.is3d=mode=="3d";});
-    m.def("set_background",[](std::array<float,4> v){rt().world.background={v[0],v[1],v[2],v[3]};});
+    m.def("set_background",[](std::array<float,4> v){rt().world.background=color(v,"background");});
     m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),distance);},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
     m.def("overlaps",[](const Entity& a,const Entity& b){return rt().world.overlaps(a,b);});
     m.def("play_sound",[](const std::string& path,bool loop,float volume,const std::string& channel,float fade){return rt().audio.play(rt().config.asset("audio",path),loop,volume,channel,fade);},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1,py::arg("channel")="sfx",py::arg("fade")=0);
@@ -162,7 +165,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
                     world.scene=j;auto mode=j.value("mode","2d");if(mode!="2d" && mode!="3d")throw std::runtime_error("Scene mode must be 2d or 3d");world.is3d=mode=="3d";
                     world.gravity=world.is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0);
                     if(j.contains("gravity"))world.gravity=vector(j["gravity"].get<std::array<float,3>>());
-                    if(j.contains("background")){auto v=j["background"].get<std::array<float,4>>();world.background={v[0],v[1],v[2],v[3]};}
+                    if(j.contains("background"))world.background=color(j["background"].get<std::array<float,4>>(),"background");
                     auto camera=j.value("camera",Json::object());if(camera.contains("position"))world.cameraPosition=vector(camera["position"].get<std::array<float,3>>());if(camera.contains("target"))world.cameraTarget=vector(camera["target"].get<std::array<float,3>>());world.fov=camera.value("fov",60.0f);if(world.fov<=0 || world.fov>=179)throw std::runtime_error("Camera fov must be between 0 and 179");
                     for(auto& data:j.value("entities",Json::array()))world.spawn(data);
                 }
@@ -192,10 +195,28 @@ std::map<fs::path,fs::file_time_type> Runtime::snapshot() const {
     return result;
 }
 bool Runtime::changed(){auto now=snapshot();if(now==watched)return false;watched=std::move(now);return true;}
+static std::vector<std::string> searchPaths(const Config& config) {
+    std::vector<std::string> paths;
+    for(auto group:{"modules","scripts","scenes"})paths.push_back(config.paths.at(group).u8string());
+    for(auto& path:config.data.value("python_paths",Json::array()))paths.push_back(config.resolve(path.get<std::string>()).u8string());
+    std::vector<std::string> result;
+    for(auto it=paths.rbegin();it!=paths.rend();++it)if(std::find(result.begin(),result.end(),*it)==result.end())result.push_back(*it);
+    return result;
+}
+void Runtime::refreshPythonPaths() {
+    auto next=searchPaths(config);auto sys=py::module_::import("sys");py::list replacement;
+    for(auto& path:next)replacement.append(path);
+    for(auto item:sys.attr("path")) {
+        if(py::isinstance<py::str>(item)){auto path=item.cast<std::string>();
+            if(std::find(pythonPaths.begin(),pythonPaths.end(),path)!=pythonPaths.end() || std::find(next.begin(),next.end(),path)!=next.end())continue;
+        }
+        replacement.append(item);
+    }
+    sys.attr("path")=replacement;pythonPaths=std::move(next);
+}
 void Runtime::start() {
     auto sys=py::module_::import("sys");sys.attr("dont_write_bytecode")=true;
-    for(auto group:{"modules","scripts","scenes"})sys.attr("path").attr("insert")(0,config.paths.at(group).u8string());
-    for(auto& path:config.data.value("python_paths",Json::array()))sys.attr("path").attr("insert")(0,config.resolve(path.get<std::string>()).u8string());
+    refreshPythonPaths();
     // print() and stderr join the same timestamped log as the native engine.
     py::exec(R"(
 import sys, forge
@@ -228,23 +249,29 @@ bool Runtime::shutdown(){bool failed=false;tearingDown=true;
     listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
 }
 void Runtime::reload(){
-    auto previousLocalization=localization;auto previousConfig=config;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
+    auto previousLocalization=localization;auto previousConfig=config;auto previousPythonPaths=pythonPaths;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
     auto previousModules=modules.attr("copy")().cast<py::dict>();auto previousPath=sys.attr("path").attr("copy")();
     try{
+        auto updated=Config::load(config.file);updated.validate();auto nextPaths=searchPaths(updated);
+        std::vector<fs::path> invalidatedRoots;
+        for(auto group:{"modules","scripts","scenes"})invalidatedRoots.push_back(config.paths.at(group));
+        // Keep installed extension packages cached while their configured path remains.
+        for(auto& path:pythonPaths)if(std::find(nextPaths.begin(),nextPaths.end(),path)==nextPaths.end())invalidatedRoots.push_back(fs::u8path(path));
+        auto obsolete=[&](const std::string& input){auto file=fs::weakly_canonical(fs::u8path(input));for(auto& root:invalidatedRoots){auto relative=file.lexically_relative(root);if(!relative.empty() && *relative.begin()!="..")return true;}return false;};
         py::module_::import("importlib").attr("invalidate_caches")();py::list remove;
-        for(auto item:modules)if(py::hasattr(item.second,"__file__") && !item.second.attr("__file__").is_none()){
-            auto file=fs::weakly_canonical(fs::u8path(item.second.attr("__file__").cast<std::string>()));
-            for(auto group:{"modules","scripts","scenes"}){auto relative=file.lexically_relative(config.paths.at(group));if(!relative.empty() && *relative.begin()!=".."){remove.append(item.first);break;}}
+        for(auto item:modules){bool discard=false;
+            if(py::hasattr(item.second,"__file__") && !item.second.attr("__file__").is_none())discard=obsolete(item.second.attr("__file__").cast<std::string>());
+            if(!discard && py::hasattr(item.second,"__path__"))for(auto path:item.second.attr("__path__"))if(obsolete(py::cast<std::string>(path))){discard=true;break;}
+            if(discard)remove.append(item.first);
         }
         for(auto item:remove)modules.attr("pop")(item,py::none());
-        auto previousEntry=config.entry();auto updated=Config::load(config.file);updated.validate();config=std::move(updated);world.config=&config;
-        for(auto group:{"modules","scripts","scenes"})sys.attr("path").attr("insert")(0,config.paths.at(group).u8string());
-        for(auto& path:config.data.value("python_paths",Json::array()))sys.attr("path").attr("insert")(0,config.resolve(path.get<std::string>()).u8string());
+        auto previousEntry=config.entry();config=std::move(updated);world.config=&config;
+        refreshPythonPaths();
         localization.load(config,previousLocalization.language);
         if(renderer)renderer->stage();
         loadScene(previousEntry==config.entry()?currentScene:config.entry(),&previousLocalization);
         if(renderer)renderer->commit();
-    }catch(...){if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
+    }catch(...){if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);pythonPaths=std::move(previousPythonPaths);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
 }
 void Runtime::refreshLocalizedEntities(){
     std::vector<std::pair<std::shared_ptr<Entity>,std::string>> updates;

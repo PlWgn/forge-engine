@@ -32,6 +32,165 @@ class EngineTests(unittest.TestCase):
         self.config['project']['icon'] = self.config['paths']['textures'] + '/icon.png';self.write_config()
         self.assertIn('2D сцена готова',self.run_engine())
         self.assertIn('validated',self.run_engine('validate'))
+    def test_entity_validation_is_shared_by_json_and_python(self):
+        cases=[]
+        for field in ('position','rotation','scale','velocity','collider'):
+            for bad in (1e100,True,None): cases.append((field,{field:[0,bad,0]}))
+        cases += [('position',{'position':[0,1]}),('position',{'position':None})]
+        for field in ('color','clip'):
+            for bad in (1e100,True,None):cases.append((field,{field:[0,1,bad,1]}))
+        for field in ('mass','font_size'):
+            for bad in (1e100,0,-1,1e-100,True):cases.append((field,{field:bad}))
+        cases += [('scripts',{'scripts':{}}),('mesh',{'kind':'mesh'}),('Missing file',{'texture':'absent.png'})]
+        cases += [(field,{field:123}) for field in ('id','name','kind','model','texture','material','text','text_key','dynamic','trigger','visible','screen')]
+        for field,data in cases:
+            with self.subTest(field=field,data=data):
+                (self.root/'objects/invalid.json').write_text(json.dumps(data),encoding='utf-8')
+                self.assertIn(field,self.run_engine('validate',expected=1))
+        (self.root/'objects/invalid.json').unlink()
+        (self.root/'cases.json').write_text(json.dumps(cases),encoding='utf-8')
+        self.script_scene("""import forge,json,math
+from pathlib import Path
+def on_start():
+    for field,data in json.loads(Path(forge.project_path('cases.json')).read_text()):
+        before=len(forge.entities())
+        try: forge.spawn(dict({'id':'rejected'},**data))
+        except RuntimeError as error: assert field in str(error), (field,str(error))
+        else: raise AssertionError('invalid object accepted '+str(data))
+        assert forge.find('rejected') is None and len(forge.entities())==before
+    for number in (float('nan'),float('inf'),-float('inf')):
+        try: forge.spawn({'id':'nonfinite','position':[number,0,0]})
+        except (RuntimeError,ValueError): pass
+        else: raise AssertionError('nonfinite input accepted')
+        assert forge.find('nonfinite') is None
+    prefab=Path(forge.asset_path('objects','live.json'))
+    prefab.write_text(json.dumps({'position':[1e100,0,0]}))
+    try: forge.spawn({'id':'from_prefab','prefab':'live.json'})
+    except RuntimeError as error: assert 'position' in str(error)
+    else: raise AssertionError('invalid prefab accepted')
+    assert forge.find('from_prefab') is None
+    prefab.write_text(json.dumps({'position':[20,30,0],'mass':2}))
+    e=forge.spawn({'id':'from_prefab','prefab':'live.json','position':[1,2,0],'clip':None})
+    assert tuple(e.position)==(1,2,0) and e.mass==2 and e.clip is None
+    forge.log('SHARED_ENTITY_VALIDATION_OK');forge.quit()
+""")
+        self.assertIn('SHARED_ENTITY_VALIDATION_OK',self.run_engine())
+    def test_python_scene_and_mutations_reject_invalid_numbers(self):
+        self.script_scene("def build(): return {'entities':[{'position':[1e100,0,0]}]}\n")
+        self.assertIn('position must be finite',self.run_engine(expected=1))
+        self.script_scene("""import forge,math
+def on_start():
+    e=forge.spawn({'id':'safe','kind':'empty'})
+    e.clip=(1,2,30,40)
+    for field in ('position','rotation','scale','velocity','collider','color','clip','mass','font_size'):
+        before=getattr(e,field)
+        for number in (float('nan'),float('inf'),-float('inf'),1e100):
+            value=[number,0,0] if field in ('position','rotation','scale','velocity','collider') else [number,0,0,1] if field in ('color','clip') else number
+            try: setattr(e,field,value)
+            except RuntimeError as error: assert field in str(error), str(error)
+            else: raise AssertionError('invalid setter '+field)
+            assert getattr(e,field)==before,(field,before,getattr(e,field))
+    e.position=(2e38,0,0);before=e.position
+    try: e.move(2e38,0)
+    except RuntimeError: pass
+    else: raise AssertionError('overflowing move accepted')
+    assert e.position==before;e.position=(0,0,0)
+    e.mass=1e-38;before=e.velocity
+    try: e.impulse(2e38,0)
+    except RuntimeError: pass
+    else: raise AssertionError('overflowing impulse accepted')
+    assert e.velocity==before;e.mass=1
+    camera=forge.camera_position()
+    try: forge.set_camera((1,2,3),(float('nan'),0,0))
+    except RuntimeError: pass
+    else: raise AssertionError('invalid camera accepted')
+    assert forge.camera_position()==camera
+    e.clip=None;assert e.clip is None
+    e.move(1,2,3);e.impulse(2,3,4)
+    assert tuple(e.position)==(1,2,3) and tuple(e.velocity)==(2,3,4)
+    forge.log('NUMERIC_MUTATION_OK');forge.quit()
+""")
+        self.assertIn('NUMERIC_MUTATION_OK',self.run_engine())
+    def test_hot_reload_replaces_search_paths_and_removed_packages(self):
+        extras=self.root/'extra';extras.mkdir()
+        (extras/'removed_extra.py').write_text('VALUE=1\n')
+        (extras/'kept_extra.py').write_text('VALUE=2\n')
+        ns=extras/'retired_namespace';ns.mkdir();(ns/'part.py').write_text('VALUE=3\n')
+        (self.root/'modules/removed_module.py').write_text('VALUE=4\n')
+        custom=self.root/'custom';custom.mkdir();(custom/'custom_module.py').write_text('VALUE=5\n')
+        self.config['python_paths']=['extra','modules','extra'];self.config['path_stage']=0
+        self.script_scene("""import forge,sys,importlib
+from pathlib import Path
+def on_start():
+    global old_paths
+    stage=forge.settings()['path_stage']
+    custom=forge.project_path('custom')
+    if custom not in sys.path: sys.path.append(custom)
+    import custom_module
+    assert custom_module.VALUE==5
+    if stage==42: raise RuntimeError('PATH_CANDIDATE_FAILED')
+    if stage < 10:
+        import removed_module,removed_extra,retired_namespace.part,kept_extra
+        assert kept_extra.VALUE==(2 if stage==0 else 99)
+        kept_extra.VALUE=99 # surviving extra package must remain cached
+    else:
+        for name in ('removed_module','removed_extra','retired_namespace.part'):
+            assert name not in sys.modules,name
+            try: importlib.import_module(name)
+            except ImportError: pass
+            else: raise AssertionError('retired import still accessible '+name)
+        import fresh_extra
+        assert fresh_extra.VALUE==6
+    old_paths=list(sys.path)
+    forge.save('path_report',{'stage':stage,'paths':old_paths})
+    forge.log('PATH_STAGE_'+str(stage))
+def on_reload_failed(error):
+    assert list(sys.path)==old_paths
+    forge.log('PATH_ROLLBACK_OK')
+def on_update(dt):
+    if Path(forge.project_path('stop')).exists(): forge.quit()
+""")
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def wait(marker):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                log=self.root/'forge.log'
+                if log.exists() and marker in log.read_text():return
+                if process.poll() is not None:self.fail(log.read_text())
+                time.sleep(.03)
+            self.fail('Missing '+marker)
+        def paths():return json.loads((self.root/'saves/path_report.json').read_text())['paths']
+        def layout(prefix):
+            for group in ('modules','scripts','scenes'):
+                relative=prefix+'/'+group;shutil.copytree(self.root/self.config['paths'][group],self.root/relative)
+                self.config['paths'][group]=relative
+            relative=prefix+'/extra';shutil.copytree(extras,self.root/relative)
+            (self.root/relative/'removed_extra.py').unlink();shutil.rmtree(self.root/relative/'retired_namespace')
+            (self.root/self.config['paths']['modules']/'removed_module.py').unlink(missing_ok=True)
+            (self.root/relative/'fresh_extra.py').write_text('VALUE=6\n')
+            self.config['python_paths']=[relative,self.config['paths']['modules'],relative]
+        try:
+            wait('PATH_STAGE_0');baseline=paths()
+            for relative in ('modules','scripts','scenes','extra'):self.assertEqual(baseline.count(str((self.root/relative).resolve())),1)
+            for stage in range(1,6):
+                self.config['path_stage']=stage;self.write_config();wait('PATH_STAGE_'+str(stage))
+                self.assertEqual(paths(),baseline)
+            layout('second');self.config['path_stage']=10;self.write_config();wait('PATH_STAGE_10')
+            stable=paths();self.assertEqual(len(stable),len(baseline))
+            for relative in ('modules','scripts','scenes','extra'):self.assertNotIn(str((self.root/relative).resolve()),stable)
+            for relative in ('second/modules','second/scripts','second/scenes','second/extra'):self.assertEqual(stable.count(str((self.root/relative).resolve())),1)
+            second_config=json.loads(json.dumps(self.config))
+            layout('failed');self.config['path_stage']=42;self.write_config();wait('PATH_ROLLBACK_OK')
+            # Recover into another layout, exposing an incorrect rollback of managed paths.
+            self.config=second_config;layout('third');self.config['path_stage']=43;self.write_config();wait('PATH_STAGE_43')
+            current=paths();self.assertEqual(len(current),len(baseline))
+            for prefix in ('second','failed'):
+                for group in ('modules','scripts','scenes','extra'):self.assertNotIn(str((self.root/prefix/group).resolve()),current)
+            self.assertIn(str(custom.resolve()),current)
+            (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
+            self.assertNotIn('[ERROR] AssertionError',(self.root/'forge.log').read_text())
+        finally:
+            if process.poll() is None:process.kill();process.wait()
     def test_physics_lifecycle_saves_and_bridge(self):
         (self.root / 'scripts/body.py').write_text('''import forge
 class Behavior:

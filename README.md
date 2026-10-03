@@ -2,21 +2,31 @@
 
 Модульный игровой runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS и Windows.
 
-```sh
-python3 tools/dependencies.py
-python3 -m pip install cmake==3.31.6
-python3 tools/forge.py compile
-python3 tools/forge.py dev
-python3 tools/forge.py build --output dist/MyGame
-```
+Репозиторий содержит исходники. `.tools`, `build`, `dist` и скачанные библиотеки не входят в Git; в `vendor` хранятся описание и lock-файл. Сначала установите зависимости и скомпилируйте C++-движок. Команды выполняются из корня репозитория.
 
-На Windows используйте `python` вместо `python3` и установите Visual Studio 2022 Build Tools с компонентом Desktop development with C++.
-
-В этой рабочей папке движок уже собран. Можно сразу запустить:
+На macOS нужны Command Line Tools и Python 3.10+ с python.org:
 
 ```sh
-./build/bin/forge dev
+python3 -m venv .tools
+.tools/bin/python -m pip install cmake==3.31.6
+.tools/bin/python tools/dependencies.py
+.tools/bin/python tools/forge.py compile
+.tools/bin/python tools/forge.py dev
+.tools/bin/python tools/forge.py build --output dist/MyGame
 ```
+
+На Windows установите Python x64 и Visual Studio 2022 Build Tools с Desktop development with C++; используйте Developer PowerShell:
+
+```powershell
+python -m venv .tools
+.tools\Scripts\python.exe -m pip install cmake==3.31.6
+.tools\Scripts\python.exe tools/dependencies.py
+.tools\Scripts\python.exe tools/forge.py compile
+.tools\Scripts\python.exe tools/forge.py dev
+.tools\Scripts\python.exe tools/forge.py build --output dist/MyGame
+```
+
+`compile` создаёт бинарный файл движка, `dev` запускает игровой контент без упаковки, `build` создаёт самостоятельную игру в новой папке `dist/MyGame`. Повторно компилировать C++ для изменений Python, JSON и ресурсов не требуется. Интернет нужен для первой установки зависимостей.
 
 A/D — движение; Space — прыжок; Enter — текст новеллы; F5 — сохранение и звук; 2 — 3D; **3 — новый UI с меню, журналом и слотами**; 1 — возврат в 2D; Escape — выход.
 

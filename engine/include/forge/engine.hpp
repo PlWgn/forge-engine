@@ -15,6 +15,7 @@ namespace forge {
 namespace fs = std::filesystem;
 namespace py = pybind11;
 using Json = nlohmann::json;
+float finiteNumber(const Json&,const std::string& field);
 struct Config {
     fs::path root, file;
     Json data;
@@ -25,6 +26,7 @@ struct Config {
     std::string entry() const;
     void validate() const;
 };
+Json validateEntity(const Config&,Json);
 Json readJson(const fs::path& file);
 void validateMedia(const Config& config);
 Json fromPython(py::handle value);
@@ -137,6 +139,7 @@ struct Runtime {
     std::vector<Script> scripts;
     std::vector<py::object> startup;
     std::map<fs::path, fs::file_time_type> watched;
+    std::vector<std::string> pythonPaths;
     std::string currentScene, pendingScene;
     bool running = true, dev = false, headless = false, gamePaused = false, initializing = false, tearingDown = false;
     unsigned listenerIndex = 0;
@@ -153,6 +156,7 @@ struct Runtime {
     void destroyDead();
     void reload();
     void refreshLocalizedEntities();
+    void refreshPythonPaths();
     void start();
     int run(int frames);
     bool shutdown();
