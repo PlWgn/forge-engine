@@ -1,0 +1,14 @@
+.tools/
+build/
+dist/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+vendor/*
+!vendor/dependencies.lock.json
+!vendor/README.md
+
+# Local game state and temporary packaging directories
+saves/
+.forge-build-*/

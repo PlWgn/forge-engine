@@ -1,0 +1,5 @@
+{
+  "name": "Player", "kind": "sprite", "scale": [40, 54, 1], "texture": "player.png",
+  "collider": [36, 50, 1], "dynamic": true, "mass": 1,
+  "scripts": [{"file": "player2d.py", "properties": {"speed": 270}}]
+}

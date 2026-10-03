@@ -1,0 +1,38 @@
+{
+  "glfw": {
+    "url": "https://codeload.github.com/glfw/glfw/tar.gz/refs/tags/3.4",
+    "sha256": "c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01"
+  },
+  "json": {
+    "url": "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp",
+    "sha256": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
+  },
+  "glm": {
+    "url": "https://codeload.github.com/g-truc/glm/tar.gz/refs/tags/1.0.1",
+    "sha256": "9f3174561fd26904b23f0db5e560971cbf9b3cbda0b280f04d5c379d03bf234c"
+  },
+  "pybind11": {
+    "url": "https://codeload.github.com/pybind/pybind11/tar.gz/refs/tags/v3.0.1",
+    "sha256": "741633da746b7c738bb71f1854f957b9da660bcd2dce68d71949037f0969d0ca"
+  },
+  "stb_image": {
+    "url": "https://raw.githubusercontent.com/nothings/stb/f0569113c93ad095470c54bf34a17b36646bbbb5/stb_image.h",
+    "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"
+  },
+  "stb_truetype": {
+    "url": "https://raw.githubusercontent.com/nothings/stb/f0569113c93ad095470c54bf34a17b36646bbbb5/stb_truetype.h",
+    "sha256": "ecd30b05e0dd4fea3a13c26810dd9e1992dc379049482c393d5a19e6b5090aab"
+  },
+  "font": {
+    "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf",
+    "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d"
+  },
+  "font_license": {
+    "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/OFL.txt",
+    "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a"
+  },
+  "miniaudio": {
+    "url": "https://raw.githubusercontent.com/mackron/miniaudio/0.11.23/miniaudio.h",
+    "sha256": "7e4f3f13c8fe66df2080ac3dd12a89193e3c2463cb7f067c798abd7331cd8ee6"
+  }
+}

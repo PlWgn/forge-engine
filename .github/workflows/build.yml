@@ -1,0 +1,23 @@
+name: macOS and Windows
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==3.31.6
+      - run: python tools/dependencies.py
+      - run: python tools/forge.py compile
+      - run: python tools/forge.py test
+      - run: python tools/forge.py build --output dist/Game
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forge-${{ matrix.os }}
+          path: dist/Game
