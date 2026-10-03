@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <forge/numeric.hpp>
 #include <json.hpp>
 #include <glm/glm.hpp>
 #include <pybind11/embed.h>
@@ -83,6 +84,7 @@ struct World {
     void load(const std::string& scenePath);
     std::set<std::pair<std::string,std::string>> contacts;
     void physics(float dt);
+    bool activeCollider(const Entity&) const;
     bool overlaps(const Entity& a, const Entity& b) const;
     std::shared_ptr<Entity> raycast(glm::vec3 origin, glm::vec3 direction, float distance);
 };

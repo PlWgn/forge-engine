@@ -142,16 +142,27 @@ class SaveManager:
 
     def info(self, slot):
         path = self._path(slot)
-        if not path.exists():
-            return dict(slot=str(slot), status='empty', title='Пустой слот')
         try:
             value = self._read(path)
             return dict(value['metadata'], slot=str(slot), status='ok', version=value['version'])
-        except SaveCorrupt as error:
+        except (FileNotFoundError, SaveCorrupt) as primary_error:
+            try:
+                value = self._read(path.with_suffix('.json.bak'))
+            except FileNotFoundError:
+                if isinstance(primary_error, FileNotFoundError):
+                    return dict(slot=str(slot), status='empty', title='Пустой слот')
+                error = primary_error
+            except SaveCorrupt as backup_error:
+                error = backup_error
+            else:
+                return dict(value['metadata'], slot=str(slot), status='recoverable',
+                            version=value['version'], source='backup', error=str(primary_error))
             return dict(slot=str(slot), status='corrupt', title='Повреждённое сохранение', error=str(error))
 
     def slots(self):
-        return [self.info(path.stem) for path in sorted(self.root.glob('*.json'))]
+        ids = {path.name[:-5] for path in self.root.glob('*.json')}
+        ids.update(path.name[:-9] for path in self.root.glob('*.json.bak'))
+        return [self.info(slot) for slot in sorted(ids)]
 
     def delete(self, slot):
         path = self._path(slot)

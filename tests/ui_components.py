@@ -54,7 +54,16 @@ def verify():
         tick(down=False)
         assert 'disabled' not in calls, "UI assertion at line 49: 'disabled' not in calls"
         canvas.focus = None
+        tick(keys={'TAB'}, held={'SHIFT'})
+        assert canvas.focus is slider, 'first Shift+Tab must select last focusable widget'
         tick(keys={'TAB'})
+        assert canvas.focus is second, 'reverse traversal must skip disabled widgets'
+        tick(keys={'TAB'})
+        assert canvas.focus is first
+        tick(keys={'TAB'})
+        assert canvas.focus is slider, 'reverse traversal must wrap'
+        canvas.focus = None
+        tick(keys={'TAB'}, held=set())
         assert canvas.focus is first, 'UI assertion at line 52: canvas.focus is first'
         tick(keys={'TAB'})
         assert canvas.focus is second, 'disabled button entered focus chain'
@@ -81,6 +90,10 @@ def verify():
         modal_button = overlay.add(ui.Button('Модальная', lambda: calls.append('modal')))
         canvas.modal(overlay)
         tick()
+        canvas.focus = None
+        tick(keys={'TAB'}, held={'SHIFT'})
+        assert canvas.focus is modal_button, 'reverse traversal must respect modal scope'
+        tick(held=set())
         tick(pos=point(first), down=True)
         tick(down=False)
         assert calls == ['first', 'second'], "UI assertion at line 77: calls==['first','second']"

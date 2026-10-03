@@ -29,6 +29,24 @@ class GraphicsTests(unittest.TestCase):
             result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--frames','20','--no-open-log'],text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             frame=(self.root/'frame.ppm').read_bytes();self.assertTrue(frame.startswith(b'P6\n'));self.assertGreater(len(set(frame[100:])),4)
+    def test_extreme_glyph_dimensions_are_bounded_before_integer_conversion(self):
+        (self.root/'scenes/glyph_limits.py').write_text("""import forge
+frames=0
+def on_start():
+    forge.spawn({'kind':'text','screen':True,'text':'Glyph limits','font_size':40,'position':[20,20,0]})
+    for size,scale in ((1e10,1),(3e38,3e38)):
+        forge.spawn({'kind':'text','screen':True,'text':'A','font_size':size,
+                     'scale':[scale,scale,1],'position':[-3e38,-3e38,0]})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==3: forge.screenshot('glyph-limits.ppm')
+""")
+        self.config['entry_scene']='glyph_limits.py';self.write_config()
+        result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--frames','5','--no-open-log'],text=True,capture_output=True,timeout=30)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        frame=(self.root/'glyph-limits.ppm').read_bytes()
+        self.assertTrue(frame.startswith(b'P6\n'));self.assertGreater(len(set(frame[100:])),20)
     def test_responsive_ui_and_large_text(self):
         (self.root/'scenes/capture_ui.py').write_text("""import forge, interface
 frames=0

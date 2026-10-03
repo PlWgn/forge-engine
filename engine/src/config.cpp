@@ -4,10 +4,7 @@
 namespace forge {
 float finiteNumber(const Json& value,const std::string& field) {
     if(!value.is_number())throw std::runtime_error(field+" must be a number");
-    double number=value.get<double>();
-    if(!std::isfinite(number) || std::abs(number)>std::numeric_limits<float>::max())
-        throw std::runtime_error(field+" must be finite and within float range");
-    return static_cast<float>(number);
+    return checkedFloat(value.get<double>(),field);
 }
 Json readJson(const fs::path& file) {
     std::ifstream stream(file); if(!stream) throw std::runtime_error("File not found: " + file.u8string());
@@ -63,7 +60,7 @@ Json validateEntity(const Config& c, Json j) {
         if(!j[field].is_array() || j[field].size()!=4)throw std::runtime_error(std::string(field)+" must contain 4 numbers");
         for(auto& v:j[field])finiteNumber(v,field);
     }
-    auto mass=finiteNumber(j.value("mass",Json(1)),"mass");if(mass<=0)throw std::runtime_error("mass must be positive");
+    checkedMass(finiteNumber(j.value("mass",Json(1)),"mass"));
     auto size=finiteNumber(j.value("font_size",Json(24)),"font_size");if(size<=0)throw std::runtime_error("font_size must be positive");
     auto kind=j.value("kind", "sprite"); if(kind!="sprite" && kind!="cube" && kind!="mesh" && kind!="text" && kind!="empty") throw std::runtime_error("Unknown entity kind: " + kind);
     for(auto group : {"texture","model","material"}) if(j.contains(group) && !j[group].get<std::string>().empty()) {

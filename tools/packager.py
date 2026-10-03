@@ -63,25 +63,52 @@ def _native_libraries(executable, runtime, source_library):
     else:
         raise RuntimeError('Standalone builds currently support macOS and Windows')
 
+def _project_path(root, raw):
+    path = Path(raw)
+    if path.is_absolute(): raise RuntimeError(f'Project paths must be relative: {raw}')
+    source = (root / path).resolve()
+    if not source.is_relative_to(root): raise RuntimeError(f'Path escapes project root: {raw}')
+    return source, source.relative_to(root).as_posix()
+
+def _copy_plan(root, settings, output):
+    if output == root or root.is_relative_to(output): raise RuntimeError('Output cannot replace the source project or its parent')
+    if output.exists(): raise RuntimeError(f'Output already exists: {output}. Choose a new directory or remove it explicitly.')
+    # Canonical project-relative names are used both for copying and game.json.
+    plan = {}
+    def folder(raw):
+        source, relative = _project_path(root, raw)
+        if source == root: raise RuntimeError('Asset folders must be separate from the project root for packaging')
+        if not source.is_dir(): raise RuntimeError(f'Missing asset directory: {raw}')
+        if output.is_relative_to(source): raise RuntimeError('Output cannot be inside an asset directory (paths or python_paths)')
+        plan[relative] = source
+        return relative
+    settings['paths'] = {group: folder(raw) for group, raw in settings['paths'].items()}
+    settings['python_paths'] = [folder(raw) for raw in settings.get('python_paths', [])]
+    icon = settings.get('project', {}).get('icon')
+    if icon: settings['project']['icon'] = _project_path(root, icon)[1]
+    if 'save_directory' in settings:
+        settings['save_directory'] = _project_path(root, settings['save_directory'])[1]
+    return plan
+
+def _stage_path(stage, relative):
+    target = (stage / relative).resolve()
+    if target == stage or not target.is_relative_to(stage):
+        raise RuntimeError(f'Copy destination escapes temporary build: {relative}')
+    return target
+
 def build_bundle(config_file, engine_file, output):
     config_file, engine_file, output = map(lambda p: Path(p).resolve(), (config_file, engine_file, output))
     root = config_file.parent
     settings = json.loads(config_file.read_text(encoding='utf-8'))
-    if output == root or root.is_relative_to(output): raise RuntimeError('Output cannot replace the source project or its parent')
-    if output.exists(): raise RuntimeError(f'Output already exists: {output}. Choose a new directory or remove it explicitly.')
-    roots = [root / p for p in settings['paths'].values()]
-    for source in roots:
-        if output.is_relative_to(source.resolve()): raise RuntimeError('Output cannot be inside an asset directory')
+    plan = _copy_plan(root, settings, output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(tempfile.mkdtemp(prefix='.forge-build-', dir=output.parent))
+    stage = Path(tempfile.mkdtemp(prefix='.forge-build-', dir=output.parent)).resolve()
     try:
-        for relative in dict.fromkeys([*settings['paths'].values(), *settings.get('python_paths', [])]):
-            source, destination = root / relative, stage / relative
-            if source.resolve() == root: raise RuntimeError('Asset folders must be separate from the project root for packaging')
-            _copy_tree(source, destination)
+        for relative, source in plan.items():
+            _copy_tree(source, _stage_path(stage, relative))
         icon = settings.get('project', {}).get('icon')
         if icon:
-            target = stage / icon; target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root / icon, target)
+            target = _stage_path(stage, icon); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root / icon, target)
         # Game code is shipped independently from the engine C++ sources.
         (stage / 'game.json').write_text(json.dumps(settings, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         binary = stage / ('Game.exe' if sys.platform == 'win32' else 'Game')

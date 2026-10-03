@@ -130,7 +130,7 @@ struct Renderer::Impl {
     }
     void text(const Entity& e,const glm::mat4& projection) {
         if(!fontReady || e.fontSize<=0) return;
-        int rasterSize=std::clamp(int(std::ceil(e.fontSize*std::max(std::abs(e.scale.x),std::abs(e.scale.y))*density)),1,1024);
+        int rasterSize=glyphRasterSize(e.fontSize,std::max(std::abs(e.scale.x),std::abs(e.scale.y)),density);
         float baseScale=stbtt_ScaleForPixelHeight(&font,float(rasterSize)); int ascent,descent,gap; stbtt_GetFontVMetrics(&font,&ascent,&descent,&gap);
         float ratio=e.fontSize/rasterSize, x=0,y=ascent*baseScale*ratio; int previousCode=0;
         auto origin=glm::translate(glm::mat4(1),e.position); origin=glm::rotate(origin,glm::radians(e.rotation.z),glm::vec3(0,0,1)); origin=glm::scale(origin,e.scale);

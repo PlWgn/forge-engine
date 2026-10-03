@@ -43,7 +43,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_readwrite("visible",&Entity::visible).def_readonly("alive",&Entity::alive)
         .def_readwrite("dynamic",&Entity::dynamic).def_readwrite("trigger",&Entity::trigger)
         .def_readwrite("texture",&Entity::texture).def_readwrite("model",&Entity::model)
-        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){e.mass=positive(v,"mass");})
+        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){e.mass=checkedMass(v);})
         .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){e.position=vector(v,"position");})
         .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){e.rotation=vector(v,"rotation");})
         .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){e.scale=vector(v,"scale");})
@@ -75,7 +75,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("set_gravity",[](std::array<float,3> v){rt().world.gravity=vector(v);});
     m.def("set_mode",[](const std::string& mode){if(mode!="2d" && mode!="3d")throw std::runtime_error("Mode must be 2d or 3d");rt().world.is3d=mode=="3d";});
     m.def("set_background",[](std::array<float,4> v){rt().world.background=color(v,"background");});
-    m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),distance);},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
+    m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),finiteNumber(distance,"raycast distance"));},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
     m.def("overlaps",[](const Entity& a,const Entity& b){return rt().world.overlaps(a,b);});
     m.def("play_sound",[](const std::string& path,bool loop,float volume,const std::string& channel,float fade){return rt().audio.play(rt().config.asset("audio",path),loop,volume,channel,fade);},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1,py::arg("channel")="sfx",py::arg("fade")=0);
     m.def("stop_sound",[](unsigned id,float fade){rt().audio.stop(id,"",fade);},py::arg("id"),py::arg("fade")=0);

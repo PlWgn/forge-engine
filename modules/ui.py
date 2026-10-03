@@ -463,8 +463,9 @@ class Canvas:
             self.capture = None
         self.was_down = down
         if forge.key_pressed('TAB') and targets:
-            index = targets.index(self.focus) if self.focus in targets else -1
-            self.focus = targets[(index+(-1 if forge.key_down('SHIFT') else 1)) % len(targets)]
+            reverse = forge.key_down('SHIFT')
+            index = targets.index(self.focus) if self.focus in targets else (0 if reverse else -1)
+            self.focus = targets[(index+(-1 if reverse else 1)) % len(targets)]
         if self.focus is not None:
             if forge.key_pressed('ENTER') or forge.key_pressed('SPACE'):
                 activate = self.focus

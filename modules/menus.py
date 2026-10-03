@@ -68,7 +68,7 @@ class MenuController:
             if save and slot == 'auto': continue
             info = self.saves.info(slot)
             title = forge.tr('engine.slots.auto') if slot == 'auto' else forge.tr('engine.slots.title', slot=slot)
-            detail = forge.tr('engine.slots.'+info['status']) if info['status'] in ('empty', 'corrupt') else info.get('title', '')
+            detail = forge.tr('engine.slots.'+info['status']) if info['status'] in ('empty', 'corrupt', 'recoverable') else info.get('title', '')
             label = f"{title} — {detail} {info.get('saved_at', '')[:19]}"
             button = self.panel.add(Button(label, lambda key=slot: self._slot(key, save), size=18))
             button.enabled = save or info['status'] != 'empty'

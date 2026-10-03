@@ -41,6 +41,7 @@ class EngineTests(unittest.TestCase):
             for bad in (1e100,True,None):cases.append((field,{field:[0,1,bad,1]}))
         for field in ('mass','font_size'):
             for bad in (1e100,0,-1,1e-100,True):cases.append((field,{field:bad}))
+        cases.append(('mass',{'mass':1e-40}))
         cases += [('scripts',{'scripts':{}}),('mesh',{'kind':'mesh'}),('Missing file',{'texture':'absent.png'})]
         cases += [(field,{field:123}) for field in ('id','name','kind','model','texture','material','text','text_key','dynamic','trigger','visible','screen')]
         for field,data in cases:
@@ -100,6 +101,10 @@ def on_start():
     except RuntimeError: pass
     else: raise AssertionError('overflowing impulse accepted')
     assert e.velocity==before;e.mass=1
+    try: e.mass=1e-40
+    except RuntimeError: pass
+    else: raise AssertionError('overflowing inverse mass accepted')
+    assert e.mass==1
     camera=forge.camera_position()
     try: forge.set_camera((1,2,3),(float('nan'),0,0))
     except RuntimeError: pass
@@ -111,6 +116,69 @@ def on_start():
     forge.log('NUMERIC_MUTATION_OK');forge.quit()
 """)
         self.assertIn('NUMERIC_MUTATION_OK',self.run_engine())
+    def test_physics_handles_small_masses_and_large_finite_geometry(self):
+        self.script_scene("""import forge, math
+frames=0
+def build(): return {'mode':'2d','gravity':[0,0,0]}
+def on_start():
+    global a,b
+    a=forge.spawn({'id':'a','kind':'empty','dynamic':True,'mass':4e-39,'collider':[2,2,0]})
+    b=forge.spawn({'id':'b','kind':'empty','dynamic':True,'mass':4e-39,'position':[1,0,0],'collider':[2,2,0]})
+    # Opposite coordinates and summed extents would overflow float intermediates.
+    large_a=forge.spawn({'id':'large_a','kind':'empty','position':[-2e38,0,0],'collider':[3e38,2,0]})
+    large_b=forge.spawn({'id':'large_b','kind':'empty','position':[2e38,0,0],'collider':[3e38,2,0]})
+    assert not forge.overlaps(large_a,large_b)
+    assert forge.raycast((0,0,0),(3e38,0,0),3e38) is not None
+    large_a.collider=(0,0,0);large_b.collider=(0,0,0)
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames>2:
+        assert b.position[0]-a.position[0]>=1.99,(a.position,b.position)
+        assert abs(a.position[0]+.5)<.001 and abs(b.position[0]-1.5)<.001
+        assert all(math.isfinite(n) for e in (a,b) for n in (*e.position,*e.velocity))
+        forge.log('SMALL_MASS_PHYSICS_OK');forge.quit()
+""")
+        self.assertIn('SMALL_MASS_PHYSICS_OK',self.run_engine())
+    def test_physics_reports_overflow_without_committing_nonfinite_state(self):
+        self.script_scene("""import forge
+def build(): return {'gravity':[3e38,0,0]}
+def on_start():
+    global body,initial
+    body=forge.spawn({'id':'overflowing','kind':'empty','dynamic':True,'velocity':[3.4e38,0,0]})
+    initial=(body.position,body.velocity)
+def on_destroy():
+    assert (body.position,body.velocity)==initial
+    forge.log('PHYSICS_OPERATION_UNCHANGED')
+""")
+        output=self.run_engine(expected=1)
+        self.assertIn("Physics entity 'overflowing' velocity must be finite",output)
+        self.assertIn('PHYSICS_OPERATION_UNCHANGED',output)
+        self.assertIn("Physics entity 'overflowing'",(self.root/'forge.log').read_text())
+    def test_raycast_and_overlap_share_collider_activation(self):
+        self.script_scene("""import forge
+def on_start():
+    forge.set_mode('3d')
+    disabled=forge.spawn({'id':'disabled','kind':'empty','collider':[2,2,0]})
+    target=forge.spawn({'id':'target','kind':'empty','position':[0,0,-4],'collider':[2,2,2]})
+    probe=forge.spawn({'id':'probe','kind':'empty','collider':[2,2,2]})
+    assert not forge.overlaps(disabled,probe)
+    probe.collider=(0,0,0)
+    assert forge.raycast((0,0,5),(0,0,-1),20).id=='target'
+    for size in ((0,2,2),(2,0,2),(2,2,-1),(2,2,0)):
+        target.collider=size
+        assert forge.raycast((0,0,5),(0,0,-1),20) is None
+    # Zero depth remains a valid 2D collider.
+    target.collider=(0,0,0)
+    forge.set_mode('2d')
+    assert forge.raycast((-5,0,0),(1,0,0),20).id=='disabled'
+    probe.collider=(2,2,0)
+    assert forge.overlaps(disabled,probe)
+    disabled.destroy();probe.destroy();target.destroy()
+    assert forge.raycast((-5,0,0),(1,0,0),20) is None
+    forge.log('COLLIDER_ACTIVATION_OK');forge.quit()
+""")
+        self.assertIn('COLLIDER_ACTIVATION_OK',self.run_engine())
     def test_hot_reload_replaces_search_paths_and_removed_packages(self):
         extras=self.root/'extra';extras.mkdir()
         (extras/'removed_extra.py').write_text('VALUE=1\n')
@@ -352,6 +420,53 @@ def on_update(dt):
     updates+=1
 """)
         self.assertIn('PAUSE_OK',self.run_engine())
+    def test_backup_only_slots_are_listed_and_loadable_from_menu(self):
+        self.script_scene("""import forge, ui
+from pathlib import Path
+from saves import SaveManager, SaveError, SaveVersion
+from menus import MenuController
+def on_start():
+    saves=SaveManager()
+    saves.write('1',{'n':1},title='First',description='Backup metadata')
+    saves.write('1',{'n':2},title='Second')
+    path=Path(forge.project_path('saves/slots/1.json'));path.unlink()
+    before=path.with_suffix('.json.bak').read_bytes()
+    info=saves.info('1')
+    assert info['status']=='recoverable' and info['source']=='backup'
+    assert info['title']=='First' and info['description']=='Backup metadata' and info['version']==1
+    assert [i['slot'] for i in saves.slots()]==['1']
+    assert not path.exists() and before==path.with_suffix('.json.bak').read_bytes()
+    assert saves.info('missing')['status']=='empty'
+    try: saves.read('1',recover=False)
+    except SaveError: pass
+    else: raise AssertionError('recovery-disabled slot loaded')
+    loaded=[];canvas=ui.Canvas(ui.Column(),automatic=False)
+    menu=MenuController(canvas,saves=saves,restore=loaded.append,slots=1)
+    try:
+        for language in ('ru','en'):
+            forge.set_language(language,persist=False);menu.show_slots();canvas.update()
+            buttons=[w for w in menu.panel.children if isinstance(w,ui.Button)]
+            assert not buttons[0].enabled
+            assert buttons[1].enabled and forge.tr('engine.slots.recoverable') in buttons[1].label
+            buttons[1].activate()
+            assert loaded[-1]=={'n':1} and not menu.opened
+    finally: menu.close();canvas.close()
+    assert not path.exists() # listing/loading must not rewrite files
+    path.with_suffix('.json.bak').write_text('{broken')
+    assert saves.info('1')['status']=='corrupt'
+    try: saves.read('1',default={})
+    except SaveError: pass
+    else: raise AssertionError('damaged backup hidden by default')
+    saves.delete('1');assert saves.slots()==[]
+    newer=SaveManager(2);newer.write('future',{'n':3});newer.write('future',{'n':4})
+    Path(forge.project_path('saves/slots/future.json')).unlink()
+    assert saves.info('future')['version']==2
+    try: saves.read('future')
+    except SaveVersion: pass
+    else: raise AssertionError('newer backup version accepted')
+    forge.log('BACKUP_MENU_OK');forge.quit()
+""")
+        self.assertIn('BACKUP_MENU_OK',self.run_engine())
     def test_text_slots_audio_and_dialogue(self):
         self.script_scene(r"""import forge, ui, audio, pathlib
 from saves import SaveManager, SaveError, SaveVersion
@@ -373,7 +488,7 @@ def on_start():
     assert slots.info('1')['title']=='Второй'
     path=pathlib.Path(forge.project_path('saves/slots/1.json'))
     path.write_text('{broken',encoding='utf-8')
-    assert slots.info('1')['status']=='corrupt'
+    assert slots.info('1')['status']=='recoverable'
     assert slots.read('1')['n']==1
     try: slots.read('1',recover=False)
     except SaveError: pass
@@ -655,9 +770,25 @@ def on_destroy():
         self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
         output=self.run_engine('validate',extra=('--project',target/'engine.json'))
         self.assertIn('validated',output)
+    def test_packager_rejects_output_in_python_paths_before_copy(self):
+        (self.root/'extra').mkdir()
+        self.config['python_paths']=['extra'];self.write_config()
+        for relative in ('extra/new/Game','modules/new/Game'):
+            target=self.root/relative
+            self.assertIn('Output cannot be inside an asset directory',self.run_engine('build',expected=1,extra=('--output',target)))
+            self.assertFalse(target.parent.exists())
+        self.assertFalse(list(self.root.rglob('.forge-build-*')))
     def test_packaged_game(self):
         if sys.platform not in ('darwin','win32'):self.skipTest('packaging OS')
         self.script_scene("import forge, json, math, sqlite3, ssl, zlib, ctypes, pathlib, sys\ndef on_start():\n    assert pathlib.Path(sys.prefix).samefile(forge.project_path('runtime'))\n    assert forge.tr('engine.menu.pause')=='Пауза'\n    forge.set_language('en')\n    assert forge.tr('example.welcome.title')=='Create your worlds.'\n    forge.save('packaged', {'works':True})\n    forge.log('PACKAGED_OK')\n    forge.log('PACKAGED_VERSION_'+forge.__version__)\n    forge.quit()\n")
+        (self.root/'extra').mkdir();(self.root/'extra/package_extra.py').write_text('VALUE=42\n')
+        script=self.root/'scenes/test.py'
+        script.write_text(script.read_text().replace('import forge, json', 'import package_extra; assert package_extra.VALUE==42\nimport forge, json'))
+        alias='../'+self.root.name+'/'
+        self.config['paths']={k:alias+v for k,v in self.config['paths'].items()}
+        self.config['python_paths']=[alias+'extra']
+        self.config['project']['icon']=alias+'textures/icon.png'
+        self.config['save_directory']=alias+'saves';self.write_config()
         target=self.root/'dist/game'
         self.run_engine('build',extra=('--output',target))
         binary=target/('Game.exe' if os.name=='nt' else 'Game')
@@ -665,6 +796,11 @@ def on_destroy():
         result=subprocess.run([str(binary),'--headless','--no-open-log'],cwd=tempfile.gettempdir(),env=env,text=True,capture_output=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('PACKAGED_OK',result.stdout)
         self.assertTrue((target/'saves/packaged.json').exists())
+        packaged=json.loads((target/'game.json').read_text())
+        self.assertEqual(packaged['python_paths'],['extra'])
+        self.assertEqual(packaged['paths']['modules'],'modules')
+        self.assertEqual(packaged['project']['icon'],'textures/icon.png')
+        self.assertEqual(packaged['save_directory'],'saves')
         self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
         manifest=json.loads((target/'manifest.json').read_text())
         self.assertIn('PACKAGED_VERSION_'+manifest['engine_version'],result.stdout)
