@@ -18,7 +18,7 @@ def build():
 
 def on_start():
     ui.text('3d-brand', 'F O R G E   /   3D WORLD', 42, 30, 20, (.4, .86, .73, 1))
-    ui.text('3d-help', 'WASD — движение   /   Стрелки — обзор   /   M — мышь   /   1 — 2D   /   Esc — выход', 42, 66, 17)
+    ui.text('3d-help', forge.message('example.world3d.help'), 42, 66, 17)
     forge.log('3D сцена готова: OBJ, материалы, перспектива.')
 
 def on_update(dt):

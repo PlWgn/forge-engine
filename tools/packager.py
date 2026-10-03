@@ -116,6 +116,7 @@ def build_bundle(config_file, engine_file, output):
         for filename in ['stb_image.h', 'stb_truetype.h', 'miniaudio.h', 'json.hpp']:
             if (vendor / filename).exists(): shutil.copy2(vendor / filename, licenses / filename) # license text is embedded in header
         (stage / 'START.txt').write_text('Run Game.exe (Windows) or ./Game (macOS).\nThe directory must be writable for forge.log and saves.\nKeep all files in this directory together.\n', encoding='utf-8')
+        shutil.copy2(source_root / 'engine/resources/Unicode-LICENSE.txt', licenses / 'Unicode.txt')
         manifest = {'engine_version': forge.__version__, 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
         for file in sorted(stage.rglob('*')):
             if file.is_file(): manifest['files'][file.relative_to(stage).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()

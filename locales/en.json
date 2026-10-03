@@ -1,0 +1,22 @@
+{
+  "example.ui.title": "An interface for your game",
+  "example.ui.subtitle": "Automatic layout, sharp text, saves and smooth audio controls.",
+  "example.ui.developer": "Developer",
+  "example.ui.page1": "This interface uses ready-made components. Resize the window: layout, text wrapping and scale adapt automatically.",
+  "example.ui.page2": "Adapt modules for a novel, platformer or 3D game. Pause menus, journals and save slots share one UI library.",
+  "example.ui.page3": "Enable autoplay or press Next. Tab moves focus; Enter activates a button. Escape opens the menu.",
+  "example.ui.menu": "Menu",
+  "example.ui.scene2d": "2D scene",
+  "example.ui.scene3d": "3D scene",
+  "example.welcome.page1": "Every story begins with its first scene.",
+  "example.welcome.page2": "Scenes, objects and behaviors live separately from the core.",
+  "example.welcome.page3": "This is your novel text. Edit it while the engine is running.",
+  "example.welcome.title": "Create your worlds.",
+  "example.welcome.subtitle": "One engine. Python scenes. C++ graphics.",
+  "example.welcome.section": "01  /  2D + VISUAL NOVEL",
+  "example.welcome.hint": "Enter — next page     F5 — save     2 — 3D    3 — interface",
+  "example.welcome.controls": "A / D — move     Space — jump",
+  "example.welcome.status": "LIVE   /   Edit scripts without rebuilding",
+  "example.welcome.saved": "SAVED   /   Progress saved in saves/progress.json",
+  "example.world3d.help": "WASD — move   /   Arrows — look   /   M — mouse   /   1 — 2D   /   Esc — quit"
+}

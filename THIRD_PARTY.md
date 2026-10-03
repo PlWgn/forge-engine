@@ -13,8 +13,11 @@ The engine uses these pinned dependencies. Run `python tools/dependencies.py` to
 | stb_image / stb_truetype | f0569113c93ad095470c54bf34a17b36646bbbb5 | MIT/public domain, license embedded in headers |
 | miniaudio | 0.11.23 | MIT/public domain, license embedded in header |
 | Noto Sans | Checksum-pinned Google Fonts snapshot | SIL Open Font License 1.1, graphics/FONT-LICENSE.txt |
+| Unicode CLDR cardinal rules | 48.0.0 | Unicode License v3, engine/resources/Unicode-LICENSE.txt |
 | CPython | The version used to compile the engine | Python Software Foundation license, copied to runtime/LICENSE.txt |
 
 Game builds include dependency notices under `licenses`, the font license alongside the font, and the CPython license. Additional Python packages and custom modules are the game developer's responsibility. OpenSSL or other libraries from the build Python may be copied with its extension modules; their accompanying notices are copied when available and are listed in the build manifest.
 
 The generated textures, OBJ and notification WAV are original procedural starter assets and can be changed or used in your game.
+
+The compiled localization data in `engine/include/forge/localization_data.hpp` derives from [CLDR JSON 48.0.0 plurals.json](https://github.com/unicode-org/cldr-json/blob/48.0.0/cldr-json/cldr-core/supplemental/plurals.json). Sample annotations were removed and locale keys normalized; the original SHA-256 is recorded in that header. The evaluator supports cardinal rules for ordinary JSON numeric counts; compact-exponent operands are zero. Engine UI translations are original Forge strings. The Unicode copyright/permission notice is preserved in `engine/resources/Unicode-LICENSE.txt` and copied to game builds and starter projects as `licenses/Unicode.txt`.

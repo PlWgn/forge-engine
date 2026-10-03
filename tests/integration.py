@@ -323,9 +323,182 @@ def on_destroy():
             output=(self.root/'forge.log').read_text();self.assertIn('CANDIDATE_FAILED',output);self.assertIn('ROLLBACK_OK',output);self.assertIn('RECOVERY_SETTINGS_Changed',output)
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def write_language(self, code, messages):
+        (self.root/'locales'/f'{code}.json').write_text(json.dumps(messages,ensure_ascii=False),encoding='utf-8')
+        self.config['localization']['languages'][code]={'name':code,'file':code+'.json'}
+        self.write_config()
+    def test_localization_plural_parameters_and_fallback(self):
+        forms={key:'{count} '+key for key in ('zero','one','two','few','many','other')}
+        for code in ('ru','en','ar','pl','cs','fr','ja','cy','sl','pt-PT'):
+            self.write_language(code, {'items':forms,'greeting':{'hello':'Hello {name}!'},'escaped':'{{{name}}}'})
+        english=json.loads((self.root/'locales/en.json').read_text());english['fallback_items']=forms
+        self.write_language('en',english)
+        self.write_language('en-GB',{'greeting':{'hello':'Cheers {name}!'}})
+        self.script_scene("""import forge
+def on_start():
+    assert forge.language()=='ru'
+    assert len(forge.available_languages())==11
+    assert forge.tr('greeting.hello',name='Мир')=='Hello Мир!'
+    assert forge.tr('escaped',name='x')=='{x}'
+    samples={'ru':[(1,'one'),(2,'few'),(5,'many'),(11,'many'),(21,'one'),(1.5,'other'),(1.0,'other'),(-22,'few'),(1000000000000000001,'one')],
+        'en':[(1,'one'),(1.0,'other'),(2,'other')], 'ar':[(0,'zero'),(1.0,'one'),(2,'two'),(3,'few'),(11,'many'),(102,'other')],
+        'pl':[(1,'one'),(2,'few'),(5,'many'),(12,'many'),(22,'few'),(1.5,'other')], 'cs':[(1,'one'),(4,'few'),(5,'other'),(1.5,'many')],
+        'fr':[(0,'one'),(1.5,'one'),(2,'other'),(1000000,'many')], 'ja':[(1,'other')],
+        'cy':[(0,'zero'),(1,'one'),(2,'two'),(3,'few'),(6,'many'),(4,'other')], 'sl':[(1,'one'),(2,'two'),(3,'few'),(1.5,'few')],
+        'pt-pt':[(0,'other'),(1,'one'),(1.0,'other')]}
+    for language, tests in samples.items():
+        forge.set_language(language,persist=False)
+        for n,form in tests:
+            assert forge.tr('items',count=n).endswith(' '+form), (language,n,forge.tr('items',count=n))
+    forge.set_language('RU_ru',persist=False);assert forge.language()=='ru'
+    assert forge.tr('fallback_items',count=21)=='21 other' # supplying catalog's grammar
+    assert forge.has_translation('fallback_items') and not forge.has_translation('fallback_items',fallback=False)
+    forge.set_language('EN_gb',persist=False)
+    assert forge.language()=='en-gb' and forge.tr('greeting.hello',name='Jo')=='Cheers Jo!'
+    assert forge.tr('items',count=1)=='1 one' # parent catalog
+    assert forge.has_translation('items','en-GB')
+    for bad in ['unregistered','../ru','ru--RU']:
+        try: forge.set_language(bad)
+        except RuntimeError: pass
+        else: raise AssertionError('accepted language '+bad)
+    assert forge.language()=='en-gb'
+    for call in [lambda:forge.tr('items'),lambda:forge.tr('items',count='1'),lambda:forge.tr('greeting.hello')]:
+        try: call()
+        except RuntimeError: pass
+        else: raise AssertionError('accepted bad parameters')
+    for _ in range(3): assert forge.tr('unknown.key')=='unknown.key'
+    forge.log('LOCALIZATION_RULES_OK');forge.quit()
+""")
+        output=self.run_engine()
+        self.assertIn('LOCALIZATION_RULES_OK',output)
+        self.assertEqual(output.count('Localization key not found [en-gb]: unknown.key'),1)
+    def test_localization_validation_and_old_project(self):
+        file=self.root/'locales/ru.json'
+        for value, marker in [({'bad':{'one':'one'}},'needs other'),({'bad':'{name'},'Unmatched'),({'bad':['text']},'must be string'),({'a.b':'one','a':{'b':'two'}},'duplicate')]:
+            file.write_text(json.dumps(value),encoding='utf-8')
+            self.assertIn(marker.lower(),self.run_engine('validate',expected=1).lower())
+        self.write_language('ru',{'test':'{name}'})
+        self.write_language('en',{'test':'{other}'})
+        self.assertIn('placeholder mismatch',self.run_engine('validate',expected=1))
+        self.write_language('en',{'test':'{name}'})
+        self.write_language('zz',{'test':{'other':'{name}'}})
+        self.assertIn('No CLDR plural rule',self.run_engine('validate',expected=1))
+        self.config['localization']['languages']['zz']['plural_language']='other';self.write_config()
+        self.assertIn('validated',self.run_engine('validate'))
+        self.config.pop('localization');self.config['paths'].pop('locales');self.write_config()
+        self.script_scene("import forge\ndef on_start():\n    assert forge.language()=='en'\n    assert forge.tr('engine.menu.pause')=='Paused'\n    forge.log('OLD_PROJECT_OK');forge.quit()\n")
+        self.assertIn('OLD_PROJECT_OK',self.run_engine())
+    def test_localization_reactive_entities_ui_and_journal(self):
+        self.write_language('ru',{'hello':'Привет {name}','page':'Коротко','speaker':'Автор'})
+        self.write_language('en',{'hello':'Hello {name}','page':'A longer translated page','speaker':'Author'})
+        self.script_scene("""import forge,ui,json
+from dialogue import Dialogue,Journal
+from menus import MenuController
+from saves import SaveManager
+def build(): return {'entities':[{'id':'caption','kind':'text','text_key':'hello','text_params':{'name':'Jo'}}]}
+def on_start():
+    e=forge.find('caption');assert e.text=='Привет Jo'
+    message=forge.message('hello',name='Jo')
+    label=ui.Label(message);button=ui.Button(message,lambda:None)
+    old=ui.text('legacy',message,0,0)
+    d=Dialogue([dict(speaker=forge.message('speaker'),text=forge.message('page'))])
+    root=ui.Column(label,button,d);canvas=ui.Canvas(root)
+    menus=MenuController(canvas,journal=d.journal)
+    menus.show_settings();d.advance();assert d.body.value=='Коротко'
+    journal_view=d.journal.view()
+    saved=d.capture();slots=SaveManager();slots.write('loc',saved)
+    forge.set_language('en',persist=False);d.update(0);menus.update(0);canvas.update(0)
+    assert e.text=='Hello Jo' and old.text=='Hello Jo'
+    assert label.value=='Hello Jo' and button.label=='Hello Jo'
+    assert d.body.value=='A longer translated page' and d.speaker.value=='Author'
+    assert d.next_button.label=='Next'
+    assert menus.panel.children[0].value=='Settings'
+    assert journal_view.children[0].value=='Author\\nA longer translated page'
+    d.restore(slots.read('loc'));assert Journal.resolve(d.journal.entries[0],'text')=='A longer translated page'
+    assert d.body.value=='A longer translated page'
+    e.text=forge.message('hello',name='Ana');assert e.text=='Hello Ana'
+    e.text_params={'name':'Pat'};assert e.text=='Hello Pat'
+    e.text='literal';forge.set_language('ru',persist=False);assert e.text=='literal' and e.text_key==''
+    revision=forge.localization_revision()
+    forge.spawn({'id':'invalid','kind':'text','text_key':'hello','text_params':{'name':'valid'}}).text_params={}
+    try: forge.set_language('en')
+    except RuntimeError: pass
+    else: raise AssertionError('accepted invalid localized entity')
+    assert forge.language()=='ru' and forge.localization_revision()==revision
+    forge.find('invalid').destroy()
+    menus.close();canvas.close();forge.log('LOCALIZED_UI_OK');forge.quit()
+""")
+        self.assertIn('LOCALIZED_UI_OK',self.run_engine())
+    def test_language_preference_restart_corruption_and_failed_start(self):
+        self.script_scene("import forge\ndef on_start():\n    forge.set_language('en');forge.quit()\n")
+        self.run_engine()
+        path=self.root/'saves/preferences/language.json'
+        self.assertEqual(json.loads(path.read_text())['language'],'en')
+        self.script_scene("import forge\ndef on_start():\n    assert forge.language()=='en'\n    forge.set_language('ru',persist=False);forge.quit()\n")
+        self.run_engine();self.assertEqual(json.loads(path.read_text())['language'],'en')
+        path.write_text('{broken')
+        self.script_scene("import forge\ndef on_start():\n    assert forge.language()=='ru'\n    forge.quit()\n")
+        self.assertIn('Ignoring language preference',self.run_engine())
+        path.unlink()
+        self.script_scene("import forge\ndef on_start():\n    forge.set_language('en')\n    raise RuntimeError('FAIL_AFTER_LANGUAGE')\n")
+        self.assertIn('FAIL_AFTER_LANGUAGE',self.run_engine(expected=1));self.assertFalse(path.exists())
+        self.config['localization']['save_selection']=False;self.write_config()
+        self.script_scene("import forge\ndef on_start(): forge.set_language('en');forge.quit()\n")
+        self.run_engine();self.assertFalse(path.exists())
+    def test_localization_hot_reload_transaction(self):
+        self.write_language('ru',{'version':'original'})
+        self.script_scene("""import forge,json
+from pathlib import Path
+def on_start():
+    global revision
+    revision=forge.localization_revision()
+    forge.set_language('ru')
+    forge.spawn({'id':'stable','kind':'text','text_key':'version'})
+    forge.log('LOCALE_READY')
+def on_reload_failed(error):
+    assert forge.language()=='ru' and forge.localization_revision()==revision
+    assert forge.tr('version')=='original' and forge.find('stable').text=='original'
+    assert json.loads(Path(forge.project_path('saves/preferences/language.json')).read_text())['language']=='ru'
+    forge.log('LOCALE_ROLLBACK_OK')
+def on_destroy():
+    assert forge.tr('version')=='original' and forge.language()=='ru'
+    forge.set_language('en') # isolated teardown must not persist
+""")
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def wait(marker):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                log=self.root/'forge.log'
+                if log.exists() and marker in log.read_text():return
+                if process.poll() is not None:self.fail(log.read_text())
+                time.sleep(.03)
+            self.fail('Missing '+marker)
+        try:
+            wait('LOCALE_READY')
+            # Wait for initial deferred preference commit, then fail initialization.
+            deadline=time.monotonic()+5
+            while not (self.root/'saves/preferences/language.json').exists():
+                self.assertLess(time.monotonic(),deadline);time.sleep(.02)
+            (self.root/'scenes/test.py').write_text("import forge\ndef on_start():\n    forge.set_language('en')\n    raise RuntimeError('LOCALE_CANDIDATE_FAILURE')\n")
+            self.write_language('ru',{'version':'updated'})
+            wait('LOCALE_ROLLBACK_OK')
+            (self.root/'scenes/test.py').write_text("import forge\ndef on_start():\n    assert forge.language()=='ru' and forge.tr('version')=='updated'\n    forge.log('LOCALE_RECOVERED')\ndef on_update(dt): forge.quit()\n")
+            wait('LOCALE_RECOVERED');self.assertEqual(process.wait(timeout=15),0)
+            log=(self.root/'forge.log').read_text();self.assertNotIn('[ERROR] AssertionError',log)
+            self.assertEqual(json.loads((self.root/'saves/preferences/language.json').read_text())['language'],'ru')
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+    def test_starter_project_includes_localization(self):
+        target=self.root/'new-project'
+        result=subprocess.run([sys.executable,str(ROOT/'tools/forge.py'),'init','--output',str(target)],capture_output=True,text=True,timeout=30)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertTrue((target/'locales/en.json').exists())
+        self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
+        output=self.run_engine('validate',extra=('--project',target/'engine.json'))
+        self.assertIn('validated',output)
     def test_packaged_game(self):
         if sys.platform not in ('darwin','win32'):self.skipTest('packaging OS')
-        self.script_scene("import forge, json, math, sqlite3, ssl, zlib, ctypes, pathlib, sys\ndef on_start():\n    assert pathlib.Path(sys.prefix).samefile(forge.project_path('runtime'))\n    forge.save('packaged', {'works':True})\n    forge.log('PACKAGED_OK')\n    forge.log('PACKAGED_VERSION_'+forge.__version__)\n    forge.quit()\n")
+        self.script_scene("import forge, json, math, sqlite3, ssl, zlib, ctypes, pathlib, sys\ndef on_start():\n    assert pathlib.Path(sys.prefix).samefile(forge.project_path('runtime'))\n    assert forge.tr('engine.menu.pause')=='Пауза'\n    forge.set_language('en')\n    assert forge.tr('example.welcome.title')=='Create your worlds.'\n    forge.save('packaged', {'works':True})\n    forge.log('PACKAGED_OK')\n    forge.log('PACKAGED_VERSION_'+forge.__version__)\n    forge.quit()\n")
         target=self.root/'dist/game'
         self.run_engine('build',extra=('--output',target))
         binary=target/('Game.exe' if os.name=='nt' else 'Game')
@@ -333,6 +506,7 @@ def on_destroy():
         result=subprocess.run([str(binary),'--headless','--no-open-log'],cwd=tempfile.gettempdir(),env=env,text=True,capture_output=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('PACKAGED_OK',result.stdout)
         self.assertTrue((target/'saves/packaged.json').exists())
+        self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
         manifest=json.loads((target/'manifest.json').read_text())
         self.assertIn('PACKAGED_VERSION_'+manifest['engine_version'],result.stdout)
         self.assertIn('START.txt',manifest['files'])

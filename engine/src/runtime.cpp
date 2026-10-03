@@ -16,9 +16,27 @@ static py::object toPython(const Json& j){return py::module_::import("json").att
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
     m.doc()="Forge native engine modules. Coordinates: 2D pixels; 3D world units.";
+    py::class_<LocalizedText>(m,"LocalizedText")
+        .def(py::init([](const std::string& key,py::dict params){return LocalizedText{key,fromPython(params)};}),py::arg("key"),py::arg("params")=py::dict())
+        .def_readwrite("key",&LocalizedText::key)
+        .def_property("params",[](LocalizedText& value){return toPython(value.params);},[](LocalizedText& value,py::dict params){value.params=fromPython(params);})
+        .def("__str__",[](LocalizedText& value){return rt().localization.translate(value.key,value.params);});
+    m.def("message",[](const std::string& key,py::kwargs params){return LocalizedText{key,fromPython(params)};},py::arg("key"));
+    m.def("tr",[](const std::string& key,py::kwargs params){return rt().localization.translate(key,fromPython(params));},py::arg("key"));
+    m.def("language",[](){return rt().localization.language;});
+    m.def("available_languages",[](){return toPython(rt().localization.languages());});
+    m.def("localization_revision",[](){return rt().localization.revision;});
+    m.def("has_translation",[](const std::string& key,const std::string& language,bool fallback){return rt().localization.has(key,language,fallback);},py::arg("key"),py::arg("language")="",py::arg("fallback")=true);
+    m.def("set_language",[](const std::string& language,bool persist){auto previous=rt().localization;try{rt().localization.select(language,persist);rt().refreshLocalizedEntities();}catch(...){rt().localization=std::move(previous);throw;}},py::arg("language"),py::arg("persist")=true);
     py::class_<Entity,std::shared_ptr<Entity>>(m,"Entity")
         .def_readonly("id",&Entity::id).def_readwrite("name",&Entity::name)
-        .def_readwrite("text",&Entity::text).def_readwrite("font_size",&Entity::fontSize)
+        .def_property("text",[](Entity& e){return e.textKey.empty()?e.text:rt().localization.translate(e.textKey,e.textParams);},[](Entity& e,py::object value){
+            if(py::isinstance<LocalizedText>(value)){auto message=value.cast<LocalizedText>();auto text=rt().localization.translate(message.key,message.params);e.textKey=message.key;e.textParams=message.params;e.text=text;}
+            else{e.text=py::str(value);e.textKey.clear();e.textParams=Json::object();}
+        })
+        .def_readwrite("text_key",&Entity::textKey)
+        .def_property("text_params",[](Entity& e){return toPython(e.textParams);},[](Entity& e,py::dict params){e.textParams=fromPython(params);})
+        .def("set_localized_text",[](Entity& e,const std::string& key,py::dict params){auto data=fromPython(params);auto text=rt().localization.translate(key,data);e.textKey=key;e.textParams=data;e.text=text;},py::arg("key"),py::arg("params")=py::dict()).def_readwrite("font_size",&Entity::fontSize)
         .def_readwrite("visible",&Entity::visible).def_readonly("alive",&Entity::alive)
         .def_readwrite("dynamic",&Entity::dynamic).def_readwrite("trigger",&Entity::trigger)
         .def_readwrite("texture",&Entity::texture).def_readwrite("model",&Entity::model)
@@ -34,7 +52,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def("destroy",[](Entity& e){e.alive=false;})
         .def("move",[](Entity& e,float x,float y,float z){e.position+=glm::vec3(x,y,z);},py::arg("x"),py::arg("y"),py::arg("z")=0)
         .def("impulse",[](Entity& e,float x,float y,float z){e.velocity+=glm::vec3(x,y,z)/e.mass;},py::arg("x"),py::arg("y"),py::arg("z")=0);
-    m.def("spawn",[](py::dict d){return rt().world.spawn(fromPython(d));});
+    m.def("spawn",[](py::dict d){auto e=rt().world.spawn(fromPython(d));try{if(!e->textKey.empty())e->text=rt().localization.translate(e->textKey,e->textParams);}catch(...){e->alive=false;throw;}return e;});
     m.def("find",[](const std::string& id){return rt().world.find(id);});
     m.def("entities",[](){std::vector<std::shared_ptr<Entity>> result;for(auto& e:rt().world.entities)if(e->alive)result.push_back(e);return result;});
     m.def("change_scene",[](const std::string& path){rt().config.asset("scenes",path);rt().pendingScene=path;});
@@ -82,7 +100,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("load",[](const std::string& name,py::object fallback){return rt().load(name,fallback);},py::arg("name"),py::arg("default")=py::none());
     for(auto init:nativeModules())init(m);
 }
-Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;active=this;}
+Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;localization.load(config,"",true);active=this;}
 Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();active=nullptr;}
 py::object Runtime::loadModule(const fs::path& file) {
     if(!fs::is_regular_file(file))throw std::runtime_error("Script not found: "+file.u8string());
@@ -121,10 +139,11 @@ void Runtime::destroyDead(){
     world.entities.erase(std::remove_if(world.entities.begin(),world.entities.end(),[](auto& e){return !e->alive;}),world.entities.end());
     if(failure)std::rethrow_exception(failure);
 }
-void Runtime::loadScene(const std::string& name) {
+void Runtime::loadScene(const std::string& name,const Localization* teardownLocalization) {
     // Keep a usable world until the replacement scene and its Python scripts initialize.
     World replacement;replacement.config=&config;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
     auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
+    auto oldLocalization=localization;
     auto oldPending=pendingScene;bool oldRunning=running,oldPaused=gamePaused;
     world=std::move(replacement);scripts.clear();pendingScene.clear();gamePaused=false;
     listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[](auto& l){return !l.persistent;}),listeners.end());
@@ -149,20 +168,22 @@ void Runtime::loadScene(const std::string& name) {
                 }
             }
         } else if(world.scene.contains("script"))sceneModule=loadModule(config.asset("scenes",world.scene["script"]));
+        refreshLocalizedEntities();
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
-        attachPending();destroyDead();if(renderer)renderer->validateWorld(world);
+        attachPending();destroyDead();refreshLocalizedEntities();if(renderer)renderer->validateWorld(world);
     } catch(...) {
-        initializing=false;audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
+        initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
         listeners=std::move(oldListeners);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
     }
     initializing=false;audio.commit();
     // Old callbacks see their own world. Their mutations cannot affect the new scene.
     auto readyWorld=std::move(world);auto readyScripts=std::move(scripts);auto readyListeners=listeners;auto readyPending=pendingScene;bool readyRunning=running,readyPaused=gamePaused;
+    auto readyLocalization=localization;localization=teardownLocalization?*teardownLocalization:std::move(oldLocalization);
     auto readyConfig=config;config=sceneConfig;sceneConfig=readyConfig;
     world=std::move(oldWorld);listeners=std::move(oldListeners);scripts.clear();tearingDown=true;audio.begin();
     for(auto& script:oldScripts)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& ex){logger.error(ex.what());}
     for(auto& e:world.entities)e->alive=false;
-    audio.rollback();tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
+    audio.rollback();localization=std::move(readyLocalization);tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
     currentScene=name;logger.write("INFO","Scene loaded: "+name);
 }
 std::map<fs::path,fs::file_time_type> Runtime::snapshot() const {
@@ -203,10 +224,11 @@ bool Runtime::shutdown(){bool failed=false;tearingDown=true;
     for(auto& module:endingStartup)if(py::hasattr(module,"on_destroy"))try{module.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
     for(auto& e:world.entities)e->alive=false;
     for(auto name:{"stdout","stderr"})try{py::module_::import("sys").attr(name).attr("flush")();}catch(...){}
+    try{localization.flush();}catch(const std::exception& e){logger.error(e.what());failed=true;}
     listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
 }
 void Runtime::reload(){
-    auto previousConfig=config;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
+    auto previousLocalization=localization;auto previousConfig=config;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
     auto previousModules=modules.attr("copy")().cast<py::dict>();auto previousPath=sys.attr("path").attr("copy")();
     try{
         py::module_::import("importlib").attr("invalidate_caches")();py::list remove;
@@ -218,10 +240,16 @@ void Runtime::reload(){
         auto previousEntry=config.entry();auto updated=Config::load(config.file);updated.validate();config=std::move(updated);world.config=&config;
         for(auto group:{"modules","scripts","scenes"})sys.attr("path").attr("insert")(0,config.paths.at(group).u8string());
         for(auto& path:config.data.value("python_paths",Json::array()))sys.attr("path").attr("insert")(0,config.resolve(path.get<std::string>()).u8string());
+        localization.load(config,previousLocalization.language);
         if(renderer)renderer->stage();
-        loadScene(previousEntry==config.entry()?currentScene:config.entry());
+        loadScene(previousEntry==config.entry()?currentScene:config.entry(),&previousLocalization);
         if(renderer)renderer->commit();
-    }catch(...){if(renderer)renderer->discard();config=std::move(previousConfig);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
+    }catch(...){if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
+}
+void Runtime::refreshLocalizedEntities(){
+    std::vector<std::pair<std::shared_ptr<Entity>,std::string>> updates;
+    for(auto& e:world.entities)if(e->alive && !e->textKey.empty())updates.push_back({e,localization.translate(e->textKey,e->textParams)});
+    for(auto& [entity,text]:updates)entity->text=std::move(text);
 }
 int Runtime::run(int frames) {
     auto previous=std::chrono::steady_clock::now();double reloadClock=0;float physicsAccumulator=0;bool paused=false,pausedRenderFailed=false;int result=0;
@@ -263,6 +291,7 @@ int Runtime::run(int frames) {
                 }
                 }
                 destroyDead();attachPending();destroyDead();
+                refreshLocalizedEntities();localization.flush();
                 if(renderer)renderer->render(world);
             }catch(const std::exception& e){logger.error(e.what());if(!dev){result=1;break;}paused=true;}
             if(headless && dev)std::this_thread::sleep_for(std::chrono::milliseconds(2));

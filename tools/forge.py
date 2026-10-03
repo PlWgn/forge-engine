@@ -49,12 +49,14 @@ def scaffold(destination):
     destination = destination.resolve()
     if destination.exists() and any(destination.iterdir()): raise RuntimeError('init target must be empty')
     destination.mkdir(parents=True, exist_ok=True)
-    for directory in ('graphics', 'modules', 'scenes', 'scripts', 'textures', 'materials', 'models', 'objects', 'audio'):
+    for directory in ('graphics', 'modules', 'scenes', 'scripts', 'textures', 'materials', 'models', 'objects', 'audio', 'locales'):
         shutil.copytree(ROOT / directory, destination / directory, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy2(ROOT / 'engine.json', destination / 'engine.json')
     shutil.copy2(ROOT / 'Инструкция.md', destination / 'Инструкция.md')
     for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / filename, destination / filename)
+    (destination / 'licenses').mkdir()
+    shutil.copy2(ROOT / 'engine/resources/Unicode-LICENSE.txt', destination / 'licenses/Unicode.txt')
     log(f'Project created: {destination}')
 
 def main():

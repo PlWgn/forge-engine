@@ -38,8 +38,25 @@ struct Logger {
     void open();
 };
 extern Logger logger;
+struct Localization {
+    struct Catalog { std::string name, pluralLanguage; std::map<std::string,Json> messages; };
+    std::map<std::string,Catalog> catalogs;
+    std::string language, defaultLanguage, fallbackLanguage, pendingPreference;
+    fs::path preferencePath;
+    bool saveSelection=true, warnMissing=true;
+    unsigned revision=0;
+    std::set<std::pair<std::string,std::string>> warned;
+    void load(const Config&, const std::string& previous="", bool readPreference=false);
+    void select(const std::string&, bool persist=true);
+    std::string translate(const std::string&, const Json& params=Json::object());
+    bool has(const std::string&, const std::string& locale="", bool fallback=true) const;
+    Json languages() const;
+    void flush();
+};
+struct LocalizedText { std::string key; Json params=Json::object(); };
 struct Entity {
-    std::string id, name, kind = "sprite", model, texture, material, text;
+    std::string id, name, kind = "sprite", model, texture, material, text, textKey;
+    Json textParams=Json::object();
     glm::vec3 position{0}, rotation{0}, scale{1}, velocity{0}, collider{0};
     glm::vec4 color{1}, clip{0};
     bool clipped=false;
@@ -116,6 +133,7 @@ struct Runtime {
     World world;
     std::unique_ptr<Renderer> renderer;
     Audio audio;
+    Localization localization;
     std::vector<Script> scripts;
     std::vector<py::object> startup;
     std::map<fs::path, fs::file_time_type> watched;
@@ -128,12 +146,13 @@ struct Runtime {
     unsigned moduleIndex = 0;
     Runtime(Config config, bool development, bool noWindow);
     ~Runtime();
-    void loadScene(const std::string&);
+    void loadScene(const std::string&,const Localization* teardownLocalization=nullptr);
     py::object loadModule(const fs::path&);
     void attach(std::shared_ptr<Entity>);
     void attachPending();
     void destroyDead();
     void reload();
+    void refreshLocalizedEntities();
     void start();
     int run(int frames);
     bool shutdown();

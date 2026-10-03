@@ -1,17 +1,62 @@
 {
   "schema_version": 1,
-  "project": {"name": "Forge — New World", "version": "1.1.0", "icon": "textures/icon.png"},
+  "project": {
+    "name": "Forge — New World",
+    "version": "1.2.0",
+    "icon": "textures/icon.png"
+  },
   "entry_scene": "welcome.json",
   "paths": {
-    "graphics": "graphics", "modules": "modules", "scenes": "scenes", "scripts": "scripts",
-    "textures": "textures", "materials": "materials", "models": "models", "objects": "objects", "audio": "audio"
+    "graphics": "graphics",
+    "modules": "modules",
+    "scenes": "scenes",
+    "scripts": "scripts",
+    "textures": "textures",
+    "materials": "materials",
+    "models": "models",
+    "objects": "objects",
+    "audio": "audio",
+    "locales": "locales"
   },
-  "window": {"width": 1280, "height": 720, "vsync": true, "resizable": true, "fullscreen": false},
-  "renderer": {"vertex_shader": "default.vert", "fragment_shader": "default.frag", "font": "font.ttf"},
-  "logging": {"open_on_error": true},
-  "startup_scripts": ["startup.py"],
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "vsync": true,
+    "resizable": true,
+    "fullscreen": false
+  },
+  "renderer": {
+    "vertex_shader": "default.vert",
+    "fragment_shader": "default.frag",
+    "font": "font.ttf"
+  },
+  "logging": {
+    "open_on_error": true
+  },
+  "startup_scripts": [
+    "startup.py"
+  ],
   "python_paths": [],
   "native_modules": [],
   "save_directory": "saves",
-  "build": {"description": "Standalone game directory, built on each target OS"}
+  "build": {
+    "description": "Standalone game directory, built on each target OS"
+  },
+  "localization": {
+    "default_language": "ru",
+    "fallback_language": "en",
+    "auto_detect": false,
+    "save_selection": true,
+    "warn_missing": true,
+    "languages": {
+      "ru": {
+        "name": "Русский",
+        "file": "ru.json"
+      },
+      "en": {
+        "name": "English",
+        "file": "en.json"
+      }
+    }
+  }
 }

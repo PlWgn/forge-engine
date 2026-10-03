@@ -44,6 +44,8 @@ static void validateEntity(const Config& c, Json j) {
         if(!j[field].is_array() || j[field].size()!=3) throw std::runtime_error(std::string(field)+" must contain 3 numbers");
         for(auto& v:j[field]) if(!v.is_number() || !std::isfinite(v.get<double>())) throw std::runtime_error(std::string(field)+" must be finite numbers");
     }
+    if(j.contains("text_key") && !j["text_key"].is_string())throw std::runtime_error("text_key must be a string");
+    if(j.contains("text_params") && !j["text_params"].is_object())throw std::runtime_error("text_params must be an object");
     if(j.contains("color")) { if(!j["color"].is_array() || j["color"].size()!=4) throw std::runtime_error("color must contain RGBA (4 numbers)"); for(auto& v:j["color"]) if(!v.is_number()) throw std::runtime_error("color must contain numbers"); }
     auto kind=j.value("kind", "sprite"); if(kind!="sprite" && kind!="cube" && kind!="mesh" && kind!="text" && kind!="empty") throw std::runtime_error("Unknown entity kind: " + kind);
     for(auto group : {"texture","model","material"}) if(j.contains(group) && !j[group].get<std::string>().empty()) {
@@ -78,5 +80,6 @@ void Config::validate() const {
         for(auto& e:scene.value("entities",Json::array())) { validateEntity(*this,e); auto id=e.value("id",""); if(!id.empty() && !ids.insert(id).second) throw std::runtime_error("Duplicate entity id: "+id); }
     }
     validateMedia(*this);
+    Localization validation;validation.load(*this);
 }
 }

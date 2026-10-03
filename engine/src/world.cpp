@@ -29,6 +29,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     if(j.contains("clip")){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
     e->screen=j.value("screen",false); e->mass=j.value("mass",1.0f); if(e->mass<=0) throw std::runtime_error("mass must be positive");
     e->text=j.value("text",""); e->fontSize=j.value("font_size",24.0f); e->scripts=j.value("scripts",Json::array()); e->data=j.value("data",Json::object());
+    e->textKey=j.value("text_key","");e->textParams=j.value("text_params",Json::object());if(!e->textParams.is_object())throw std::runtime_error("text_params must be an object");
     entities.push_back(e); return e;
 }
 std::shared_ptr<Entity> World::find(const std::string& id) {

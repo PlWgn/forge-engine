@@ -52,6 +52,34 @@ def on_destroy(): interface.on_destroy()
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             for file in ('ui.ppm','settings.ppm','slots.ppm'):
                 frame=(self.root/file).read_bytes();self.assertTrue(frame.startswith(b'P6\n'));self.assertGreater(len(set(frame[100:])),20)
+    def test_live_language_switch_updates_real_frame(self):
+        (self.root/'scenes/language.py').write_text("""import forge,ui
+from menus import MenuController
+frames=0
+def on_start():
+    global canvas,menus
+    canvas=ui.Canvas(ui.Column(ui.Label(forge.message('example.ui.title'),size=60),
+        ui.Button(forge.message('engine.menu.resume'),lambda:None),padding=40))
+    menus=MenuController(canvas)
+    forge.on_frame(tick)
+def tick(dt):
+    global frames
+    frames+=1
+    if frames==3: forge.screenshot('ru.ppm')
+    if frames==5: forge.set_language('en',persist=False)
+    if frames==7:
+        assert canvas.root.children[0].value=='An interface for your game'
+        forge.screenshot('en.ppm')
+    if frames==9: menus.show_settings()
+    if frames==11: forge.screenshot('en-settings.ppm')
+def on_destroy(): menus.close();canvas.close()
+""")
+        self.config['entry_scene']='language.py';self.write_config()
+        result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--frames','14','--no-open-log'],text=True,capture_output=True,timeout=45)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        ru,en=[(self.root/file).read_bytes() for file in ('ru.ppm','en.ppm')]
+        self.assertNotEqual(ru,en)
+        self.assertGreater(len(set((self.root/'en-settings.ppm').read_bytes()[100:])),20)
     def test_scene_failure_keeps_previous_shader_resources(self):
         source="""import forge
 from pathlib import Path

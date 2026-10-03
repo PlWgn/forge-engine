@@ -14,8 +14,11 @@ ACCENT = (.24, .76, .63, 1)
 
 
 def text(id, value, x, y, size=24, color=WHITE):
-    return forge.spawn(dict(id=id, kind='text', text=value, position=[x, y, 0],
-                            font_size=size, color=list(color), screen=True))
+    data = dict(id=id, kind='text', text=str(value), position=[x, y, 0],
+                font_size=size, color=list(color), screen=True)
+    if isinstance(value, forge.LocalizedText):
+        data.update(text_key=value.key, text_params=value.params)
+    return forge.spawn(data)
 
 
 def panel(id, x, y, width, height, color):
@@ -216,8 +219,13 @@ class Label(Widget):
         super().__init__(**options)
         if align not in ('left', 'center', 'right'):
             raise ValueError('align must be left, center or right')
-        self.value, self.size, self.color = str(value), size, color
+        self.value, self.size, self.color = value, size, color
         self.wrap_text, self.align = wrap_text, align
+
+    @property
+    def value(self): return str(self._value)
+    @value.setter
+    def value(self, value): self._value = value
 
     def lines(self, width):
         return (wrap(self.value, width, self.size) if self.wrap_text else self.value).split('\n')
@@ -255,7 +263,12 @@ class Button(Widget):
             return
         options.setdefault('padding', (20, 12))
         super().__init__(**options)
-        self.label, self.callback, self.size, self.color = str(label), callback, size, color
+        self.label, self.callback, self.size, self.color = label, callback, size, color
+
+    @property
+    def label(self): return str(self._label)
+    @label.setter
+    def label(self, value): self._label = value
 
     def preferred(self, width):
         l, t, r, b = self.padding
