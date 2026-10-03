@@ -56,22 +56,29 @@ Json validateEntity(const Config& c, Json j) {
         for(auto& v:j[field])finiteNumber(v,field);
     }
     if(j.contains("text_params") && !j["text_params"].is_object())throw std::runtime_error("text_params must be an object");
-    for(auto field:{"color","clip"})if(j.contains(field) && !(std::string(field)=="clip" && j[field].is_null())) {
+    for(auto field:{"color","clip","uv"})if(j.contains(field) && !(std::string(field)=="clip" && j[field].is_null())) {
         if(!j[field].is_array() || j[field].size()!=4)throw std::runtime_error(std::string(field)+" must contain 4 numbers");
         for(auto& v:j[field])finiteNumber(v,field);
     }
     checkedMass(finiteNumber(j.value("mass",Json(1)),"mass"));
+    if(j.contains("layer") && (!j["layer"].is_number_integer() || j["layer"].get<double>()<0 || j["layer"].get<double>()>4294967295.0))throw std::runtime_error("layer must be an unsigned 32-bit integer");
+    for(auto field:{"casts_shadow","animation_loop"})if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be boolean");
+    if(j.contains("animation") && !j["animation"].is_string())throw std::runtime_error("animation must be string");finiteNumber(j.value("animation_speed",Json(1)),"animation_speed");
+    validateRenderSettings(Json{{"uniforms",j.value("uniforms",Json::object())}});
+    if(j.contains("uv")){auto uv=j["uv"];for(auto& v:uv)if(v<0 || v>1)throw std::runtime_error("uv components must be in 0..1");if(uv[0].get<double>()+uv[2].get<double>()>1.000001 || uv[1].get<double>()+uv[3].get<double>()>1.000001)throw std::runtime_error("uv region escapes texture");}
     auto size=finiteNumber(j.value("font_size",Json(24)),"font_size");if(size<=0)throw std::runtime_error("font_size must be positive");
     auto kind=j.value("kind", "sprite"); if(kind!="sprite" && kind!="cube" && kind!="mesh" && kind!="text" && kind!="empty") throw std::runtime_error("Unknown entity kind: " + kind);
     for(auto group : {"texture","model","material"}) if(j.contains(group) && !j[group].get<std::string>().empty()) {
         std::string folder = std::string(group)=="texture"?"textures":std::string(group)=="model"?"models":"materials";
-        requireFile(c.asset(folder,j[group]));
+        if(std::string(group)!="texture" || j[group].get<std::string>().rfind("@target:",0)!=0)requireFile(c.asset(folder,j[group]));
     }
     if(kind=="mesh" && j.value("model", "").empty()) throw std::runtime_error("mesh needs model");
     if(j.contains("scripts")) { if(!j["scripts"].is_array()) throw std::runtime_error("scripts must be an array"); for(auto& s:j["scripts"]) requireFile(c.asset("scripts",s.is_string()?s.get<std::string>():s.at("file").get<std::string>())); }
     return j;
 }
-void Config::validate() const {
+void Config::validate(bool media) const {
+    validateRenderSettings(data.value("rendering",Json::object()));
+    storagePath(*this,data.value("save_directory","saves"));
     for(auto& [key,p]:paths) if(!fs::is_directory(p)) throw std::runtime_error("Missing directory paths."+key+": "+p.u8string());
     requireFile(asset("scenes", entry()));
     auto window = data.value("window", Json::object());
@@ -80,6 +87,8 @@ void Config::validate() const {
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
     auto graphics = data.value("renderer",Json::object());
     for(auto field:{"vertex_shader","fragment_shader","font"}) if(graphics.contains(field)) requireFile(asset("graphics",graphics[field]));
+    for(auto& font:graphics.value("fallback_fonts",Json::array()))requireFile(asset("graphics",font));
+    if(graphics.contains("post_shader"))requireFile(asset("graphics",graphics["post_shader"]));
     if(data["project"].contains("icon")) requireFile(resolve(data["project"]["icon"]));
     // Validate every reusable object and every declarative scene, not only the first one.
     for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.path().extension()==".json") validateEntity(*this,readJson(item.path()));
@@ -92,12 +101,13 @@ void Config::validate() const {
     }
     for(auto& item:fs::recursive_directory_iterator(paths.at("scenes"))) if(item.path().extension()==".json") {
         auto scene=readJson(item.path()); auto mode=scene.value("mode","2d"); if(mode!="2d" && mode!="3d") throw std::runtime_error("Scene mode must be 2d or 3d");
+        validateRenderSettings(scene.value("rendering",Json::object()));if(scene.contains("physics_enabled") && !scene["physics_enabled"].is_boolean())throw std::runtime_error("physics_enabled must be boolean");
         if(scene.contains("script")) requireFile(asset("scenes",scene["script"]));
         if(!scene.value("entities",Json::array()).is_array()) throw std::runtime_error("Scene.entities must be array");
         std::set<std::string> ids;
         for(auto& e:scene.value("entities",Json::array())) { validateEntity(*this,e); auto id=e.value("id",""); if(!id.empty() && !ids.insert(id).second) throw std::runtime_error("Duplicate entity id: "+id); }
     }
-    validateMedia(*this);
+    if(media)validateMedia(*this);
     Localization validation;validation.load(*this);
 }
 }

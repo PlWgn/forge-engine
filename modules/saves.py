@@ -53,7 +53,7 @@ class SaveManager:
         if type(version) is not int or version < 1 or max_bytes < 1:
             raise ValueError('Save version and max_bytes must be positive integers')
         directory = directory or forge.settings().get('save_directory', 'saves')+'/slots'
-        self.root = Path(forge.project_path(directory))
+        self.root = Path(forge.storage_path(directory))
         self.version, self.migrations, self.validate = version, dict(migrations or {}), validate
         self.max_bytes, self._autosave = max_bytes, None
         self._listener, self._elapsed = None, 0
@@ -92,6 +92,12 @@ class SaveManager:
                 raise SaveError(f'Invalid game save data: {error}') from error
 
     def write(self, slot, data, *, title='', description='', metadata=None):
+        if forge.reload_in_progress():
+            # Freeze values now; write only after the candidate scene has committed.
+            snapshot = json.loads(json.dumps(data, allow_nan=False))
+            details = dict(metadata or {})
+            forge.defer_persistence(lambda: self.write(slot, snapshot, title=title, description=description, metadata=details))
+            return
         self._validate(data)
         path = self._path(slot)
         details = dict(metadata or {})

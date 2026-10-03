@@ -9,6 +9,8 @@ The engine uses these pinned dependencies. Run `python tools/dependencies.py` to
 | GLFW | 3.4 | zlib/libpng, https://github.com/glfw/glfw/blob/3.4/LICENSE.md |
 | GLM | 1.0.1 | MIT, https://github.com/g-truc/glm/blob/1.0.1/copying.txt |
 | pybind11 | 3.0.1 | BSD-3-Clause, https://github.com/pybind/pybind11/blob/v3.0.1/LICENSE |
+| Assimp | 6.0.5 | BSD-3-Clause, https://github.com/assimp/assimp/blob/v6.0.5/LICENSE; internal dependency notices in licenses/assimp-contrib |
+| Dear ImGui | 1.91.9b | MIT, https://github.com/ocornut/imgui/blob/v1.91.9b/LICENSE.txt |
 | nlohmann JSON | 3.11.3 | MIT, embedded in vendor/json.hpp |
 | stb_image / stb_truetype | f0569113c93ad095470c54bf34a17b36646bbbb5 | MIT/public domain, license embedded in headers |
 | miniaudio | 0.11.23 | MIT/public domain, license embedded in header |
@@ -18,6 +20,6 @@ The engine uses these pinned dependencies. Run `python tools/dependencies.py` to
 
 Game builds include dependency notices under `licenses`, the font license alongside the font, and the CPython license. Additional Python packages and custom modules are the game developer's responsibility. OpenSSL or other libraries from the build Python may be copied with its extension modules; their accompanying notices are copied when available and are listed in the build manifest.
 
-The generated textures, OBJ and notification WAV are original procedural starter assets and can be changed or used in your game.
+The generated textures, OBJ, animated triangle glTF and notification WAV are original procedural starter assets and can be changed or used in your game. The FBX regression test temporarily copies Assimp's own box fixture from vendor; it is not shipped as a Forge game asset. Assimp is compiled with OBJ, glTF/GLB, FBX and COLLADA importers, without exporters/tools/tests. macOS uses the system zlib; Windows uses Assimp's bundled zlib. Dear ImGui is used by the optional scene editor.
 
 The compiled localization data in `engine/include/forge/localization_data.hpp` derives from [CLDR JSON 48.0.0 plurals.json](https://github.com/unicode-org/cldr-json/blob/48.0.0/cldr-json/cldr-core/supplemental/plurals.json). Sample annotations were removed and locale keys normalized; the original SHA-256 is recorded in that header. The evaluator supports cardinal rules for ordinary JSON numeric counts; compact-exponent operands are zero. Engine UI translations are original Forge strings. The Unicode copyright/permission notice is preserved in `engine/resources/Unicode-LICENSE.txt` and copied to game builds and starter projects as `licenses/Unicode.txt`.

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project": {
     "name": "Forge — New World",
-    "version": "1.2.0",
+    "version": "2.0.0",
     "icon": "textures/icon.png"
   },
   "entry_scene": "welcome.json",
@@ -28,7 +28,10 @@
   "renderer": {
     "vertex_shader": "default.vert",
     "fragment_shader": "default.frag",
-    "font": "font.ttf"
+    "font": "font.ttf",
+    "fallback_fonts": [],
+    "batching": true,
+    "gpu_budget_bytes": 134217728
   },
   "logging": {
     "open_on_error": true
@@ -40,7 +43,7 @@
   "native_modules": [],
   "save_directory": "saves",
   "build": {
-    "description": "Standalone game directory, built on each target OS"
+    "description": "Standalone directory or macOS .app with private Python runtime"
   },
   "localization": {
     "default_language": "ru",
@@ -58,5 +61,28 @@
         "file": "en.json"
       }
     }
+  },
+  "storage": {
+    "mode": "project",
+    "application_id": "org.forge.newworld"
+  },
+  "asset_budget_bytes": 268435456,
+  "audio_settings": {
+    "max_voices": 64,
+    "channel_limits": {
+      "voice": 4,
+      "music": 2
+    },
+    "streaming": "auto",
+    "stream_threshold_bytes": 4194304,
+    "ducking": [
+      {
+        "source": "voice",
+        "target": "music",
+        "gain": 0.3,
+        "attack": 0.05,
+        "release": 0.5
+      }
+    ]
   }
 }

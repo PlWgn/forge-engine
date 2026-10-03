@@ -1,6 +1,6 @@
 """Optional pause, settings, journal and save/load screens built from generic UI."""
 import forge
-from settings import AudioSettings
+from settings import AudioSettings, WindowSettings
 from saves import SaveError
 from ui import Column, Row, Label, Button, Slider, ScrollView, PANEL, MUTED
 
@@ -10,6 +10,7 @@ class MenuController:
         self.canvas, self.saves, self.capture, self.restore, self.journal = canvas, saves, capture, restore, journal
         self.settings = settings if settings is not None else AudioSettings()
         self._owns_settings = settings is None
+        self.window = WindowSettings()
         self.slots, self.opened, self._previous_pause = slots, False, False
         self.panel = canvas.overlay(Column(width=760, height=620, padding=28, background=PANEL, visible=False))
         self._revision = forge.localization_revision()
@@ -52,6 +53,11 @@ class MenuController:
         self._view = self.show_settings
         self._screen(forge.message('engine.menu.settings'))
         content = self.panel.add(ScrollView(flex=1, gap=8))
+        content.add(Label(forge.message('engine.settings.display'), size=20))
+        for width, height in ((1280,720),(1600,900),(1920,1080)):
+            content.add(Button(f'{width} × {height}', lambda w=width,h=height: self.window.set(width=w,height=h), size=20))
+        content.add(Button(forge.message('engine.settings.fullscreen'), lambda: self.window.set(fullscreen=not self.window.values['fullscreen']), size=20))
+        content.add(Button('VSync', lambda: self.window.set(vsync=not self.window.values['vsync']), size=20))
         content.add(Label(forge.message('engine.settings.language'), size=20))
         for language in forge.available_languages():
             content.add(Button(language['name'], lambda code=language['code']: forge.set_language(code), size=20))

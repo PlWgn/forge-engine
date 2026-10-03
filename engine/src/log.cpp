@@ -25,6 +25,7 @@ static std::string stamp() {
 void Logger::start(const fs::path& root, bool openFile) {
     if(file.is_open()) file.close();
     path = root / "forge.log"; autoOpen = openFile; opened = false;
+    fs::create_directories(root);
     file.open(path, std::ios::app);
     if(!file) throw std::runtime_error("Cannot create log: " + path.u8string());
     write("INFO", "Session started");
@@ -34,7 +35,7 @@ void Logger::write(const std::string& level, const std::string& message) {
     (level == "ERROR" ? std::cerr : std::cout) << line << std::endl;
     if(file) { file << line << '\n'; file.flush(); }
 }
-void Logger::error(const std::string& message) { write("ERROR", message); if(autoOpen && !opened) open(); }
+void Logger::error(const std::string& message) { write("ERROR", message);if(active)try{write("INFO","Crash report: "+crashReport(message).u8string());}catch(const std::exception& error){write("WARN",error.what());} if(autoOpen && !opened) open(); }
 void Logger::open() {
     if(opened || path.empty()) return;
     opened = true;write("INFO","Opening log: " + path.u8string());

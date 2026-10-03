@@ -43,6 +43,12 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_readwrite("visible",&Entity::visible).def_readonly("alive",&Entity::alive)
         .def_readwrite("dynamic",&Entity::dynamic).def_readwrite("trigger",&Entity::trigger)
         .def_readwrite("texture",&Entity::texture).def_readwrite("model",&Entity::model)
+        .def_property("uv",[](Entity& e){return std::array<float,4>{e.uv.x,e.uv.y,e.uv.z,e.uv.w};},[](Entity& e,std::array<float,4> v){validateEntity(rt().config,Json{{"uv",v}});e.uv=color(v,"uv");})
+        .def_readwrite("layer",&Entity::layer).def_readwrite("casts_shadow",&Entity::castsShadow)
+        .def_property("uniforms",[](Entity& e){return toPython(e.uniforms);},[](Entity& e,py::dict values){auto data=fromPython(values);validateRenderSettings(Json{{"uniforms",data}});e.uniforms=std::move(data);})
+        .def_property("animation_time",[](Entity& e){return e.animationTime;},[](Entity& e,float value){e.animationTime=finiteNumber(value,"animation time");})
+        .def_property_readonly("animation",[](Entity& e){return e.animation;})
+        .def_property_readonly("animation_playing",[](Entity& e){return e.animationPlaying;})
         .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){e.mass=checkedMass(v);})
         .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){e.position=vector(v,"position");})
         .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){e.rotation=vector(v,"rotation");})
@@ -62,12 +68,12 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("quit",[](){rt().running=false;});
     m.def("dt",[](){return rt().dt;});m.def("time",[](){return rt().time;});
     m.def("is_dev",[](){return rt().dev;});m.def("is_headless",[](){return rt().headless;});
-    m.def("key_down",[](const std::string& k){return rt().renderer?rt().renderer->key(k):false;});
-    m.def("key_pressed",[](const std::string& k){return rt().renderer?rt().renderer->pressed(k):false;});
-    m.def("mouse_down",[](int b){return rt().renderer?rt().renderer->mouse(b):false;},py::arg("button")=0);
-    m.def("mouse_position",[](){auto v=rt().renderer?rt().renderer->cursor():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
-    m.def("mouse_scroll",[](){auto v=rt().renderer?rt().renderer->scroll():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
-    m.def("mouse_delta",[](){auto v=rt().renderer?rt().renderer->delta():glm::vec2(0);return std::array<float,2>{v.x,v.y};});
+    m.def("key_down",[](std::string k){for(auto& c:k)c=char(std::toupper(static_cast<unsigned char>(c)));auto keys=rt().inputFrame.value("keys",Json::array());return std::find(keys.begin(),keys.end(),k)!=keys.end();});
+    m.def("key_pressed",[](std::string k){for(auto& c:k)c=char(std::toupper(static_cast<unsigned char>(c)));auto keys=rt().inputFrame.value("pressed",Json::array());return std::find(keys.begin(),keys.end(),k)!=keys.end();});
+    m.def("mouse_down",[](int b){if(b<0 || b>7)throw std::runtime_error("Mouse button must be 0..7");auto buttons=rt().inputFrame.value("buttons",Json::array());return std::find(buttons.begin(),buttons.end(),b)!=buttons.end();},py::arg("button")=0);
+    m.def("mouse_position",[](){return rt().inputFrame.value("position",std::array<float,2>{0,0});});
+    m.def("mouse_scroll",[](){return rt().inputFrame.value("scroll",std::array<float,2>{0,0});});
+    m.def("mouse_delta",[](){return rt().inputFrame.value("delta",std::array<float,2>{0,0});});
     m.def("capture_mouse",[](bool e){if(rt().renderer && !rt().tearingDown)rt().renderer->capture(e);});
     m.def("window_size",[](){return std::array<int,2>{rt().world.width,rt().world.height};});
     m.def("set_camera",[](std::array<float,3> p,std::array<float,3> target){auto position=vector(p,"camera.position"),destination=vector(target,"camera.target");rt().world.cameraPosition=position;rt().world.cameraTarget=destination;},py::arg("position"),py::arg("target")=std::array<float,3>{0,0,0});
@@ -77,7 +83,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("set_background",[](std::array<float,4> v){rt().world.background=color(v,"background");});
     m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),finiteNumber(distance,"raycast distance"));},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
     m.def("overlaps",[](const Entity& a,const Entity& b){return rt().world.overlaps(a,b);});
-    m.def("play_sound",[](const std::string& path,bool loop,float volume,const std::string& channel,float fade){return rt().audio.play(rt().config.asset("audio",path),loop,volume,channel,fade);},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1,py::arg("channel")="sfx",py::arg("fade")=0);
+    m.def("play_sound",[](const std::string& path,bool loop,float volume,const std::string& channel,float fade,py::dict options){return rt().audio.play(rt().config.asset("audio",path),loop,volume,channel,fade,fromPython(options));},py::arg("file"),py::arg("loop")=false,py::arg("volume")=1,py::arg("channel")="sfx",py::arg("fade")=0,py::arg("options")=py::dict());
     m.def("stop_sound",[](unsigned id,float fade){rt().audio.stop(id,"",fade);},py::arg("id"),py::arg("fade")=0);
     m.def("stop_channel",[](const std::string& channel,float fade){rt().audio.stop(0,channel,fade);},py::arg("channel"),py::arg("fade")=0);
     m.def("channel_sounds",[](const std::string& channel){return rt().audio.ids(channel);});
@@ -101,9 +107,10 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("settings",[](){return toPython(rt().config.data);});
     m.def("save",[](const std::string& name,py::object value){rt().save(name,value);});
     m.def("load",[](const std::string& name,py::object fallback){return rt().load(name,fallback);},py::arg("name"),py::arg("default")=py::none());
+    bindFeatures(m);
     for(auto init:nativeModules())init(m);
 }
-Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;localization.load(config,"",true);active=this;}
+Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),assets(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;localization.load(config,"",true);active=this;}
 Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();active=nullptr;}
 py::object Runtime::loadModule(const fs::path& file) {
     if(!fs::is_regular_file(file))throw std::runtime_error("Script not found: "+file.u8string());
@@ -143,6 +150,8 @@ void Runtime::destroyDead(){
     if(failure)std::rethrow_exception(failure);
 }
 void Runtime::loadScene(const std::string& name,const Localization* teardownLocalization) {
+    auto previousPersistence=persistence;
+    auto assetCheckpoint=assets.checkpoint();auto previousInput=inputFrame;auto previousTime=time;auto previousDt=dt;
     // Keep a usable world until the replacement scene and its Python scripts initialize.
     World replacement;replacement.config=&config;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
     auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
@@ -153,6 +162,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     if(renderer)renderer->checkpointInput();
     audio.begin();initializing=true;
     try {
+        if(reloading)audio.configure(config.data.value("audio_settings",Json::object()));
         py::object sceneModule;
         auto sceneFile=config.asset("scenes",name);
         if(sceneFile.extension()==".py") {
@@ -163,6 +173,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
                     auto j=fromPython(result);
                     if(!j.is_object())throw std::runtime_error("Scene build() must return dict or None");
                     world.scene=j;auto mode=j.value("mode","2d");if(mode!="2d" && mode!="3d")throw std::runtime_error("Scene mode must be 2d or 3d");world.is3d=mode=="3d";
+                    world.physicsEnabled=j.value("physics_enabled",true);world.renderSettings=config.data.value("rendering",Json::object());world.renderSettings.merge_patch(j.value("rendering",Json::object()));world.renderSettings=validateRenderSettings(std::move(world.renderSettings));
                     world.gravity=world.is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0);
                     if(j.contains("gravity"))world.gravity=vector(j["gravity"].get<std::array<float,3>>());
                     if(j.contains("background"))world.background=color(j["background"].get<std::array<float,4>>(),"background");
@@ -175,7 +186,8 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
         attachPending();destroyDead();refreshLocalizedEntities();if(renderer)renderer->validateWorld(world);
     } catch(...) {
-        initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
+        assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
+        persistence=std::move(previousPersistence);initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
         listeners=std::move(oldListeners);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
     }
     initializing=false;audio.commit();
@@ -188,6 +200,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     for(auto& e:world.entities)e->alive=false;
     audio.rollback();localization=std::move(readyLocalization);tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
     currentScene=name;logger.write("INFO","Scene loaded: "+name);
+    if(!reloading){auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}}
 }
 std::map<fs::path,fs::file_time_type> Runtime::snapshot() const {
     std::map<fs::path,fs::file_time_type> result;result[config.file]=fs::last_write_time(config.file);
@@ -249,10 +262,11 @@ bool Runtime::shutdown(){bool failed=false;tearingDown=true;
     listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
 }
 void Runtime::reload(){
+    reloading=true;auto previousPersistence=persistence;auto previousBudget=assets.stats()["budget_bytes"].get<size_t>();
     auto previousLocalization=localization;auto previousConfig=config;auto previousPythonPaths=pythonPaths;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
     auto previousModules=modules.attr("copy")().cast<py::dict>();auto previousPath=sys.attr("path").attr("copy")();
     try{
-        auto updated=Config::load(config.file);updated.validate();auto nextPaths=searchPaths(updated);
+        auto updated=Config::load(config.file);if(!entryOverride.empty())updated.data["entry_scene"]=entryOverride;updated.validate(false);auto nextPaths=searchPaths(updated);
         std::vector<fs::path> invalidatedRoots;
         for(auto group:{"modules","scripts","scenes"})invalidatedRoots.push_back(config.paths.at(group));
         // Keep installed extension packages cached while their configured path remains.
@@ -265,13 +279,14 @@ void Runtime::reload(){
             if(discard)remove.append(item.first);
         }
         for(auto item:remove)modules.attr("pop")(item,py::none());
-        auto previousEntry=config.entry();config=std::move(updated);world.config=&config;
+        auto previousEntry=config.entry();config=std::move(updated);world.config=&config;assets.budget(config.data.value("asset_budget_bytes",size_t(256*1024*1024)));
         refreshPythonPaths();
         localization.load(config,previousLocalization.language);
         if(renderer)renderer->stage();
         loadScene(previousEntry==config.entry()?currentScene:config.entry(),&previousLocalization);
-        if(renderer)renderer->commit();
-    }catch(...){if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);pythonPaths=std::move(previousPythonPaths);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
+        if(renderer)renderer->commit();if(editing)gamePaused=renderer?!renderer->previewing():true;
+    }catch(...){assets.budget(previousBudget);reloading=false;persistence=std::move(previousPersistence);if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);pythonPaths=std::move(previousPythonPaths);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
+    reloading=false;auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}
 }
 void Runtime::refreshLocalizedEntities(){
     std::vector<std::pair<std::shared_ptr<Entity>,std::string>> updates;
@@ -280,10 +295,11 @@ void Runtime::refreshLocalizedEntities(){
 }
 int Runtime::run(int frames) {
     auto previous=std::chrono::steady_clock::now();double reloadClock=0;float physicsAccumulator=0;bool paused=false,pausedRenderFailed=false;int result=0;
-    try {start();
+    try {audio.configure(config.data.value("audio_settings",Json::object()));assets.budget(config.data.value("asset_budget_bytes",size_t(256*1024*1024)));start();if(editing)gamePaused=true;
         for(int frame=0;running && (frames<0 || frame<frames);++frame) {
             auto now=std::chrono::steady_clock::now();dt=headless?1.0f/60:std::min(.1f,std::chrono::duration<float>(now-previous).count());previous=now;time+=dt;reloadClock+=dt;
             if(renderer){renderer->poll();if(renderer->closing())break;}
+            inputFrame=renderer?renderer->input():Json::object();inputFrame["dt"]=dt;inputFrame["time"]=time;inputFrame["frame"]=frame;
             if(dev && reloadClock>=.3){reloadClock=0;if(changed()) {
                 try {
                     reload();
@@ -295,10 +311,13 @@ int Runtime::run(int frames) {
             }}
             if(paused){if(renderer && !pausedRenderFailed)try{renderer->render(world);}catch(const std::exception& e){logger.error(e.what());pausedRenderFailed=true;}if(headless)std::this_thread::sleep_for(std::chrono::milliseconds(2));continue;}
             try {
-                if(!pendingScene.empty()){auto name=pendingScene;pendingScene.clear();loadScene(name);physicsAccumulator=0;}
+                if(!pendingScene.empty()){auto name=pendingScene;pendingScene.clear();loadScene(name);if(editing)gamePaused=renderer?!renderer->previewing():true;physicsAccumulator=0;}
+                auto frameStart=std::chrono::steady_clock::now();auto elapsed=[&](auto before){return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-before).count();};
                 auto callbacks=listeners;
-                for(auto& listener:callbacks)if(std::any_of(listeners.begin(),listeners.end(),[&](auto& l){return l.id==listener.id;}))listener.callback(dt);
+                if(!editing || !gamePaused)for(auto& listener:callbacks)if(std::any_of(listeners.begin(),listeners.end(),[&](auto& l){return l.id==listener.id;}))listener.callback(dt);
+                profile["callbacks_ms"]=elapsed(frameStart);auto audioStart=std::chrono::steady_clock::now();
                 audio.update(dt);
+                profile["audio_ms"]=elapsed(audioStart);auto scriptsStart=std::chrono::steady_clock::now();
                 destroyDead();attachPending();destroyDead();
                 if(!gamePaused){
                 // New objects can be spawned by lifecycle callbacks without invalidating iteration.
@@ -307,8 +326,10 @@ int Runtime::run(int frames) {
                 for(auto& script:current)if((!script.entity || script.entity->alive) && py::hasattr(script.instance,"on_update"))script.instance.attr("on_update")(dt);
                 destroyDead();attachPending();destroyDead();
                 current=scripts;
+                profile["scripts_ms"]=elapsed(scriptsStart);auto physicsStart=std::chrono::steady_clock::now();
                 physicsAccumulator+=dt;
-                while(physicsAccumulator>=1.0f/120){
+                if(!world.physicsEnabled)physicsAccumulator=0;
+                while(world.physicsEnabled && physicsAccumulator>=1.0f/120){
                     auto old=world.contacts;world.physics(1.0f/120);physicsAccumulator-=1.0f/120;
                     for(auto& script:current)if(script.entity && script.entity->alive) {
                         auto id=script.entity->id;
@@ -316,10 +337,13 @@ int Runtime::run(int frames) {
                         for(auto& pair:old)if(!world.contacts.count(pair) && (pair.first==id || pair.second==id) && py::hasattr(script.instance,"on_collision_exit"))script.instance.attr("on_collision_exit")(world.find(pair.first==id?pair.second:pair.first));
                     }
                 }
+                profile["physics_ms"]=elapsed(physicsStart);
                 }
                 destroyDead();attachPending();destroyDead();
+                if(!gamePaused)for(auto& entity:world.entities)if(entity->alive && entity->animationPlaying)entity->animationTime=std::max(0.0,entity->animationTime+double(dt)*entity->animationSpeed);
                 refreshLocalizedEntities();localization.flush();
                 if(renderer)renderer->render(world);
+                profile["frame_ms"]=elapsed(frameStart);profile["entities"]=world.entities.size();profile["assets"]=assets.stats();if(renderer)profile["renderer"]=renderer->diagnostics();
             }catch(const std::exception& e){logger.error(e.what());if(!dev){result=1;break;}paused=true;}
             if(headless && dev)std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
@@ -328,9 +352,11 @@ int Runtime::run(int frames) {
 }
 static fs::path savePath(const Runtime& r,const std::string& name) {
     if(name.empty() || fs::u8path(name).filename()!=fs::u8path(name) || name=="." || name=="..")throw std::runtime_error("Save name must be a filename");
-    auto base=r.config.data.value("save_directory","saves");auto folder=r.config.resolve(base);fs::create_directories(folder);return folder/fs::u8path(name+".json");
+    auto base=r.config.data.value("save_directory","saves");auto folder=storagePath(r.config,base);fs::create_directories(folder);return folder/fs::u8path(name+".json");
 }
 void Runtime::save(const std::string& name,py::object value) {
+    if(tearingDown)return;
+    if(reloading){auto snapshot=fromPython(value);persistence.push_back(py::cpp_function([this,name,snapshot](){save(name,toPython(snapshot));}));return;}
     auto file=savePath(*this,name),temp=file;temp += ".tmp";auto data=fromPython(value);
     {std::ofstream out(temp);if(!out)throw std::runtime_error("Cannot write save: "+temp.u8string());out<<data.dump(2);out.flush();if(!out)throw std::runtime_error("Save write failed");}
 #ifdef _WIN32

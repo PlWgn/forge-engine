@@ -1,6 +1,6 @@
 """Standalone directory bundler. Runs INSIDE the engine's embedded interpreter."""
 from pathlib import Path
-import hashlib, json, os, platform, shutil, subprocess, sys, sysconfig, tempfile
+import hashlib, json, os, platform, plistlib, shutil, subprocess, sys, sysconfig, tempfile
 import forge
 
 def _copy_tree(src, dst):
@@ -100,9 +100,16 @@ def build_bundle(config_file, engine_file, output):
     config_file, engine_file, output = map(lambda p: Path(p).resolve(), (config_file, engine_file, output))
     root = config_file.parent
     settings = json.loads(config_file.read_text(encoding='utf-8'))
+    app = output.suffix.lower() == '.app'
+    if app and sys.platform != 'darwin': raise RuntimeError('.app packaging requires macOS')
+    if app:
+        settings.setdefault('storage', {})['mode'] = 'user'
+        settings['storage'].setdefault('application_id', 'org.forge.game')
     plan = _copy_plan(root, settings, output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(tempfile.mkdtemp(prefix='.forge-build-', dir=output.parent)).resolve()
+    container = Path(tempfile.mkdtemp(prefix='.forge-build-', dir=output.parent)).resolve()
+    stage = container / 'Contents' / 'Resources' if app else container
+    stage.mkdir(parents=True, exist_ok=True)
     try:
         for relative, source in plan.items():
             _copy_tree(source, _stage_path(stage, relative))
@@ -111,7 +118,8 @@ def build_bundle(config_file, engine_file, output):
             target = _stage_path(stage, icon); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root / icon, target)
         # Game code is shipped independently from the engine C++ sources.
         (stage / 'game.json').write_text(json.dumps(settings, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        binary = stage / ('Game.exe' if sys.platform == 'win32' else 'Game')
+        binary = container / 'Contents' / 'MacOS' / 'Game' if app else stage / ('Game.exe' if sys.platform == 'win32' else 'Game')
+        binary.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(engine_file, binary)
         runtime = stage / 'runtime'; runtime.mkdir()
         version = f'{sys.version_info.major}.{sys.version_info.minor}'
@@ -137,19 +145,46 @@ def build_bundle(config_file, engine_file, output):
         if (source_root / 'THIRD_PARTY.md').exists(): shutil.copy2(source_root / 'THIRD_PARTY.md', stage / 'THIRD_PARTY.md')
         licenses = stage / 'licenses'; licenses.mkdir()
         vendor = source_root / 'vendor'
-        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE')]:
+        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt')]:
             f = vendor / name / filename
             if f.exists(): shutil.copy2(f, licenses / (name + '.txt'))
         for filename in ['stb_image.h', 'stb_truetype.h', 'miniaudio.h', 'json.hpp']:
             if (vendor / filename).exists(): shutil.copy2(vendor / filename, licenses / filename) # license text is embedded in header
-        (stage / 'START.txt').write_text('Run Game.exe (Windows) or ./Game (macOS).\nThe directory must be writable for forge.log and saves.\nKeep all files in this directory together.\n', encoding='utf-8')
+        # Preserve the license texts for Assimp's compiled internal dependencies too.
+        for license_file in (vendor / 'assimp' / 'contrib').rglob('*'):
+            if license_file.is_file() and ('license' in license_file.name.lower() or 'copying' in license_file.name.lower()):
+                target = licenses / 'assimp-contrib' / license_file.relative_to(vendor / 'assimp' / 'contrib')
+                target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(license_file, target)
+        (stage / 'START.txt').write_text('Open the .app, run Game.exe (Windows), or ./Game (macOS directory).\nStorage is controlled by game.json storage.mode; .app uses Application Support and Library/Logs.\nKeep all files together.\n', encoding='utf-8')
         shutil.copy2(source_root / 'engine/resources/Unicode-LICENSE.txt', licenses / 'Unicode.txt')
+        if app:
+            project = settings['project']
+            info = dict(CFBundleExecutable='Game', CFBundleIdentifier=settings['storage']['application_id'],
+                        CFBundleName=project['name'], CFBundleDisplayName=project['name'], CFBundlePackageType='APPL',
+                        CFBundleShortVersionString=project.get('version','1.0.0'), CFBundleVersion=project.get('build_number','1'),
+                        NSHighResolutionCapable=True, LSMinimumSystemVersion='11.0')
+            if icon:
+                if Path(icon).suffix.lower() == '.icns': shutil.copy2(root / icon, stage / 'Game.icns')
+                else:
+                    iconset = container / 'Game.iconset'; iconset.mkdir()
+                    for size in (16,32,128,256,512):
+                        for density in (1,2):
+                            name = f'icon_{size}x{size}' + ('@2x' if density == 2 else '') + '.png'
+                            subprocess.run(['sips','-s','format','png','-z',str(size*density),str(size*density),str(root / icon),'--out',str(iconset / name)], check=True, capture_output=True)
+                    subprocess.run(['iconutil','-c','icns',str(iconset),'-o',str(stage / 'Game.icns')], check=True, capture_output=True)
+                    shutil.rmtree(iconset)
+                info['CFBundleIconFile'] = 'Game.icns'
+            (container / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps(info))
+            (container / 'Contents' / 'PkgInfo').write_bytes(b'APPL????')
         manifest = {'engine_version': forge.__version__, 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
-        for file in sorted(stage.rglob('*')):
-            if file.is_file(): manifest['files'][file.relative_to(stage).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()
+        if app: manifest['signature_managed_files'] = ['Contents/MacOS/Game', 'Contents/_CodeSignature/CodeResources']
+        for file in sorted(container.rglob('*')):
+            if file.is_file() and not (app and file == binary): manifest['files'][file.relative_to(container).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-        stage.rename(output)
+        # Sign the outer bundle after its manifest. Existing nested Mach-O signatures remain intact.
+        if app: subprocess.run(['codesign','--force','--sign','-',str(container)], check=True, capture_output=True)
+        container.rename(output)
     except BaseException:
-        shutil.rmtree(stage, ignore_errors=True)
+        shutil.rmtree(container, ignore_errors=True)
         raise
     print(f'Standalone game ready: {output}')

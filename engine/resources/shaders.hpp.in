@@ -1,0 +1,6 @@
+#pragma once
+namespace forge {
+inline constexpr const char* vertexDefault=R"FORGE(@FORGE_VERTEX@)FORGE";
+inline constexpr const char* fragmentDefault=R"FORGE(@FORGE_FRAGMENT@)FORGE";
+inline constexpr const char* postDefault=R"FORGE(@FORGE_POST@)FORGE";
+}

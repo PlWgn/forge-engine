@@ -26,6 +26,8 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->position=vec3(j.value("position",Json()),e->position); e->rotation=vec3(j.value("rotation",Json()),e->rotation);
     e->scale=vec3(j.value("scale",Json()),e->scale); e->velocity=vec3(j.value("velocity",Json()),e->velocity);
     e->collider=vec3(j.value("collider",Json()),e->collider); e->color=vec4(j.value("color",Json()),e->color);
+    e->uv=vec4(j.value("uv",Json()),e->uv);e->layer=j.value("layer",1u);e->castsShadow=j.value("casts_shadow",true);e->uniforms=j.value("uniforms",Json::object());
+    e->animation=j.value("animation","");e->animationSpeed=j.value("animation_speed",1.f);e->animationPlaying=!e->animation.empty();e->animationLoop=j.value("animation_loop",true);
     e->dynamic=j.value("dynamic",false); e->trigger=j.value("trigger",false); e->visible=j.value("visible",true);
     if(j.contains("clip") && !j["clip"].is_null()){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
     e->screen=j.value("screen",false); e->mass=checkedMass(j.value("mass",1.0f));
@@ -44,6 +46,7 @@ void World::load(const std::string& scenePath) {
     else if(file.extension()==".py") scene=Json::object();
     else throw std::runtime_error("Scene must be .json or .py: "+file.u8string());
     is3d=scene.value("mode","2d")=="3d";
+    physicsEnabled=scene.value("physics_enabled",true);renderSettings=config->data.value("rendering",Json::object());renderSettings.merge_patch(scene.value("rendering",Json::object()));renderSettings=validateRenderSettings(std::move(renderSettings));
     gravity=vec3(scene.value("gravity",Json()),is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0));
     background=vec4(scene.value("background",Json()),glm::vec4(0.025f,0.04f,0.075f,1));
     auto camera=scene.value("camera",Json::object());
@@ -120,5 +123,32 @@ std::shared_ptr<Entity> World::raycast(glm::vec3 origin,glm::vec3 direction,floa
         if(high>=low && low<=nearest) { nearest=low; hit=e; }
     }
     return hit;
+}
+Json World::moveCharacter(Entity& body,glm::vec3 delta,float skin){
+    if(!activeCollider(body))throw std::runtime_error("Character needs an active collider");
+    if(!std::isfinite(skin) || skin<0 || skin>1)throw std::runtime_error("Character skin must be in 0..1");
+    auto position=glm::dvec3(body.position);auto half=glm::dvec3(body.collider)*.5;Json hits=Json::array();bool grounded=false;
+    for(int axis: {0,2,1}){if(!is3d && axis==2)continue;double requested=checkedFloat(delta[axis],"character delta"),allowed=requested;Entity* hit=nullptr;
+        for(auto& pointer:entities){auto& other=*pointer;if(&other==&body || other.trigger || !activeCollider(other))continue;auto otherHalf=glm::dvec3(other.collider)*.5;
+            bool aligned=true;for(int k=0;k<(is3d?3:2);++k)if(k!=axis && std::abs(position[k]-double(other.position[k]))>=half[k]+otherHalf[k]-1e-8)aligned=false;
+            if(!aligned)continue;
+            double low=double(other.position[axis])-otherHalf[axis],high=double(other.position[axis])+otherHalf[axis];
+            if(requested>0 && position[axis]+half[axis]<=low+skin){double gap=std::max(0.0,low-position[axis]-half[axis]-skin);if(gap<allowed){allowed=gap;hit=&other;}}
+            if(requested<0 && position[axis]-half[axis]>=high-skin){double gap=std::min(0.0,high-position[axis]+half[axis]+skin);if(gap>allowed){allowed=gap;hit=&other;}}
+        }
+        position[axis]+=allowed;
+        if(hit){glm::vec3 normal(0);normal[axis]=requested>0?-1.f:1.f;hits.push_back({{"entity",hit->id},{"normal",{normal.x,normal.y,normal.z}}});if(axis==1 && (is3d?requested<0:requested>0))grounded=true;}
+    }
+    auto next=physicsVector(position,body,"character position");body.position=next;
+    return {{"position",{next.x,next.y,next.z}},{"grounded",grounded},{"hits",hits}};
+}
+Json World::serialize()const{
+    auto array3=[](glm::vec3 v){return Json::array({v.x,v.y,v.z});};auto array4=[](glm::vec4 v){return Json::array({v.x,v.y,v.z,v.w});};Json result=scene;
+    result["mode"]=is3d?"3d":"2d";result["gravity"]=array3(gravity);result["background"]=array4(background);result["physics_enabled"]=physicsEnabled;result["rendering"]=renderSettings;
+    result["camera"]={{"position",array3(cameraPosition)},{"target",array3(cameraTarget)},{"fov",fov}};result["entities"]=Json::array();
+    for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
+        for(auto& field:std::vector<std::pair<std::string,std::string>>{{"model",e.model},{"texture",e.texture},{"material",e.material},{"text",e.text},{"text_key",e.textKey},{"animation",e.animation}})if(!field.second.empty())data[field.first]=field.second;
+        if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}result["entities"].push_back(std::move(data));
+    }return result;
 }
 }

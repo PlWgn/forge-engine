@@ -41,3 +41,26 @@ class AudioSettings:
     def close(self):
         forge.remove_listener(self._listener)
         self.flush()
+
+class WindowSettings:
+    """Persistent player preferences for resolution, fullscreen and vsync."""
+    def __init__(self):
+        self.store = SaveManager(1, directory=forge.settings().get('save_directory','saves')+'/preferences', validate=self._valid)
+        defaults = forge.window_settings()
+        defaults = {k: defaults.get(k, v) for k,v in {'width':1280,'height':720,'fullscreen':False,'vsync':True}.items()}
+        try: self.values = self.store.read('window', default=defaults)
+        except SaveError as error:
+            forge.log(f'Window settings: {error}; using defaults', 'WARN'); self.values = defaults
+        forge.set_window(self.values)
+    @staticmethod
+    def _valid(value):
+        return (isinstance(value, dict) and set(value)=={'width','height','fullscreen','vsync'}
+                and type(value['width']) is int and 320 <= value['width'] <= 16384
+                and type(value['height']) is int and 240 <= value['height'] <= 16384
+                and type(value['fullscreen']) is bool and type(value['vsync']) is bool)
+    def set(self, **options):
+        values = dict(self.values, **options)
+        if not self._valid(values): raise ValueError('Invalid window preferences')
+        forge.set_window(values)
+        self.values = values
+        forge.defer_persistence(lambda data=dict(values): self.store.write('window', data, title='Window preferences'))

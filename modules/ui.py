@@ -12,6 +12,21 @@ MUTED = (.64, .7, .79, 1)
 PANEL = (.075, .10, .15, .98)
 ACCENT = (.24, .76, .63, 1)
 
+class Theme:
+    """Reusable class styles and per-state colors; widgets may override any property."""
+    def __init__(self, styles=None):
+        self.styles = {'Button': {'background': (.13,.18,.24,1), 'hover': (.12,.32,.29,1),
+                                  'pressed': (.15,.42,.37,1), 'disabled': (.09,.11,.14,1),
+                                  'color': WHITE, 'disabled_color': MUTED, 'transition': .12},
+                       'Slider': {'track': (.2,.25,.32,1), 'accent': ACCENT, 'knob': WHITE}}
+        for name, value in (styles or {}).items(): self.styles.setdefault(name, {}).update(value)
+    def get(self, widget, property, default=None):
+        if property in widget.style: return widget.style[property]
+        for cls in type(widget).__mro__:
+            values = self.styles.get(cls.__name__, {})
+            if property in values: return values[property]
+        return default
+
 
 def text(id, value, x, y, size=24, color=WHITE):
     data = dict(id=id, kind='text', text=str(value), position=[x, y, 0],
@@ -81,7 +96,7 @@ class Widget:
     interactive = False
 
     def __init__(self, *, width=None, height=None, flex=0, padding=0, background=None,
-                 visible=True, enabled=True):
+                 visible=True, enabled=True, style=None, opacity=1):
         if width is not None and width < 0 or height is not None and height < 0 or flex < 0:
             raise ValueError('Widget dimensions and flex must be nonnegative')
         self.width, self.height, self.flex = width, height, flex
@@ -92,6 +107,22 @@ class Widget:
         self.bounds = self.clip = (0, 0, 0, 0)
         self.hovered = self.focused = self.pressed = False
         self._shown = False
+        self.style, self.opacity, self._colors = dict(style or {}), opacity, {}
+
+    def styled(self, property, default=None):
+        return self.canvas.theme.get(self, property, default) if self.canvas else self.style.get(property, default)
+
+    def _color(self, key, color):
+        target = tuple(color)
+        previous = self._colors.get(key, target)
+        seconds = self.styled('transition', 0)
+        factor = min(1., self.canvas._dt/max(.0001, seconds)) if seconds > 0 else 1
+        current = tuple(a+(b-a)*factor for a,b in zip(previous,target))
+        self._colors[key] = current
+        opacity, ancestor = self.opacity, self.parent
+        while ancestor is not None:
+            opacity *= ancestor.opacity; ancestor = ancestor.parent
+        return (*current[:3], current[3]*max(0,min(1,opacity)))
 
     def add(self, child):
         if not isinstance(child, Widget) or getattr(child, "legacy", False):
@@ -144,19 +175,20 @@ class Widget:
         entity = self._entity(key, 'sprite')
         x, y, w, h = self.canvas.to_screen(rect)
         entity.position = (x + w / 2, y + h / 2, self.canvas._next_z())
-        entity.scale, entity.color = (max(w, .001), max(h, .001), 1), color
+        entity.scale, entity.color = (max(w, .001), max(h, .001), 1), self._color(key, color)
         return entity
 
     def caption(self, key, value, x, y, size, color):
         entity = self._entity(key, 'text')
         x, y, _, _ = self.canvas.to_screen((x, y, 0, 0))
         entity.position, entity.scale = (x, y, self.canvas._next_z()), (*self.canvas.scale, 1)
-        entity.text, entity.font_size, entity.color = str(value), size, color
+        entity.text, entity.font_size, entity.color = str(value), size, self._color(key, self.styled("color" if self._enabled else "disabled_color", color))
         return entity
 
     def paint(self):
-        if self.background is not None:
-            self.rectangle('background', self.bounds, self.background)
+        background = self.styled("background", self.background)
+        if background is not None:
+            self.rectangle("background", self.bounds, background)
 
     def activate(self):
         pass
@@ -276,17 +308,17 @@ class Button(Widget):
         return self.width if self.width is not None else w+l+r, self.height if self.height is not None else h+t+b
 
     def paint(self):
-        color = (.13, .18, .24, 1)
+        color = self.styled('background', (.13, .18, .24, 1))
         if self.pressed:
-            color = (.15, .42, .37, 1)
+            color = self.styled('pressed', (.15, .42, .37, 1))
         elif self.hovered or self.focused:
-            color = (.12, .32, .29, 1)
+            color = self.styled('hover', (.12, .32, .29, 1))
         if not self._enabled:
-            color = (.09, .11, .14, 1)
+            color = self.styled('disabled', (.09, .11, .14, 1))
         self.rectangle('background', self.bounds, color)
         x, y, w, h = self.bounds
         tw, th, _ = measure(self.label, self.size)
-        self.caption('caption', self.label, x+(w-tw)/2, y+(h-th)/2, self.size, self.color if self._enabled else MUTED)
+        self.caption('caption', self.label, x+(w-tw)/2, y+(h-th)/2, self.size, self.color if self._enabled else self.styled('disabled_color', MUTED))
 
     def activate(self):
         if self._enabled:
@@ -325,9 +357,10 @@ class Slider(Widget):
 
     def paint(self):
         x, y, w, h = self.bounds
-        self.rectangle('track', (x+7, y+h/2-3, max(.001,w-14), 6), (.2, .25, .32, 1))
-        self.rectangle('fill', (x+7, y+h/2-3, max(.001,(w-14)*self.value), 6), ACCENT)
-        self.rectangle('knob', (x+max(0,w-14)*self.value, y+h/2-11, 14, 22), WHITE if self.focused or self.hovered else ACCENT)
+        accent = self.styled('accent', ACCENT)
+        self.rectangle('track', (x+7, y+h/2-3, max(.001,w-14), 6), self.styled('track', (.2, .25, .32, 1)))
+        self.rectangle('fill', (x+7, y+h/2-3, max(.001,(w-14)*self.value), 6), accent)
+        self.rectangle('knob', (x+max(0,w-14)*self.value, y+h/2-11, 14, 22), self.styled('knob', WHITE) if self.focused or self.hovered else accent)
 
 
 class ScrollView(Column):
@@ -360,7 +393,7 @@ class ScrollView(Column):
 
 
 class Canvas:
-    def __init__(self, root=None, *, width=1280, height=720, scale='fit', automatic=True):
+    def __init__(self, root=None, *, width=1280, height=720, scale='fit', automatic=True, theme=None, actions=None):
         if scale not in ('fit', 'stretch', 'none') or width <= 0 or height <= 0:
             raise ValueError('Canvas needs positive dimensions and fit/stretch/none scale')
         self.root = root if root is not None else Column(padding=32)
@@ -371,6 +404,7 @@ class Canvas:
         self.overlays, self.modal_widget, self._widgets = [], None, []
         self.focus, self.capture, self.was_down = None, None, False
         self.closed, self._z = False, 100
+        self.theme, self.actions, self._dt = theme or Theme(), actions, 0.
         self._listener = forge.on_frame(self.update) if automatic else None
         self._layout()
 
@@ -439,6 +473,7 @@ class Canvas:
     def update(self, dt=0):
         if self.closed:
             return
+        self._dt = 0.  # Input layout must not advance visual transitions twice.
         self._layout()
         mx, my = forge.mouse_position()
         sx, sy = self.scale
@@ -466,6 +501,12 @@ class Canvas:
             reverse = forge.key_down('SHIFT')
             index = targets.index(self.focus) if self.focus in targets else (0 if reverse else -1)
             self.focus = targets[(index+(-1 if reverse else 1)) % len(targets)]
+        if self.actions is not None and targets:
+            step = int(self.actions.pressed('ui_next'))-int(self.actions.pressed('ui_previous'))
+            if step:
+                index = targets.index(self.focus) if self.focus in targets else (0 if step < 0 else -1)
+                self.focus = targets[(index+step) % len(targets)]
+            if self.actions.pressed('ui_accept'): activate = self.focus
         if self.focus is not None:
             if forge.key_pressed('ENTER') or forge.key_pressed('SPACE'):
                 activate = self.focus
@@ -485,4 +526,55 @@ class Canvas:
             widget.pressed = widget is self.capture
         # Paint after input, so hover/pressed/focus have no one-frame delay.
         if not self.closed:
+            self._dt = max(0, dt)
             self._layout()
+
+class ScreenStack:
+    """Named persistent screens, back navigation, shared state and cross-fades."""
+    def __init__(self, canvas, screens=None, *, duration=.2):
+        if not math.isfinite(duration) or duration < 0: raise ValueError('Invalid transition duration')
+        self.canvas, self.duration, self.state = canvas, duration, {}
+        self.screens, self.history, self.current = {}, [], None
+        self._transition = None
+        for name, widget in (screens or {}).items(): self.add(name, widget)
+        self._listener = forge.on_frame(self.update)
+    def add(self, name, widget):
+        if name in self.screens: raise ValueError('Duplicate screen')
+        widget.visible = False
+        self.screens[name] = self.canvas.overlay(widget)
+        return widget
+    def show(self, name, *, remember=True):
+        if name not in self.screens: raise KeyError(name)
+        if name == self.current: return
+        if self._transition:
+            old, new, _ = self._transition
+            if old is not None: old.visible = False
+            new.opacity = 1
+        previous = self.current
+        if remember and previous is not None: self.history.append(previous)
+        self.current = name
+        old = self.screens.get(previous); new = self.screens[name]
+        new.visible, new.opacity = True, 0 if self.duration else 1
+        self.canvas.modal(new)
+        self._transition = (old, new, 0.)
+        self.update(0)
+    def back(self):
+        if self.history: self.show(self.history.pop(), remember=False)
+    def update(self, dt):
+        if self._transition is None: return
+        old, new, time = self._transition
+        time += dt
+        t = min(1, time/self.duration) if self.duration else 1
+        new.opacity = t
+        if old is not None: old.opacity = 1-t
+        self._transition = (old, new, time)
+        if t >= 1:
+            if old is not None: old.visible, old.opacity = False, 1
+            self._transition = None
+    def close(self):
+        forge.remove_listener(self._listener)
+        for widget in self.screens.values():
+            widget.close()
+            if widget in self.canvas.overlays: self.canvas.overlays.remove(widget)
+        self.canvas.modal(None)
+        self.screens.clear()

@@ -3,6 +3,8 @@ from pathlib import Path
 import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
+    'assimp': ('https://codeload.github.com/assimp/assimp/tar.gz/refs/tags/v6.0.5', 'archive'),
+    'imgui': ('https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b', 'archive'),
     'glfw': ('https://codeload.github.com/glfw/glfw/tar.gz/refs/tags/3.4', 'archive'),
     'json': ('https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp', 'json.hpp'),
     'glm': ('https://codeload.github.com/g-truc/glm/tar.gz/refs/tags/1.0.1', 'archive'),

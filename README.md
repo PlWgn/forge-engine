@@ -1,4 +1,4 @@
-# Forge
+# Forge 2.0
 
 Модульный игровой runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS и Windows.
 
@@ -13,6 +13,9 @@ python3 -m venv .tools
 .tools/bin/python tools/forge.py compile
 .tools/bin/python tools/forge.py dev
 .tools/bin/python tools/forge.py build --output dist/MyGame
+.tools/bin/python tools/forge.py dev --scene advanced.json
+.tools/bin/python tools/forge.py edit --scene editor-empty.json
+.tools/bin/python tools/forge.py build --output dist/MyGame.app
 ```
 
 На Windows установите Python x64 и Visual Studio 2022 Build Tools с Desktop development with C++; используйте Developer PowerShell:
@@ -42,9 +45,15 @@ A/D — движение; Space — прыжок; Enter — текст нове�
 
 ![Пример интерфейса](artifacts/ui.png)
 
+![Forge 2.0 — камеры, свет, тени и skeletal animation](artifacts/forge2.png)
+
 [Тот же интерфейс после переключения на английский](artifacts/ui-en.png) · [Настройки и выбор языка](artifacts/ui-settings.png)
 
-Это рабочий исходный движок с указанными в инструкции возможностями; визуального редактора и уровня функциональности Unity/Unreal в нём нет. Ограничения описаны явно.
+Forge 2.0 добавляет камеры с render targets, UV/sprite sheets, batching и атласы глифов, постобработку и uniforms из Python, fallback-шрифты, фоновые asset handles и бюджеты памяти. Встроены action map, контроллеры и запись/воспроизведение ввода, стили и переходы UI, планировщик AI, состояния и таймлайны. Звук поддерживает pan, spatial audio, DSP, ducking, лимиты голосов и субтитры по playback cursor.
+
+3D-набор включает swept AABB character controller, point/directional/spot lights, PCF-тени, импорт OBJ/glTF/GLB/FBX/DAE и skeletal animation на GPU. Команда `edit` открывает редактор с иерархией, инспектором, браузером ресурсов, undo/redo, preview и сохранением JSON. `--scene` выбирает начальную сцену без изменения конфигурации.
+
+На macOS `build --output dist/MyGame.app` создаёт приложение с приватным Python, иконкой и пользовательскими каталогами. Есть команды Developer ID signing/notarization, настройки окна и crash reports. [Карта возможностей и проверок 2.0](docs/FORGE_2.md) сопоставляет изменения с [отчётом об опыте](docs/FORGE_EXPERIENCE.md). Точные границы рендера, физики, редактора и отката описаны в инструкции.
 
 ## Лицензия и изменения
 

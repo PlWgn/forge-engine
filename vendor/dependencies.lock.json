@@ -34,5 +34,13 @@
   "miniaudio": {
     "url": "https://raw.githubusercontent.com/mackron/miniaudio/0.11.23/miniaudio.h",
     "sha256": "7e4f3f13c8fe66df2080ac3dd12a89193e3c2463cb7f067c798abd7331cd8ee6"
+  },
+  "assimp": {
+    "url": "https://codeload.github.com/assimp/assimp/tar.gz/refs/tags/v6.0.5",
+    "sha256": "edf3749559c2b7d1f758ffb66fc5bec62186221e623b7f2e8969f17ee46ecb6f"
+  },
+  "imgui": {
+    "url": "https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b",
+    "sha256": "8e1bbc76c71d74fef2fb85db7e7ca8eba13d6a86623c54992b60162db554ffdb"
   }
 }

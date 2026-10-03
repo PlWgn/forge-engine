@@ -34,24 +34,27 @@ int main(int argc,char** argv) {
     LocalFree(wideArgs);for(auto& arg:utf8Args)pointers.push_back(arg.data());argc=wideCount;argv=pointers.data();
 #endif
     fs::path exe=executable(argv[0]);fs::path defaultSettings=fs::current_path()/"engine.json";
-    bool packaged=fs::is_regular_file(exe.parent_path()/"game.json");if(packaged)defaultSettings=exe.parent_path()/"game.json";
+    fs::path dataRoot=exe.parent_path();if(!fs::is_regular_file(dataRoot/"game.json") && fs::is_regular_file(dataRoot.parent_path()/"Resources/game.json"))dataRoot=dataRoot.parent_path()/"Resources";
+    bool packaged=fs::is_regular_file(dataRoot/"game.json");if(packaged)defaultSettings=dataRoot/"game.json";
     std::string command=packaged?"run":"help";int index=1;
     if(argc>1 && argv[1][0]!='-'){command=argv[1];index=2;}
-    fs::path settings=defaultSettings,out;bool headless=false,noOpen=false;int frames=-1;
+    std::string sceneOverride;fs::path settings=defaultSettings,out;bool headless=false,noOpen=false;int frames=-1;
     try {
         for(int i=index;i<argc;++i){std::string arg=argv[i];auto value=[&](){if(++i>=argc)throw std::runtime_error("Missing value after "+arg);return std::string(argv[i]);};
-            if(arg=="--project")settings=fs::absolute(fs::u8path(value()));else if(arg=="--output")out=fs::absolute(fs::u8path(value()));else if(arg=="--frames"){frames=std::stoi(value());if(frames<1)throw std::runtime_error("--frames must be positive");}else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
+            if(arg=="--scene")sceneOverride=value();else if(arg=="--project")settings=fs::absolute(fs::u8path(value()));else if(arg=="--output")out=fs::absolute(fs::u8path(value()));else if(arg=="--frames"){frames=std::stoi(value());if(frames<1)throw std::runtime_error("--frames must be positive");}else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
         }
-        if(command=="help" || command=="--help") {std::cout<<"Forge " FORGE_VERSION " | C++ / Python modular game engine\n\nCommands: validate, dev, run, build\nOptions: --project engine.json --headless --frames N --no-open-log\nBuild: forge build --output dist/MyGame\nScaffold/build engine: python tools/forge.py --help\n";return 0;}
-        if(command!="validate" && command!="dev" && command!="run" && command!="build")throw std::runtime_error("Unknown command: "+command);
-        fs::path logRoot=fs::absolute(settings).parent_path();if(!fs::is_directory(logRoot))logRoot=fs::current_path();logger.start(logRoot,false);
-        auto config=Config::load(settings);logger.autoOpen=!noOpen && (command=="run" || command=="dev") && config.data.value("logging",Json::object()).value("open_on_error",true);
-        config.validate();
+        if(command=="help" || command=="--help") {std::cout<<"Forge " FORGE_VERSION " | C++ / Python modular game engine\n\nCommands: validate, dev, run, edit, build\nOptions: --project engine.json --headless --frames N --no-open-log\nBuild: forge build --output dist/MyGame\nScaffold/build engine: python tools/forge.py --help\n";return 0;}
+        if(command!="validate" && command!="dev" && command!="run" && command!="build" && command!="edit")throw std::runtime_error("Unknown command: "+command);
+        fs::path logRoot=fs::absolute(settings).parent_path();if(!fs::is_directory(logRoot))logRoot=fs::current_path();
+        try{Config boot;boot.root=logRoot;boot.data=readJson(settings);if(boot.data.value("storage",Json::object()).value("mode","project")=="user")logRoot=userPath(boot,"logs");}catch(...){}
+        logger.start(logRoot,false);
+        auto config=Config::load(settings);logger.autoOpen=!noOpen && (command=="run" || command=="dev" || command=="edit") && config.data.value("logging",Json::object()).value("open_on_error",true);
+        if(!sceneOverride.empty())config.data["entry_scene"]=sceneOverride;config.validate(command=="validate" || command=="build");
         // Packaged games use their private CPython distribution, without PYTHONPATH contamination.
         PyPreConfig pre;PyPreConfig_InitIsolatedConfig(&pre);pre.utf8_mode=1;
         auto preStatus=Py_PreInitialize(&pre);if(PyStatus_Exception(preStatus))throw std::runtime_error("Cannot initialize UTF-8 Python runtime");
         PyConfig pythonConfig;PyConfig_InitIsolatedConfig(&pythonConfig);pythonConfig.write_bytecode=0;pythonConfig.install_signal_handlers=0;
-        auto home=exe.parent_path()/"runtime";
+        auto home=dataRoot/"runtime";
         if(packaged){auto status=PyConfig_SetBytesString(&pythonConfig,&pythonConfig.home,home.u8string().c_str());if(PyStatus_Exception(status)){PyConfig_Clear(&pythonConfig);throw std::runtime_error("Cannot configure packaged Python");}}
         py::scoped_interpreter interpreter(&pythonConfig,0,nullptr,false);
         int exitCode=1;
@@ -67,7 +70,9 @@ int main(int argc,char** argv) {
             globals["build_bundle"](config.file.u8string(),exe.u8string(),out.u8string());
             logger.write("INFO","Build complete: "+out.u8string());return 0;
         }
-        Runtime runtime(std::move(config),command=="dev",headless);return runtime.run(frames);
+        if(command=="edit" && packaged)throw std::runtime_error("Editor requires the engine development installation");
+        installCrashHandler(logger.path.parent_path()/"crash-reports");
+        Runtime runtime(std::move(config),command=="dev" || command=="edit",headless);runtime.entryOverride=sceneOverride;runtime.editing=command=="edit";return runtime.run(frames);
         };
         // Format and destroy Python exceptions while CPython is still alive.
         try {exitCode=execute();}catch(const std::exception& e){logger.error(e.what());}
