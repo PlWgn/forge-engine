@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.2.0 LANGUAGES C CXX)
+project(Forge VERSION 2.3.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -44,13 +44,41 @@ add_subdirectory(vendor/bullet/src/BulletDynamics EXCLUDE_FROM_ALL)
 add_library(forge_editor_ui STATIC vendor/imgui/imgui.cpp vendor/imgui/imgui_draw.cpp vendor/imgui/imgui_tables.cpp vendor/imgui/imgui_widgets.cpp vendor/imgui/backends/imgui_impl_glfw.cpp vendor/imgui/backends/imgui_impl_opengl3.cpp)
 target_include_directories(forge_editor_ui PUBLIC vendor/imgui vendor/imgui/backends)
 target_link_libraries(forge_editor_ui PRIVATE glfw OpenGL::GL)
-add_executable(forge engine/src/main.cpp engine/src/config.cpp engine/src/log.cpp engine/src/world.cpp engine/src/render.cpp engine/src/runtime.cpp engine/src/audio.cpp engine/src/localization.cpp engine/src/platform.cpp engine/src/model.cpp engine/src/assets.cpp engine/src/features.cpp engine/src/physics.cpp engine/src/particles.cpp engine/src/hierarchy.cpp engine/src/material.cpp engine/src/geometry.cpp engine/src/editor.cpp)
+add_executable(forge
+  engine/src/main.cpp
+  engine/src/config.cpp
+  engine/src/log.cpp
+  engine/src/world.cpp
+  engine/src/render.cpp
+  engine/src/runtime.cpp
+  engine/src/audio.cpp
+  engine/src/localization.cpp
+  engine/src/platform.cpp
+  engine/src/model.cpp
+  engine/src/assets.cpp
+  engine/src/features.cpp
+  engine/src/physics.cpp
+  engine/src/particles.cpp
+  engine/src/hierarchy.cpp
+  engine/src/material.cpp
+  engine/src/geometry.cpp
+  engine/src/editor.cpp
+  engine/src/particle_render.cpp
+  engine/src/python_bridge.cpp
+  engine/src/python_api.cpp
+  engine/src/scene_runtime.cpp
+  engine/src/reload.cpp
+  engine/src/gpu_resources.cpp
+  engine/src/text.cpp
+  engine/src/media.cpp
+)
 target_include_directories(forge PRIVATE engine/include vendor vendor/glm)
 target_include_directories(forge SYSTEM PRIVATE vendor/bullet/src)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/default.vert" FORGE_VERTEX)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/default.frag" FORGE_FRAGMENT)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/post.frag" FORGE_POST)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.vert" FORGE_PARTICLE_VERTEX)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle-instance.vert" FORGE_PARTICLE_INSTANCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.frag" FORGE_PARTICLE_FRAGMENT)
 configure_file(engine/resources/shaders.hpp.in generated/forge/shaders.hpp @ONLY)
 target_include_directories(forge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

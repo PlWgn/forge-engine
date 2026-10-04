@@ -6,6 +6,7 @@ struct Config;
 struct Physics3D;
 struct Particles;
 struct Geometry;
+struct TransformCache;
 struct Entity {
     std::string id, name, kind = "sprite", model, texture, material, text, textKey;
     std::string parent;
@@ -38,6 +39,8 @@ struct World {
     std::vector<std::shared_ptr<Entity>> entities;
     std::unordered_map<std::string, std::weak_ptr<Entity>> entityIndex;
     std::shared_ptr<Geometry> geometry;
+    std::shared_ptr<TransformCache> transformCache;
+    size_t transformAudits=0,transformComputations=0;
     size_t physicsCandidates = 0;
     bool assembling = false;
     Json scene;
@@ -54,6 +57,8 @@ struct World {
     glm::vec4 background{0.025f, 0.04f, 0.075f, 1};
     std::shared_ptr<Entity> spawn(Json data);
     void syncTransforms();
+    void setLocalTransform(Entity &, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale);
+    void setPositions(const std::vector<std::pair<std::shared_ptr<Entity>,glm::vec3>>&);
     void loadEntities(const Json &);
     void clearEntities();
     void pruneIndex();
@@ -69,7 +74,7 @@ struct World {
     void physics(float dt);
     bool activeCollider(const Entity &) const;
     bool overlaps(const Entity &a, const Entity &b) const;
-    std::shared_ptr<Entity> raycast(glm::vec3 origin, glm::vec3 direction, float distance);
+    std::shared_ptr<Entity> raycast(glm::vec3 origin, glm::vec3 direction, float distance, bool synchronize=true);
     Json moveCharacter(Entity &, glm::vec3 delta, float skin = .001f);
     Json serialize() const;
 };

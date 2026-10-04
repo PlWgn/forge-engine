@@ -56,6 +56,7 @@ struct Assets {
     void rollback(unsigned);
 };
 Json fromPython(py::handle value);
+py::object pythonValue(const Json& value);
 struct Logger {
     fs::path path;
     std::ofstream file;

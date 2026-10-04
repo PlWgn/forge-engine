@@ -3,6 +3,10 @@
 #include <forge/gl.hpp>
 #include <forge/model.hpp>
 #include <forge/particles.hpp>
+#include <forge/particle_render.hpp>
+#include <forge/gpu_resources.hpp>
+#include <forge/text.hpp>
+#include <unordered_map>
 #include <forge/editor.hpp>
 #include <forge/geometry.hpp>
 #include <forge/material.hpp>
@@ -14,9 +18,7 @@
 #include <imgui_impl_opengl3.h>
 #include <tuple>
 #define STBI_WINDOWS_UTF8
-#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#define STB_TRUETYPE_IMPLEMENTATION
 #include <array>
 #include <cmath>
 #include <sstream>
@@ -28,162 +30,6 @@ std::string textFile(const fs::path &p) {
     if (!s)
         throw std::runtime_error("Cannot read: " + p.u8string());
     return {std::istreambuf_iterator<char>(s), {}};
-}
-using Vertex = ModelVertex;
-struct Mesh {
-    unsigned vao = 0, vbo = 0;
-    int count = 0;
-};
-Mesh upload(const std::vector<Vertex> &vertices) {
-    Mesh m;
-    m.count = static_cast<int>(vertices.size());
-    gl::GenVertexArrays(1, &m.vao);
-    gl::GenBuffers(1, &m.vbo);
-    gl::BindVertexArray(m.vao);
-    gl::BindBuffer(gl::ARRAY_BUFFER, m.vbo);
-    gl::BufferData(gl::ARRAY_BUFFER, sizeof(Vertex) * vertices.size(), vertices.data(), gl::STATIC_DRAW);
-    gl::EnableVertexAttribArray(0);
-    gl::VertexAttribPointer(0, 3, gl::FLOAT, 0, sizeof(Vertex),
-                            reinterpret_cast<void *>(offsetof(Vertex, p)));
-    gl::EnableVertexAttribArray(1);
-    gl::VertexAttribPointer(1, 2, gl::FLOAT, 0, sizeof(Vertex),
-                            reinterpret_cast<void *>(offsetof(Vertex, uv)));
-    gl::EnableVertexAttribArray(2);
-    gl::VertexAttribPointer(2, 3, gl::FLOAT, 0, sizeof(Vertex),
-                            reinterpret_cast<void *>(offsetof(Vertex, n)));
-    gl::EnableVertexAttribArray(3);
-    gl::VertexAttribIPointer(3, 4, 0x1404, sizeof(Vertex), reinterpret_cast<void *>(offsetof(Vertex, bones)));
-    gl::EnableVertexAttribArray(4);
-    gl::VertexAttribPointer(4, 4, gl::FLOAT, 0, sizeof(Vertex),
-                            reinterpret_cast<void *>(offsetof(Vertex, weights)));
-    gl::EnableVertexAttribArray(5);
-    gl::VertexAttribPointer(5,4,gl::FLOAT,0,sizeof(Vertex),reinterpret_cast<void*>(offsetof(Vertex,color)));
-    return m;
-}
-unsigned compile(unsigned kind, const std::string &source, const std::string &name) {
-    auto shader = gl::CreateShader(kind);
-    const char *s = source.c_str();
-    gl::ShaderSource(shader, 1, &s, nullptr);
-    gl::CompileShader(shader);
-    int ok;
-    gl::GetShaderiv(shader, gl::COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[8192]{};
-        gl::GetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        gl::DeleteShader(shader);
-        throw std::runtime_error("Shader " + name + ":\n" + log);
-    }
-    return shader;
-}
-unsigned texture(const unsigned char *data, int width, int height) {
-    unsigned id;
-    gl::GenTextures(1, &id);
-    gl::BindTexture(gl::TEXTURE_2D, id);
-    gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA, width, height, 0, gl::RGBA, gl::UNSIGNED_BYTE, data);
-    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR);
-    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR);
-    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
-    return id;
-}
-std::vector<Vertex> obj(const fs::path &file) {
-    std::istringstream in(textFile(file));
-    std::vector<glm::vec3> positions, normals;
-    std::vector<glm::vec2> uvs;
-    std::vector<Vertex> out;
-    std::string line;
-    int lineNumber = 0;
-    while (std::getline(in, line)) {
-        ++lineNumber;
-        std::istringstream s(line);
-        std::string type;
-        s >> type;
-        if (type == "v") {
-            glm::vec3 v;
-            if (!(s >> v.x >> v.y >> v.z))
-                throw std::runtime_error("Invalid OBJ vertex: " + file.u8string());
-            positions.push_back(v);
-        } else if (type == "vn") {
-            glm::vec3 v;
-            if (!(s >> v.x >> v.y >> v.z))
-                throw std::runtime_error("Invalid OBJ normal");
-            normals.push_back(v);
-        } else if (type == "vt") {
-            glm::vec2 v;
-            if (!(s >> v.x >> v.y))
-                throw std::runtime_error("Invalid OBJ UV");
-            v.y = 1 - v.y;
-            uvs.push_back(v);
-        } else if (type == "f") {
-            std::vector<Vertex> face;
-            std::string token;
-            auto index = [](int i, size_t size) {
-                int result = i > 0 ? i - 1 : static_cast<int>(size) + i;
-                if (i == 0 || result < 0 || result >= static_cast<int>(size))
-                    throw std::runtime_error("OBJ index out of range");
-                return result;
-            };
-            while (s >> token) {
-                if (token[0] == '#')
-                    break;
-                std::array<int, 3> ids{};
-                size_t start = 0;
-                int component = 0;
-                while (start <= token.size() && component < 3) {
-                    auto end = token.find('/', start);
-                    auto part = token.substr(start, end == std::string::npos ? end : end - start);
-                    if (!part.empty())
-                        ids[component] = std::stoi(part);
-                    ++component;
-                    if (end == std::string::npos)
-                        break;
-                    start = end + 1;
-                }
-                Vertex v;
-                v.p = positions.at(index(ids[0], positions.size()));
-                v.uv = ids[1] ? uvs.at(index(ids[1], uvs.size())) : glm::vec2(0);
-                v.n = ids[2] ? normals.at(index(ids[2], normals.size())) : glm::vec3(0);
-                face.push_back(v);
-            }
-            if (face.size() < 3)
-                throw std::runtime_error("OBJ face needs 3 vertices at line " + std::to_string(lineNumber));
-            for (size_t i = 1; i + 1 < face.size(); ++i) {
-                Vertex tri[] = {face[0], face[i], face[i + 1]};
-                auto normal = glm::cross(tri[1].p - tri[0].p, tri[2].p - tri[0].p);
-                normal = glm::length(normal) > 0 ? glm::normalize(normal) : glm::vec3(0, 1, 0);
-                for (auto &v : tri) {
-                    if (glm::length(v.n) == 0)
-                        v.n = normal;
-                    out.push_back(v);
-                }
-            }
-        }
-    }
-    if (out.empty())
-        throw std::runtime_error("OBJ contains no faces: " + file.u8string());
-    return out;
-}
-std::vector<int> unicode(const std::string &s) {
-    std::vector<int> out;
-    for (size_t i = 0; i < s.size();) {
-        unsigned char c = s[i++];
-        int code = c, count = 0;
-        if (c >= 0xf0) {
-            code = c & 7;
-            count = 3;
-        } else if (c >= 0xe0) {
-            code = c & 15;
-            count = 2;
-        } else if (c >= 0xc0) {
-            code = c & 31;
-            count = 1;
-        }
-        for (int k = 0; k < count && i < s.size(); ++k)
-            code = (code << 6) | (static_cast<unsigned char>(s[i++]) & 63);
-        out.push_back(code);
-    }
-    return out;
 }
 int keyCode(std::string name) {
     for (auto &c : name)
@@ -210,114 +56,10 @@ int keyCode(std::string name) {
 }
 } // namespace
 namespace {
-struct FontFace {
-    std::vector<unsigned char> bytes;
-    stbtt_fontinfo font{};
-    std::string name;
-};
-std::vector<std::shared_ptr<FontFace>> fonts(const Config &config) {
-    static std::map<std::string, std::shared_ptr<FontFace>> cache;
-    auto options = config.data.value("renderer", Json::object());
-    Json names = Json::array({options.value("font", std::string("font.ttf"))});
-    for (auto &name : options.value("fallback_fonts", Json::array()))
-        names.push_back(name);
-    std::vector<std::shared_ptr<FontFace>> result;
-    for (auto &name : names) {
-        auto path = config.asset("graphics", name);
-        auto key =
-            path.u8string() +
-            std::to_string(static_cast<long long>(fs::last_write_time(path).time_since_epoch().count()));
-        auto found = cache.find(key);
-        if (found == cache.end()) {
-            auto face = std::make_shared<FontFace>();
-            auto data = textFile(path);
-            face->bytes.assign(data.begin(), data.end());
-            face->name = path.u8string();
-            if (!stbtt_InitFont(&face->font, face->bytes.data(),
-                                stbtt_GetFontOffsetForIndex(face->bytes.data(), 0)))
-                throw std::runtime_error("Invalid TrueType font: " + path.u8string());
-            if (cache.size() >= 32)
-                cache.erase(cache.begin());
-            found = cache.emplace(key, face).first;
-        }
-        result.push_back(found->second);
-    }
-    return result;
-}
-int fontFor(const std::vector<std::shared_ptr<FontFace>> &faces, int code) {
-    for (size_t i = 0; i < faces.size(); ++i)
-        if (stbtt_FindGlyphIndex(&faces[i]->font, code))
-            return int(i);
-    static std::set<std::pair<std::string, int>> warned;
-    if (warned.insert({faces.front()->name, code}).second) {
-        std::ostringstream number;
-        number << std::hex << std::uppercase << code;
-        logger.write("WARN", "Missing glyph U+" + number.str() + " in configured fonts");
-    }
-    return 0;
-}
 glm::mat4 modelMatrix(const Entity &e) {return e.worldMatrix;}
 double textWorldScale(const Entity &e) {
     return std::max(glm::length(glm::dvec3(e.worldMatrix[0])),
                     glm::length(glm::dvec3(e.worldMatrix[1])));
-}
-unsigned linkProgram(const std::string &vertex, const std::string &fragment, const std::string &name) {
-    auto vs = compile(gl::VERTEX_SHADER, vertex, name + ".vertex");
-    unsigned fs = 0, p = 0;
-    try {
-        fs = compile(gl::FRAGMENT_SHADER, fragment, name + ".fragment");
-        p = gl::CreateProgram();
-        gl::AttachShader(p, vs);
-        gl::AttachShader(p, fs);
-        gl::LinkProgram(p);
-        int ok;
-        gl::GetProgramiv(p, gl::LINK_STATUS, &ok);
-        if (!ok) {
-            char log[8192]{};
-            gl::GetProgramInfoLog(p, sizeof(log), nullptr, log);
-            throw std::runtime_error(name + " linking: " + log);
-        }
-    } catch (...) {
-        gl::DeleteShader(vs);
-        if (fs)
-            gl::DeleteShader(fs);
-        if (p)
-            gl::DeleteProgram(p);
-        throw;
-    }
-    gl::DeleteShader(vs);
-    gl::DeleteShader(fs);
-    return p;
-}
-void uniforms(unsigned program, const Json &values) {
-    for (auto it = values.begin(); it != values.end(); ++it) {
-        auto location = gl::GetUniformLocation(program, it.key().c_str());
-        auto value = it.value();
-        if (value.is_boolean() || value.is_number_integer())
-            gl::Uniform1i(location, value.is_boolean() ? int(value.get<bool>()) : value.get<int>());
-        else if (value.is_array()) {
-            float v[4]{};
-            for (size_t i = 0; i < value.size(); ++i)
-                v[i] = finiteNumber(value[i], it.key());
-            switch (value.size()) {
-            case 1:
-                gl::Uniform1f(location, v[0]);
-                break;
-            case 2:
-                gl::Uniform2fv(location, 1, v);
-                break;
-            case 3:
-                gl::Uniform3fv(location, 1, v);
-                break;
-            case 4:
-                gl::Uniform4fv(location, 1, v);
-                break;
-            default:
-                throw std::runtime_error("Invalid shader uniform");
-            }
-        } else
-            gl::Uniform1f(location, finiteNumber(value, it.key()));
-    }
 }
 } // namespace
 struct Renderer::Impl {
@@ -330,7 +72,15 @@ struct Renderer::Impl {
     glm::vec2 mousePosition{0}, mouseDelta{0}, mouseScroll{0};
     std::vector<unsigned> characters;
     unsigned program = 0, postProgram = 0, shadowProgram = 0, particleProgram = 0, whiteTexture = 0;
-    size_t particleAllocated = 0;
+    std::unique_ptr<ParticleRenderer> particleRenderer;
+    bool particleInstanced=false;
+    std::vector<ParticleDraw> particleSnapshot;
+    std::unordered_map<std::string,unsigned> frameImages;
+    std::unordered_map<std::string,fs::path> resolvedImages;
+    unsigned imageResolutions=0;
+    size_t particleUpload=0;
+    double particleSortMs=0;
+
     unsigned particleCalls = 0, particleQuads = 0;
     std::map<std::string, Mesh> meshes;
     std::map<std::string, unsigned> textures;
@@ -389,6 +139,7 @@ struct Renderer::Impl {
     }
     void clear() {
         batch.clear();
+        particleRenderer.reset();frameImages.clear();resolvedImages.clear();
         for (auto &[name, m] : meshes) {
             gl::DeleteBuffers(1, &m.vbo);
             gl::DeleteVertexArrays(1, &m.vao);
@@ -435,7 +186,9 @@ struct Renderer::Impl {
         targets.swap(other.targets);
         models.swap(other.models);modelRevisions.swap(other.modelRevisions);
         std::swap(batchAllocated, other.batchAllocated);
-        std::swap(particleAllocated, other.particleAllocated);
+        particleRenderer.swap(other.particleRenderer);
+        std::swap(particleInstanced,other.particleInstanced);
+        frameImages.clear();other.frameImages.clear();resolvedImages.clear();other.resolvedImages.clear();
         std::swap(gpuBytes, other.gpuBytes);
         std::swap(gpuLimit, other.gpuLimit);
         std::swap(batching, other.batching);
@@ -491,8 +244,16 @@ void main(){
             auto path = config->asset("graphics", options.value(field, std::string(file)));
             return options.contains(field) || fs::is_regular_file(path) ? textFile(path) : std::string(fallback);
         };
-        particleProgram = linkProgram(particleShader("particle_vertex_shader", "particle.vert", particleVertexDefault),
-                                      particleShader("particle_fragment_shader", "particle.frag", particleFragmentDefault), "Particle shader");
+        auto particleVertex=particleShader("particle_vertex_shader","particle.vert",particleVertexDefault);
+        auto newlineNormalized=[](const std::string& source){
+            std::string result;result.reserve(source.size());
+            for(size_t i=0;i<source.size();++i)if(source[i]!='\r' || i+1==source.size() || source[i+1]!='\n')result.push_back(source[i]);
+            return result;
+        };
+        particleInstanced=options.value("particle_instancing",true) && newlineNormalized(particleVertex)==newlineNormalized(particleVertexDefault);
+        if(particleInstanced)particleVertex=particleShader("particle_instance_shader","particle-instance.vert",particleInstanceDefault);
+        particleProgram=linkProgram(particleVertex,particleShader("particle_fragment_shader","particle.frag",particleFragmentDefault),"Particle shader");
+        particleRenderer=std::make_unique<ParticleRenderer>(particleInstanced);
         meshes["sprite"] = upload({{{-.5f, -.5f, 0}, {0, 0}, {0, 0, 1}},
                                    {{.5f, -.5f, 0}, {1, 0}, {0, 0, 1}},
                                    {{.5f, .5f, 0}, {1, 1}, {0, 0, 1}},
@@ -500,8 +261,6 @@ void main(){
                                    {{.5f, .5f, 0}, {1, 1}, {0, 0, 1}},
                                    {{-.5f, .5f, 0}, {0, 1}, {0, 0, 1}}});
         meshes["batch"] = upload({});
-        meshes["particles"] = upload({});
-        gl::BindVertexArray(meshes["particles"].vao);gl::DisableVertexAttribArray(3);gl::DisableVertexAttribArray(4);gl::DisableVertexAttribArray(5);
         std::vector<Vertex> cube;
         for (int axis = 0; axis < 3; ++axis)
             for (int sign : {-1, 1}) {
@@ -585,7 +344,13 @@ void main(){
                 throw std::runtime_error("Unknown render target texture: " + name);
             return found->second.color;
         }
-        return imagePath(config->asset("textures", name));
+        auto cached=frameImages.find(name);
+        if(cached!=frameImages.end())return cached->second;
+        auto path=resolvedImages.find(name);
+        if(path==resolvedImages.end()){
+            ++imageResolutions;path=resolvedImages.emplace(name,config->asset("textures",name)).first;
+        }
+        auto id=imagePath(path->second);frameImages.emplace(name,id);return id;
     }
     void lighting(unsigned p) {
         auto lights = renderOptions.value("lights", Json::array());
@@ -887,75 +652,12 @@ void main(){
                  tex, lit, &bones);materialOptions=std::move(saved);materialPart=nullptr;
         }
     }
-    void particles(World &world, const glm::mat4 &view, const glm::mat4 &ortho, unsigned layers, bool screen) {
-        if (!world.particles || shadowPass) return;
-        auto particles = world.particles->draw(world);
-        particles.erase(std::remove_if(particles.begin(), particles.end(), [&](const ParticleDraw &p) {
-            return p.screen != screen || !(p.layer & layers) || p.size <= 0 || p.color.a <= 0;
-        }), particles.end());
-        if (particles.empty()) return;
-        const auto projection = screen ? ortho : view;
-        auto depth = [&](const ParticleDraw &p) {
-            auto clip = projection * glm::vec4(p.position, 1);
-            return world.is3d && !screen && std::abs(clip.w) > 1e-8 ? -clip.z / clip.w : p.position.z;
-        };
-        std::stable_sort(particles.begin(), particles.end(), [&](const auto &a, const auto &b) {
-            if (a.additive != b.additive) return !a.additive;
-            if (a.additive && a.texture != b.texture) return a.texture < b.texture;
-            return depth(a) < depth(b);
-        });
-        glm::vec3 right(1,0,0), up(0,1,0);
-        if (world.is3d && !screen) {
-            auto inverse = glm::inverse(projection);
-            auto unproject = [&](float x, float y) { auto v = inverse * glm::vec4(x,y,0,1); return glm::vec3(v) / v.w; };
-            auto center = unproject(0,0);
-            right = glm::normalize(unproject(1,0)-center);
-            up = glm::normalize(unproject(0,1)-center);
-        }
-        struct ParticleVertex { glm::vec3 position; glm::vec2 uv; glm::vec4 color; };
-        std::vector<ParticleVertex> vertices;
-        vertices.reserve(24576);
-        auto &mesh = meshes.at("particles");
-        unsigned currentTexture = 0; bool currentBlend = false, prepared = false;
-        gl::Disable(gl::SCISSOR_TEST);
-        if (world.is3d && !screen) gl::Enable(gl::DEPTH_TEST); else gl::Disable(gl::DEPTH_TEST);
-        gl::DepthMask(0);
-        auto flushParticles = [&]() {
-            if (vertices.empty()) return;
-            size_t bytes = vertices.size() * sizeof(ParticleVertex);
-            if (bytes > particleAllocated) reserve(bytes-particleAllocated); else gpuBytes -= particleAllocated-bytes;
-            particleAllocated = bytes;
-            gl::UseProgram(particleProgram);
-            gl::UniformMatrix4fv(gl::GetUniformLocation(particleProgram,"u_view"),1,0,glm::value_ptr(projection));
-            gl::Uniform1i(gl::GetUniformLocation(particleProgram,"u_texture"),0);
-            gl::ActiveTexture(gl::TEXTURE0);gl::BindTexture(gl::TEXTURE_2D,currentTexture?currentTexture:whiteTexture);
-            gl::BlendFunc(gl::SRC_ALPHA,currentBlend?1:gl::ONE_MINUS_SRC_ALPHA);
-            gl::BindVertexArray(mesh.vao);gl::BindBuffer(gl::ARRAY_BUFFER,mesh.vbo);
-            gl::BufferData(gl::ARRAY_BUFFER,bytes,vertices.data(),gl::STREAM_DRAW);
-            gl::VertexAttribPointer(0,3,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,position)));
-            gl::VertexAttribPointer(1,2,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,uv)));
-            gl::VertexAttribPointer(2,4,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,color)));
-            gl::DrawArrays(gl::TRIANGLES,0,int(vertices.size()));
-            ++drawCalls;++particleCalls;triangles+=unsigned(vertices.size()/3);particleQuads+=unsigned(vertices.size()/6);
-            vertices.clear();
-        };
-        static const glm::vec2 corners[]={{-.5f,-.5f},{.5f,-.5f},{.5f,.5f},{-.5f,-.5f},{.5f,.5f},{-.5f,.5f}};
-        static const glm::vec2 uv[]={{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}};
-        try {
-            for (const auto &p : particles) {
-                auto texture = image(p.texture);
-                if (prepared && (texture!=currentTexture || p.additive!=currentBlend || vertices.size()>=24576)) flushParticles();
-                prepared=true;currentTexture=texture;currentBlend=p.additive;
-                float angle=glm::radians(p.angle), c=std::cos(angle), s=std::sin(angle);
-                for(int i=0;i<6;++i) {
-                    auto corner=corners[i]*p.size;
-                    float x=corner.x*c-corner.y*s, y=corner.x*s+corner.y*c;
-                    vertices.push_back({p.position+right*x+up*y,{p.uv.x+uv[i].x*p.uv.z,p.uv.y+uv[i].y*p.uv.w},p.color});
-                }
-            }
-            flushParticles();
-        } catch (...) { gl::DepthMask(1);gl::BlendFunc(gl::SRC_ALPHA,gl::ONE_MINUS_SRC_ALPHA);throw; }
-        gl::DepthMask(1);gl::BlendFunc(gl::SRC_ALPHA,gl::ONE_MINUS_SRC_ALPHA);
+    void particles(World &world,const glm::mat4 &view,const glm::mat4 &ortho,unsigned layers,bool screen){
+        if(!world.particles || shadowPass)return;
+        auto result=particleRenderer->draw(particleSnapshot,screen?ortho:view,world.is3d,screen,layers,
+            particleProgram,whiteTexture,[&](const std::string& name){return image(name);},[&](size_t bytes){reserve(bytes);});
+        particleCalls+=result.calls;drawCalls+=result.calls;particleQuads+=result.quads;
+        triangles+=result.quads*2;particleUpload+=result.uploadBytes;particleSortMs+=result.sortMs;
     }
     void scene(World &world, const glm::mat4 &view, int width, int height, int logicalWidth,
                int logicalHeight, bool includeUI, unsigned layers, const std::string &currentTarget = "") {
@@ -1045,72 +747,6 @@ void main(){
     }
     void edit(World &world){editorState.draw(world,*context,keys,buttons,mouseDelta,stats);}
 };
-std::array<float, 3> measureText(const Config &config, const std::string &value, float size) {
-    if (!std::isfinite(size) || size <= 0)
-        throw std::runtime_error("Text size must be positive and finite");
-    auto faces = fonts(config);
-    int ascent, descent, gap;
-    stbtt_GetFontVMetrics(&faces.front()->font, &ascent, &descent, &gap);
-    float lineHeight = (ascent - descent + gap) * stbtt_ScaleForPixelHeight(&faces.front()->font, size),
-          x = 0, width = 0;
-    int previous = 0, lastFace = -1, lines = 1;
-    for (auto code : unicode(value)) {
-        if (code == '\n') {
-            width = std::max(width, x);
-            x = 0;
-            previous = 0;
-            lastFace = -1;
-            ++lines;
-            continue;
-        }
-        int face = fontFor(faces, code), advance, bearing;
-        auto &font = faces[face]->font;
-        float scale = stbtt_ScaleForPixelHeight(&font, size);
-        stbtt_GetCodepointHMetrics(&font, code, &advance, &bearing);
-        if (previous && lastFace == face)
-            x += stbtt_GetCodepointKernAdvance(&font, previous, code) * scale;
-        x += advance * scale;
-        previous = code;
-        lastFace = face;
-    }
-    return {std::max(width, x), lines * lineHeight, lineHeight};
-}
-void validateMedia(const Config &c) {
-    const std::set<std::string> extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga",
-                                              ".gif", ".psd", ".hdr",  ".pic", ".pnm"};
-    for (auto &entry : fs::recursive_directory_iterator(c.paths.at("textures")))
-        if (entry.is_regular_file() && extensions.count(entry.path().extension().u8string())) {
-            int w, h, n;
-            auto filename = entry.path().u8string();
-            if (!stbi_info(filename.c_str(), &w, &h, &n))
-                throw std::runtime_error("Invalid texture " + filename + ": " + stbi_failure_reason());
-            auto *bytes = stbi_load(filename.c_str(), &w, &h, &n, 4);
-            if (!bytes)
-                throw std::runtime_error("Invalid texture " + filename + ": " + stbi_failure_reason());
-            stbi_image_free(bytes);
-        }
-    for (auto &entry : fs::recursive_directory_iterator(c.paths.at("models")))
-        if (entry.is_regular_file()) {
-            auto ext = entry.path().extension().u8string();
-            if (ext == ".obj")
-                obj(entry.path());
-            if (ext == ".obj" || ext == ".gltf" || ext == ".glb" || ext == ".fbx" || ext == ".dae") {
-                auto model = loadModel(entry.path(), c.root);
-                std::set<fs::path> maps;
-                for (auto &part : model->parts) {
-                    if (!part.texture.empty()) maps.insert(part.texture);
-                    for (auto &map : part.maps) maps.insert(map.second);
-                }
-                for (auto &path : maps) {
-                    int width, height, channels;
-                    auto image = stbi_load(path.u8string().c_str(), &width, &height, &channels, 4);
-                    if (!image) throw std::runtime_error("Invalid model texture: " + path.u8string());
-                    stbi_image_free(image);
-                }
-            }
-        }
-    fonts(c);
-}
 Renderer::Renderer() : impl(std::make_unique<Impl>()) {}
 Renderer::~Renderer() = default;
 void Renderer::init(const Config &c, World &world){if(!active)throw std::runtime_error("Renderer needs explicit runtime context");init(c,world,*active);}
@@ -1260,6 +896,8 @@ void Renderer::render(World &world) {
     if (w <= 0 || h <= 0 || world.width <= 0 || world.height <= 0)
         return;
     ++impl->frame;
+    impl->frameImages.clear();impl->imageResolutions=0;impl->particleUpload=0;impl->particleSortMs=0;
+    impl->particleSnapshot=world.particles?world.particles->draw(world):std::vector<ParticleDraw>{};
     impl->drawCalls = impl->batchCalls = impl->triangles = impl->particleCalls = impl->particleQuads = 0;
     impl->density = std::max(float(w) / world.width, float(h) / world.height);
     impl->renderOptions = world.renderSettings;
@@ -1402,6 +1040,10 @@ void Renderer::render(World &world) {
         {"draw_calls", impl->drawCalls},
         {"particle_draw_calls",impl->particleCalls},
         {"particle_quads",impl->particleQuads},
+        {"particle_instancing",impl->particleInstanced},
+        {"particle_upload_bytes",impl->particleUpload},
+        {"particle_sort_ms",impl->particleSortMs},
+        {"texture_path_resolutions",impl->imageResolutions},
         {"batches", impl->batchCalls},
         {"triangles", impl->triangles},
         {"gpu_bytes", impl->gpuBytes},

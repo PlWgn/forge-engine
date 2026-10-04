@@ -41,6 +41,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     if(j.contains("material_properties"))e->materialData=validateMaterial(*config,j["material_properties"]);
     e->parent=j.value("parent","");
     e->worldMatrix=composeTransform(*e);e->worldRotation=e->rotation;
+    transformCache.reset();
     if(!assembling && !e->parent.empty()){
         entities.push_back(e);entityIndex[e->id]=e;
         try{syncTransforms();}catch(...){entities.pop_back();entityIndex.erase(e->id);throw;}
@@ -154,9 +155,9 @@ void World::physics(float dt) {
         syncTransforms();
     }
 }
-std::shared_ptr<Entity> World::raycast(glm::vec3 origin,glm::vec3 direction,float distance) {
-    if(rigidPhysics(*this)){auto result=physics3D(*this).raycast(*this,origin,direction,distance,65535,"",true);return result.is_null()?nullptr:find(result["entity"]);}
-    syncTransforms();
+std::shared_ptr<Entity> World::raycast(glm::vec3 origin,glm::vec3 direction,float distance,bool synchronize) {
+    if(rigidPhysics(*this)){auto result=physics3D(*this).raycast(*this,origin,direction,distance,65535,"",true,synchronize);return result.is_null()?nullptr:find(result["entity"]);}
+    if(synchronize)syncTransforms();
     auto ray=glm::dvec3(direction);auto length=glm::length(ray);
     if(length<0.00001 || distance<0) return {};
     ray/=length; std::shared_ptr<Entity> hit; double nearest=distance;

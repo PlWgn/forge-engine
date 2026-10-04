@@ -50,10 +50,6 @@ std::unique_ptr<btCollisionShape> shape(const Entity &e) {
     result->setMargin(std::min(.01, double(std::min({e.collider.x, e.collider.y, e.collider.z})) * .05));
     return result;
 }
-Json signature(const Entity &e) {
-    return {{"collider", {e.collider.x, e.collider.y, e.collider.z}}, {"mass", e.mass},
-            {"dynamic", e.dynamic}, {"trigger", e.trigger}, {"settings", e.rigidBody}};
-}
 bool masks(const Entity &a, const Entity &b) {
     auto groupA = a.rigidBody.value("group", 1u), groupB = b.rigidBody.value("group", 1u);
     return (groupA & b.rigidBody.value("mask", 65535u)) && (groupB & a.rigidBody.value("mask", 65535u));
@@ -74,7 +70,7 @@ void current(Entity &e) {
     auto entity = runtime().world.find(e.id);
     if (!entity || entity.get() != &e) throw std::runtime_error("Physics entity is not in the current scene");
 }
-py::object python(const Json &j) { return py::module_::import("json").attr("loads")(j.dump()); }
+py::object python(const Json &j) { return pythonValue(j); }
 } // namespace
 Json validatePhysics(Json settings) {
     if (!settings.is_object()) throw std::runtime_error("physics must be an object");
@@ -123,8 +119,13 @@ struct Physics3D::Impl {
         std::shared_ptr<Entity> entity;
         std::unique_ptr<btCollisionShape> shape;
         std::unique_ptr<btRigidBody> body;
-        Json signature;
-        glm::vec3 position, rotation, velocity, angular;
+        glm::vec3 collider;
+        float mass=1;
+        bool dynamic=false,trigger=false;
+        Json settings;
+        bool sameShape(const Entity& e) const {return collider==e.collider && mass==e.mass && dynamic==e.dynamic && trigger==e.trigger && settings==e.rigidBody;}
+
+        glm::vec3 position, rotation, velocity, angular, force, torque;
     };
     btDefaultCollisionConfiguration configuration;
     btCollisionDispatcher dispatcher{&configuration};
@@ -132,6 +133,7 @@ struct Physics3D::Impl {
     btSequentialImpulseConstraintSolver solver;
     btDiscreteDynamicsWorld world{&dispatcher, &broadphase, &solver, &configuration};
     std::map<std::string, Body> bodies;
+    size_t syncAudits=0,bodySynchronizations=0;
     ~Impl() { for (auto &[id, record] : bodies) world.removeRigidBody(record.body.get()); }
 };
 Physics3D::Physics3D(World &) : impl(std::make_unique<Impl>()) {}
@@ -143,9 +145,18 @@ Physics3D &physics3D(World &world) {
 }
 void Physics3D::sync(World &world) {
     world.syncTransforms();
+    ++impl->syncAudits;
     size_t count = 0;
     // Validate the entire input before changing Bullet objects or broadphase membership.
-    for (auto &e : world.entities) if (world.activeCollider(*e)) { validatePhysicsEntity(bodyPose(world,*e)); ++count; }
+    for (auto &e : world.entities) if (world.activeCollider(*e)) {
+        auto found=impl->bodies.find(e->id);
+        if(found==impl->bodies.end() || found->second.entity!=e || !found->second.sameShape(*e) ||
+           found->second.position!=world.worldPosition(*e) || found->second.rotation!=e->worldRotation ||
+           found->second.velocity!=e->velocity || found->second.angular!=e->angularVelocity ||
+           found->second.force!=e->force || found->second.torque!=e->torque)
+            validatePhysicsEntity(bodyPose(world,*e));
+        ++count;
+    }
     if (count > world.physicsSettings.value("max_bodies", 10000u)) throw std::runtime_error("physics.max_bodies exceeded");
     for(int axis=0;axis<3;++axis)range(world.gravity[axis],"physics gravity",-1e6,1e6);
     auto gravity = vector(world.gravity);
@@ -155,7 +166,7 @@ void Physics3D::sync(World &world) {
     impl->world.getSolverInfo().m_numIterations = world.physicsSettings.value("iterations", 20);
     for (auto it = impl->bodies.begin(); it != impl->bodies.end();) {
         auto entity = world.find(it->first);
-        if (!entity || entity != it->second.entity || !world.activeCollider(*entity) || signature(*entity) != it->second.signature) {
+        if (!entity || entity != it->second.entity || !world.activeCollider(*entity) || !it->second.sameShape(*entity)) {
             impl->world.removeRigidBody(it->second.body.get());
             it = impl->bodies.erase(it);
         } else ++it;
@@ -164,9 +175,14 @@ void Physics3D::sync(World &world) {
         auto &e = *entity;
         auto it = impl->bodies.find(e.id);
         bool created = it == impl->bodies.end();
+        if(!created && it->second.position==world.worldPosition(e) && it->second.rotation==e.worldRotation &&
+           it->second.velocity==e.velocity && it->second.angular==e.angularVelocity){
+            it->second.force=e.force;it->second.torque=e.torque;continue;
+        }
+        ++impl->bodySynchronizations;
         if (created) {
             Impl::Body record;
-            record.entity = entity; record.signature = signature(e); record.shape = shape(e);
+            record.entity=entity;record.collider=e.collider;record.mass=e.mass;record.dynamic=e.dynamic;record.trigger=e.trigger;record.settings=e.rigidBody;record.shape=shape(e);
             btVector3 inertia(0, 0, 0);
             btScalar mass = e.dynamic ? e.mass : 0;
             if (mass) record.shape->calculateLocalInertia(mass, inertia);
@@ -201,7 +217,7 @@ void Physics3D::sync(World &world) {
         }
         if (created || e.velocity != record.velocity) { record.body->setLinearVelocity(vector(e.velocity)); record.body->activate(true); }
         if (created || e.angularVelocity != record.angular) { record.body->setAngularVelocity(vector(e.angularVelocity)); record.body->activate(true); }
-        record.position = world.worldPosition(e); record.rotation = e.worldRotation; record.velocity = e.velocity; record.angular = e.angularVelocity;
+        record.position = world.worldPosition(e); record.rotation = e.worldRotation; record.velocity = e.velocity; record.angular = e.angularVelocity;record.force=e.force;record.torque=e.torque;
     }
 }
 void Physics3D::step(World &world, float dt) {
@@ -276,8 +292,8 @@ bool Physics3D::overlaps(World &world, const Entity &a, const Entity &b) {
     Touch callback; impl->world.contactPairTest(ia->second.body.get(), ib->second.body.get(), callback);
     return callback.touching;
 }
-Json Physics3D::raycast(World &world, glm::vec3 origin, glm::vec3 direction, float distance, unsigned mask, const std::string &ignore, bool triggers) {
-    sync(world);
+Json Physics3D::raycast(World &world, glm::vec3 origin, glm::vec3 direction, float distance, unsigned mask, const std::string &ignore, bool triggers, bool synchronize) {
+    if(synchronize)sync(world);
     auto length = glm::length(glm::dvec3(direction));
     if (length < 1e-8 || distance <= 0) return nullptr;
     if (mask > 65535) throw std::runtime_error("Ray mask must be 0..65535");
@@ -375,7 +391,7 @@ void Physics3D::wake(World &world, Entity &e) { sync(world); impl->bodies.at(e.i
 Json Physics3D::stats() const {
     size_t sleeping = 0;
     for (auto &[id, record] : impl->bodies) if (record.entity->dynamic && !record.body->isActive()) ++sleeping;
-    return {{"backend", "bullet"}, {"bodies", impl->bodies.size()}, {"sleeping", sleeping}, {"precision", "double"}, {"version", "3.25"}};
+    return {{"backend", "bullet"}, {"bodies", impl->bodies.size()}, {"sleeping", sleeping}, {"precision", "double"}, {"version", "3.25"},{"sync_audits",impl->syncAudits},{"body_synchronizations",impl->bodySynchronizations}};
 }
 void bindPhysics(py::module_ &m) {
     m.def("configure_physics", [](py::dict settings) {

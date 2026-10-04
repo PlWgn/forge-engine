@@ -1,6 +1,6 @@
 # Forge 2.x — карта возможностей и проверок
 
-Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19 и 20](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
+Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19, 20 и 21](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
 
 | Возможность | Реализация | Проверка |
 | --- | --- | --- |
@@ -38,6 +38,12 @@
 | Границы модулей | editor.cpp, hierarchy.cpp, geometry.cpp, material.cpp; lightweight scene/model headers, explicit renderer Runtime | прежние native/GPU regressions; один Python runtime остаётся ограничением |
 | Snapshot metadata | Deep JSON copy для отложенного SaveManager.write | rendering: настоящий успех/отказ reload, nested metadata/data, восстановление меша/дерева |
 
+| Particle instancing | OpenGL 3.3 instance stream (52 bytes/particle), один frame snapshot, alpha CPU sort/additive grouping, кеш путей | simulation_graphics: UV/color/rotation/depth, 5001 instances/260052 bytes, ноль повторных path resolutions, custom shader/explicit fallback, rollback |
+| Transform cache/bulk | Scalar setter проверяет и меняет только subtree; set_positions атомарно строит общее состояние | rendering: 2000 roots/2001 pose updates, no per-setter audit, parent/child bulk, duplicate/NaN/overflow rollback, destroy/id reuse |
+| Physics cache/batch | Raw shape/pose snapshots, unchanged Bullet bodies retained; raycast_many — одна sync на batch | simulation: оба backend, cached body counters, changed pose/collider, destroy/id reuse, batch validation |
+| Python bridge | Native dict/list/scalar conversion, независимые copies; JSON fallback для нестандартных ключей/типов | rendering: nested copies, Unicode, tuples, uint64/big ints, legacy key coercion, rejected NaN/Infinity/cycles/types |
+| Разделение реализации | python_api/scene_runtime/reload/python_bridge; particle_render/gpu_resources/text/media | все прежние native/GPU contracts; relocated core сохраняет происхождение, один Python runtime остаётся границей |
+
 Минимальная сложность для игры: `engine.json` + сцена; все новые модули необязательные. Defaults прежних проектов сохраняются: project storage, базовый свет при пустом lights, прежние play_sound/Entity/UI API. Пример `advanced.json` показывает расширения вместе, `simulation.json` — Bullet и частицы, `materials.json` — PBR, иерархия и живые меши; `editor-empty.json` — начало авторской сцены.
 
 Границы: legacy-физика остаётся AABB; Bullet поддерживает только box/sphere/capsule без mesh-коллайдеров, joints, navmesh и автоматического step climbing. Частицы — CPU-симуляция без столкновений, GPU compute и теней; локальная привязка переносит позицию без вращения/масштаба владельца. Остальные границы: PBR без IBL/environment maps и HDR pipeline, одна shadow map без cascades, TRS skinning без blend tree/morph/retarget, text без bidi/shaping, редактор без visual scripting/gizmos. Режим replay фиксирует ввод/dt, а не внешние сервисы и RNG. Crash reporter не отправляет данные автоматически. Windows должен пройти CI/локальные тесты на своей машине: исполнение macOS не подтверждает Windows binary.
@@ -45,3 +51,5 @@
 CI запускает все шесть CTest suites на macOS/Windows и четыре GPU suites на Linux с Mesa/Xvfb и виртуальным аудиоустройством. Workflow описывает будущие проверки; его наличие не доказывает успешное исполнение. Графические наборы отдельно от CTest. Контракты PBR/иерархии/геометрии и воспроизводимые команды — раздел 20 инструкции.
 
 Динамическое физическое тело должно быть корнем дерева; визуальные дети разрешены, дочерние коллайдеры — статические/кинематические. Матрица рендера наследует scale, размеры коллайдера задаются явно. Blend сортируется по центрам объектов, без OIT и общей сортировки с частицами. В материале фиксированы стандартные каналы и один UV set; произвольный vertex layout требует изменения графического модуля. Процедурные меши не сериализуются в scene JSON. Состояние Python, ввод/окно/GPU пока не полностью разделены: множество параллельных Python runtimes не поддерживается.
+
+Профилирование 2.3: `tools/benchmark_hotpaths.py` создаёт временный проект и измеряет scalar setters, повторные raycast, Python/JSON roundtrips; `--particles` добавляет настоящий GPU-прогон. Это локальный benchmark без timing assertions, а не гарантия FPS. Bullet и нативные публичные поля по-прежнему требуют линейного аудита, legacy raycast сканирует коллайдеры; `raycast_many` сокращает число аудитов. IBL/HDR, cascaded shadows, mesh colliders, joints, navmesh и bidi/shaping в этом этапе не добавлены.

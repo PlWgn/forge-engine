@@ -5,6 +5,73 @@ ROOT,ENGINE=base.ROOT,base.ENGINE
 class RenderingTests(unittest.TestCase):
     setUp,tearDown=base.EngineTests.setUp,base.EngineTests.tearDown
     write_config,script_scene,run_engine=base.EngineTests.write_config,base.EngineTests.script_scene,base.EngineTests.run_engine
+    def test_incremental_and_atomic_bulk_transforms(self):
+        self.script_scene("""import forge
+def build():return {'mode':'3d','physics_enabled':False,'entities':[{'id':'e'+str(i),'kind':'empty'} for i in range(2000)]+[{'id':'child','kind':'empty','parent':'e0','position':[1,0,0]}]}
+def on_start():
+    items=[forge.find('e'+str(i)) for i in range(2000)]
+    before=forge.world_stats()
+    for i,e in enumerate(items):e.position=(i,1,0)
+    after=forge.world_stats()
+    assert after['transform_computations']-before['transform_computations']==2001,(before,after)
+    assert after['transform_audits']==before['transform_audits'],(before,after)
+    child=forge.find('child');assert tuple(child.world_position)==(1,1,0)
+    forge.set_positions([(items[0],(10,0,0)),(child,(2,0,0)),(items[-1],(20,0,0))])
+    assert tuple(child.world_position)==(12,0,0) and tuple(items[-1].position)==(20,0,0)
+    old=[e.position for e in (items[0],child,items[-1])]
+    for updates in ([(items[0],(1,0,0)),(items[0],(2,0,0))],[(items[0],(1,0,0)),(child,(float('nan'),0,0))]):
+        try:forge.set_positions(updates)
+        except (RuntimeError,ValueError):pass
+        else:raise AssertionError('invalid bulk transform accepted')
+        assert old==[e.position for e in (items[0],child,items[-1])]
+    items[0].scale=(1e30,1,1);old_child=child.position;old_root=items[0].position
+    try:forge.set_positions([(items[0],(0,0,0)),(child,(1e30,0,0))])
+    except RuntimeError:pass
+    else:raise AssertionError('bulk world overflow accepted')
+    assert items[0].position==old_root and child.position==old_child
+    child.destroy();replacement=forge.spawn({'id':'child','kind':'empty','parent':'e1'})
+    items[1].position=(4,0,0);assert tuple(replacement.world_position)==(4,0,0)
+    forge.log('INCREMENTAL_OK');forge.quit()
+""")
+        self.assertIn('INCREMENTAL_OK',self.run_engine())
+
+    def test_direct_python_bridge_preserves_json_contract_and_copies(self):
+        self.script_scene("""import forge,math,json
+from pathlib import Path
+class Named(str):pass
+def on_start():
+    e=forge.spawn({'kind':'empty'})
+    payload={'unicode':'Привет 😀','values':[None,True,False,-42,2**63-1,.25,{'nested':[1,2]}],'tuple':(1,2)}
+    e.data=payload;payload['values'][-1]['nested'].append(3)
+    snapshot=e.data;assert snapshot['tuple']==[1,2] and snapshot['values'][-1]['nested']==[1,2]
+    snapshot['values'][-1]['nested'].append(4);assert e.data['values'][-1]['nested']==[1,2]
+    e.data={1:'one',False:'false',None:'null',1.5:'fraction',Named('name'):Named('value')}
+    assert e.data=={'1':'one','false':'false','null':'null','1.5':'fraction','name':'value'}
+    e.data={'big':2**64-1};assert e.data['big']==2**64-1
+    e.data={'big':2**100};assert math.isfinite(e.data['big'])
+    before=e.data;cycle=[];cycle.append(cycle)
+    for invalid in (cycle,{'v':float('nan')},{'v':float('inf')},{'v':object()},{'v':b'bytes'}):
+        try:e.data=invalid
+        except (RuntimeError,ValueError,TypeError,OverflowError):pass
+        else:raise AssertionError('invalid JSON accepted')
+        assert e.data==before
+    e.data={'shared':[payload,payload]};assert e.data['shared'][0]==e.data['shared'][1]
+    Path(forge.project_path('saves/deep.json')).parent.mkdir(exist_ok=True)
+    encoded='['*2000+'0'+']'*2000
+    Path(forge.project_path('saves/deep.json')).write_text(encoded)
+    try:json.loads(encoded)
+    except RecursionError:
+        try:forge.load('deep')
+        except RecursionError:pass
+        else:raise AssertionError('decoder recursion contract changed')
+    else:
+        decoded=forge.load('deep')
+        for _ in range(2000):decoded=decoded[0]
+        assert decoded==0
+    forge.log('BRIDGE_OK');forge.quit()
+""")
+        self.assertIn('BRIDGE_OK',self.run_engine())
+
     def test_hierarchy_local_world_reparent_and_cycles(self):
         self.script_scene('''import forge,math
 def build(): return {'mode':'3d','physics_enabled':False,'entities':[

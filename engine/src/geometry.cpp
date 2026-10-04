@@ -6,7 +6,7 @@ namespace {
 std::string key(std::string name){if(name.rfind("@mesh:",0)==0)name=name.substr(6);if(name.empty() || name.size()>128 || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-. ")!=std::string::npos)throw std::runtime_error("Mesh name must contain 1..128 ASCII letters/digits, spaces, -_.");return "@mesh:"+name;}
 void vector(const Json& j,size_t n,const std::string& field){if(!j.is_array() || j.size()!=n)throw std::runtime_error("mesh."+field+" has invalid vector size");for(auto& v:j)finiteNumber(v,"mesh."+field);}
 Runtime& rt(){if(!active)throw std::runtime_error("Geometry runtime is not active");return *active;}
-py::object python(const Json& j){return py::module_::import("json").attr("loads")(j.dump());}
+py::object python(const Json& j){return pythonValue(j);}
 }
 bool proceduralName(const std::string& name){return name.rfind("@mesh:",0)==0;}
 Geometry& geometry(World& world){if(!world.geometry){world.geometry=std::make_shared<Geometry>();if(world.config)world.geometry->limit=world.config->data.value("geometry_budget_bytes",size_t(64*1024*1024));}return *world.geometry;}

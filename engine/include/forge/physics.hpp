@@ -14,7 +14,7 @@ struct Physics3D {
     void sync(World &);
     void step(World &, float);
     bool overlaps(World &, const Entity &, const Entity &);
-    Json raycast(World &, glm::vec3, glm::vec3, float, unsigned, const std::string &, bool);
+    Json raycast(World &, glm::vec3, glm::vec3, float, unsigned, const std::string &, bool, bool synchronize=true);
     Json move(World &, Entity &, glm::vec3, float);
     Json info(World &, const Entity &);
     void wake(World &, Entity &);

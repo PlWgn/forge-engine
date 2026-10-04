@@ -4,5 +4,6 @@ inline constexpr const char* vertexDefault=R"FORGE(@FORGE_VERTEX@)FORGE";
 inline constexpr const char* fragmentDefault=R"FORGE(@FORGE_FRAGMENT@)FORGE";
 inline constexpr const char* postDefault=R"FORGE(@FORGE_POST@)FORGE";
 inline constexpr const char* particleVertexDefault=R"FORGE(@FORGE_PARTICLE_VERTEX@)FORGE";
+inline constexpr const char* particleInstanceDefault=R"FORGE(@FORGE_PARTICLE_INSTANCE@)FORGE";
 inline constexpr const char* particleFragmentDefault=R"FORGE(@FORGE_PARTICLE_FRAGMENT@)FORGE";
 }

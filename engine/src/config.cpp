@@ -14,7 +14,6 @@ Json readJson(const fs::path& file) {
     std::ifstream stream(file); if(!stream) throw std::runtime_error("File not found: " + file.u8string());
     try { return Json::parse(stream); } catch(const Json::exception& e) { throw std::runtime_error(file.u8string() + ": " + e.what()); }
 }
-Json fromPython(py::handle value) { return Json::parse(py::module_::import("json").attr("dumps")(value).cast<std::string>()); }
 static bool inside(const fs::path& root, const fs::path& path) {
     auto rel = path.lexically_relative(root); return !rel.empty() && *rel.begin() != "..";
 }
@@ -95,6 +94,8 @@ void Config::validate(bool media) const {
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
     auto graphics = data.value("renderer",Json::object());
     if(graphics.contains("texture_filter") && graphics["texture_filter"]!="nearest" && graphics["texture_filter"]!="linear")throw std::runtime_error("renderer.texture_filter must be nearest or linear");
+    if(graphics.contains("particle_instancing") && !graphics["particle_instancing"].is_boolean())throw std::runtime_error("renderer.particle_instancing must be boolean");
+    if(graphics.contains("particle_instance_shader"))requireFile(asset("graphics",graphics["particle_instance_shader"]));
     if(graphics.contains("mipmaps") && !graphics["mipmaps"].is_boolean())throw std::runtime_error("renderer.mipmaps must be boolean");
     for(auto field:{"vertex_shader","fragment_shader","font","particle_vertex_shader","particle_fragment_shader"}) if(graphics.contains(field)) requireFile(asset("graphics",graphics[field]));
     for(auto& font:graphics.value("fallback_fonts",Json::array()))requireFile(asset("graphics",font));

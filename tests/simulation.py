@@ -14,6 +14,35 @@ class SimulationTests(unittest.TestCase):
         self.script_scene(build + source)
         return self.run_engine(frames=150)
 
+    def test_cached_bodies_and_batched_queries_detect_changes(self):
+        for backend in ('legacy','bullet'):
+            with self.subTest(backend=backend):
+                self.script_scene("""import forge
+def build():return {'mode':'3d','physics_enabled':False,'physics':{'backend':'BACKEND'},'entities':[{'id':'e'+str(i),'kind':'empty','collider':[1,1,1],'position':[i*3,0,0]} for i in range(500)]}
+def on_start():
+    target=forge.find('e0');forge.physics_step(0)
+    rays=[((0,0,5),(0,0,-1),10),((1.5,0,5),(0,0,-1),10)]*50
+    before=forge.world_stats();before_physics=forge.physics_stats()
+    hits=forge.raycast_many(rays);after=forge.world_stats();after_physics=forge.physics_stats()
+    assert all(e is target if i%2==0 else e is None for i,e in enumerate(hits))
+    assert after['transform_computations']==before['transform_computations']
+    if before_physics['backend']=='bullet':
+        assert after_physics['body_synchronizations']==before_physics['body_synchronizations']
+        assert after_physics['sync_audits']-before_physics['sync_audits']==2
+    for _ in range(5):assert forge.raycast((0,0,5),(0,0,-1),10) is target
+    if before_physics['backend']=='bullet':assert forge.physics_stats()['body_synchronizations']==after_physics['body_synchronizations']
+    target.position=(1.5,0,0);assert forge.raycast_many(rays[:2])==[None,target]
+    target.collider=(1,1,0);assert forge.raycast_many(rays[:2])==[None,None]
+    target.collider=(1,1,1);target.destroy()
+    replacement=forge.spawn({'id':'e0','kind':'empty','collider':[1,1,1]})
+    assert forge.raycast_many(rays[:2])==[replacement,None]
+    try:forge.raycast_many([rays[0],((float('nan'),0,0),(1,0,0),10)])
+    except (RuntimeError,ValueError):pass
+    else:raise AssertionError('nonfinite batch accepted')
+    forge.log('CACHED_QUERIES_OK');forge.quit()
+""".replace('BACKEND',backend))
+                self.assertIn('CACHED_QUERIES_OK',self.run_engine())
+
     def test_oriented_boxes_spheres_capsules_and_exact_rays(self):
         self.assertIn('SHAPES_OK', self.native('''import forge
 from physics import raycast

@@ -13,11 +13,13 @@ Forge должен оставаться универсальным и прост
 | `engine/src/main.cpp` | Точка входа, команды и запуск интерпретатора |
 | `engine/src/config.cpp` | Чтение и проверка конфигурации |
 | `engine/src/log.cpp` | Терминал, журнал и открытие ошибок |
-| `engine/src/runtime.cpp` | Игровой цикл, события, Python API и reload |
+| `engine/src/runtime.cpp` | Игровой цикл и orchestration; API/lifecycle/reload выделены в отдельные реализации |
 | `engine/include/forge/engine.hpp` | Общий контракт ядра и интерфейсы модулей |
 | `tools/packager.py` | Упаковка проекта, вызываемая ядром |
 
 В версии 2.2 объявления типов из `engine.hpp` вынесены в `engine/include/forge/types.hpp`, `scene.hpp` и `image.hpp`. Это перемещённые контракты ядра: их происхождение и лицензионный статус сохраняются, закрытый перечень LICENSE не расширяется новым независимым компонентом. Перемещение или переименование не выводит код этих файлов из ядра. Изменение только внешнего компонента не становится изменением ядра из-за его размещения в `engine/`.
+
+В версии 2.3 код Python API, lifecycle и hot reload из `runtime.cpp` выделен в `engine/src/python_api.cpp`, `scene_runtime.cpp` и `reload.cpp`; преобразование Python/JSON из `config.cpp`/`runtime.cpp` — в `python_bridge.cpp`. Эти файлы продолжают реализацию перечисленного ядра и сохраняют его происхождение. Это разделение существующей ответственности, а не добавление физики, графики или независимых модулей в закрытый перечень.
 
 ## Что можно менять для игры
 
@@ -30,7 +32,7 @@ Forge должен оставаться универсальным и прост
 - физику и реализацию мира в `engine/src/world.cpp`, Bullet bridge в `engine/src/physics.cpp` / `engine/include/forge/physics.hpp`;
 - систему частиц в `engine/src/particles.cpp` / `engine/include/forge/particles.hpp`, её Python-модуль и шейдеры;
 - иерархию в `engine/src/hierarchy.cpp`, процедурную геометрию в `geometry.cpp` / `geometry.hpp`, проверку материалов в `material.cpp` / `material.hpp`, редактор в `editor.cpp` / `editor.hpp`;
-- графический модуль в `engine/src/render.cpp` и загрузчик `engine/include/forge/gl.hpp`;
+- графический модуль в `engine/src/render.cpp`, отдельные `particle_render.cpp`, `gpu_resources.cpp`, `text.cpp`, `media.cpp` и соответствующие заголовки, загрузчик `engine/include/forge/gl.hpp`;
 - звуковой модуль в `engine/src/audio.cpp`;
 - загрузку ресурсов, импорт моделей, локализацию и платформенные сервисы в `engine/src/assets.cpp`, `model.cpp`, `localization.cpp`, `platform.cpp`, а также дополнительные API в `features.cpp`;
 - `CMakeLists.txt`, launcher `tools/forge.py` и конфигурацию сборки.

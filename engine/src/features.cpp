@@ -13,7 +13,7 @@ Runtime &runtime() {
     return *active;
 }
 py::object python(const Json &value) {
-    return py::module_::import("json").attr("loads")(value.dump());
+    return pythonValue(value);
 }
 glm::vec3 vector(const Json &value) {
     if (!value.is_array() || value.size() != 3)
@@ -168,7 +168,7 @@ void bindFeatures(py::module_ &m) {
     bindPhysics(m);
     bindParticles(m);
     bindGeometry(m);
-    m.def("world_stats",[](){auto& world=runtime().world;return python(Json{{"entities",world.entities.size()},{"indexed",world.entityIndex.size()},{"candidate_pairs",world.physicsCandidates}});});
+    m.def("world_stats",[](){auto& world=runtime().world;return python(Json{{"entities",world.entities.size()},{"indexed",world.entityIndex.size()},{"candidate_pairs",world.physicsCandidates},{"transform_audits",world.transformAudits},{"transform_computations",world.transformComputations}});});
     m.def(
         "user_path",
         [](const std::string &kind, const std::string &file) {

@@ -51,7 +51,7 @@ Json pythonInfo(const ParticleEmitter &emitter) {
             {"enabled", emitter.settings["enabled"]}, {"dropped", emitter.dropped}, {"elapsed", emitter.elapsed}};
 }
 py::object python(const Json &j) {
-    return py::module_::import("json").attr("loads")(j.dump());
+    return pythonValue(j);
 }
 } // namespace
 Json validateEmitter(const Config &config, Json j) {
@@ -188,12 +188,15 @@ std::vector<ParticleDraw> Particles::draw(const World &) const {
         auto start = color(emitter.settings["color_start"]), end = color(emitter.settings["color_end"]);
         glm::vec3 offset = emitter.settings["space"] == "local" ? emitter.origin : glm::vec3(0);
         auto uv = color(emitter.settings["uv"]);
+        float first=emitter.settings["size"][0].get<float>(),last=emitter.settings["size"][1].get<float>();
+        auto texture=emitter.settings["texture"].get<std::string>();
+        unsigned layer=emitter.settings["layer"].get<unsigned>();
+        bool additive=emitter.settings["blend"]=="additive",screen=emitter.settings["screen"].get<bool>();
         for (const auto &p : emitter.live) {
             float t = std::clamp(p.age / p.lifetime, 0.f, 1.f);
-            float size = glm::mix(emitter.settings["size"][0].get<float>(), emitter.settings["size"][1].get<float>(), t) * p.sizeFactor;
+            float size = glm::mix(first,last,t) * p.sizeFactor;
             result.push_back({p.position + offset, glm::mix(start, end, t), uv, size, p.angle,
-                              emitter.settings["texture"], emitter.settings["layer"],
-                              emitter.settings["blend"] == "additive", emitter.settings["screen"].get<bool>()});
+                              texture,layer,additive,screen});
         }
     }
     return result;
