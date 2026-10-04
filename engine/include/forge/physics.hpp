@@ -1,5 +1,6 @@
 #pragma once
-#include <forge/engine.hpp>
+#include <forge/scene.hpp>
+namespace pybind11 {class module_;}
 namespace forge {
 Json validatePhysics(Json);
 Json validateRigidBody(Json);
@@ -28,5 +29,5 @@ struct PhysicsForces {
     explicit PhysicsForces(World &);
     void step(float);
 };
-void bindPhysics(py::module_ &);
+void bindPhysics(pybind11::module_ &);
 } // namespace forge

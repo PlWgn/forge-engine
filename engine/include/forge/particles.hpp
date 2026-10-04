@@ -1,5 +1,6 @@
 #pragma once
-#include <forge/engine.hpp>
+#include <forge/scene.hpp>
+namespace pybind11 {class module_;}
 #include <random>
 namespace forge {
 Json validateEmitter(const Config &, Json);
@@ -38,5 +39,5 @@ struct Particles {
     static constexpr size_t maximum = 100000;
 };
 Particles &particleSystem(World &);
-void bindParticles(py::module_ &);
+void bindParticles(pybind11::module_ &);
 } // namespace forge

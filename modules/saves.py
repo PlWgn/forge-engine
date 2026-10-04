@@ -95,7 +95,7 @@ class SaveManager:
         if forge.reload_in_progress():
             # Freeze values now; write only after the candidate scene has committed.
             snapshot = json.loads(json.dumps(data, allow_nan=False))
-            details = dict(metadata or {})
+            details = json.loads(json.dumps(metadata or {}, allow_nan=False))
             forge.defer_persistence(lambda: self.write(slot, snapshot, title=title, description=description, metadata=details))
             return
         self._validate(data)

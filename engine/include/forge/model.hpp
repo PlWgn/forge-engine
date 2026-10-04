@@ -1,11 +1,13 @@
 #pragma once
-#include <forge/engine.hpp>
+#include <forge/types.hpp>
+#include <forge/image.hpp>
 #include <glm/gtc/quaternion.hpp>
 namespace forge {
 struct ModelVertex {
     glm::vec3 p{0};
     glm::vec2 uv{0};
     glm::vec3 n{0, 1, 0};
+    glm::vec4 color{1};
     glm::ivec4 bones{0};
     glm::vec4 weights{0};
 };
@@ -24,6 +26,9 @@ struct Model {
         std::vector<Bone> bones;
         int node = 0;
         glm::vec4 color{1};
+        Json material = Json::object();
+        std::map<std::string,fs::path> maps;
+        std::map<std::string,std::shared_ptr<ImageData>> embeddedMaps;
         fs::path texture;
         std::shared_ptr<ImageData> embedded;
     };

@@ -17,7 +17,7 @@ Forge должен оставаться универсальным и прост
 | `engine/include/forge/engine.hpp` | Общий контракт ядра и интерфейсы модулей |
 | `tools/packager.py` | Упаковка проекта, вызываемая ядром |
 
-Перемещение или переименование не выводит код этих файлов из ядра. Изменение только внешнего компонента не становится изменением ядра из-за его размещения в `engine/`.
+В версии 2.2 объявления типов из `engine.hpp` вынесены в `engine/include/forge/types.hpp`, `scene.hpp` и `image.hpp`. Это перемещённые контракты ядра: их происхождение и лицензионный статус сохраняются, закрытый перечень LICENSE не расширяется новым независимым компонентом. Перемещение или переименование не выводит код этих файлов из ядра. Изменение только внешнего компонента не становится изменением ядра из-за его размещения в `engine/`.
 
 ## Что можно менять для игры
 
@@ -29,6 +29,7 @@ Forge должен оставаться универсальным и прост
 - `modules/*`, включая Python- и C++-расширения;
 - физику и реализацию мира в `engine/src/world.cpp`, Bullet bridge в `engine/src/physics.cpp` / `engine/include/forge/physics.hpp`;
 - систему частиц в `engine/src/particles.cpp` / `engine/include/forge/particles.hpp`, её Python-модуль и шейдеры;
+- иерархию в `engine/src/hierarchy.cpp`, процедурную геометрию в `geometry.cpp` / `geometry.hpp`, проверку материалов в `material.cpp` / `material.hpp`, редактор в `editor.cpp` / `editor.hpp`;
 - графический модуль в `engine/src/render.cpp` и загрузчик `engine/include/forge/gl.hpp`;
 - звуковой модуль в `engine/src/audio.cpp`;
 - загрузку ресурсов, импорт моделей, локализацию и платформенные сервисы в `engine/src/assets.cpp`, `model.cpp`, `localization.cpp`, `platform.cpp`, а также дополнительные API в `features.cpp`;

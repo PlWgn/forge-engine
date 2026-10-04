@@ -1,0 +1,251 @@
+{
+  "mode": "3d",
+  "physics_enabled": false,
+  "script": "materials.py",
+  "background": [
+    0.02,
+    0.025,
+    0.04,
+    1
+  ],
+  "camera": {
+    "position": [
+      8,
+      5,
+      11
+    ],
+    "target": [
+      0,
+      1,
+      0
+    ]
+  },
+  "rendering": {
+    "ambient": [
+      0.08,
+      0.08,
+      0.1
+    ],
+    "lights": [
+      {
+        "type": "directional",
+        "direction": [
+          -0.5,
+          -1,
+          -0.4
+        ],
+        "color": [
+          1,
+          0.95,
+          0.85
+        ],
+        "intensity": 3,
+        "shadows": true
+      },
+      {
+        "type": "point",
+        "position": [
+          -3,
+          3,
+          3
+        ],
+        "color": [
+          0.3,
+          0.6,
+          1
+        ],
+        "intensity": 5,
+        "range": 10
+      }
+    ]
+  },
+  "entities": [
+    {
+      "id": "floor",
+      "kind": "cube",
+      "position": [
+        0,
+        -0.15,
+        0
+      ],
+      "scale": [
+        14,
+        0.3,
+        10
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.12,
+          0.15,
+          0.2,
+          1
+        ],
+        "roughness": 0.85
+      }
+    },
+    {
+      "id": "turntable",
+      "kind": "empty",
+      "position": [
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "sphere0",
+      "kind": "mesh",
+      "model": "sphere.obj",
+      "parent": "turntable",
+      "position": [
+        -1.9500000000000002,
+        0,
+        0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.1
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.8,
+          0.4,
+          0.12,
+          1
+        ],
+        "metallic": 0,
+        "roughness": 0.15
+      }
+    },
+    {
+      "id": "sphere1",
+      "kind": "mesh",
+      "model": "sphere.obj",
+      "parent": "turntable",
+      "position": [
+        -0.65,
+        0,
+        0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.1
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.8,
+          0.4,
+          0.12,
+          1
+        ],
+        "metallic": 0.5,
+        "roughness": 0.4
+      }
+    },
+    {
+      "id": "sphere2",
+      "kind": "mesh",
+      "model": "sphere.obj",
+      "parent": "turntable",
+      "position": [
+        0.65,
+        0,
+        0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.1
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.8,
+          0.4,
+          0.12,
+          1
+        ],
+        "metallic": 1,
+        "roughness": 0.18
+      }
+    },
+    {
+      "id": "sphere3",
+      "kind": "mesh",
+      "model": "sphere.obj",
+      "parent": "turntable",
+      "position": [
+        1.9500000000000002,
+        0,
+        0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.1
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.8,
+          0.4,
+          0.12,
+          1
+        ],
+        "metallic": 1,
+        "roughness": 0.8
+      }
+    },
+    {
+      "id": "mapped",
+      "kind": "cube",
+      "position": [
+        0,
+        1,
+        -2
+      ],
+      "scale": [
+        1.4,
+        1.4,
+        1.4
+      ],
+      "rotation": [
+        0,
+        25,
+        0
+      ],
+      "material": "pbr-pattern.json"
+    },
+    {
+      "id": "glass",
+      "kind": "cube",
+      "position": [
+        3,
+        1,
+        1.8
+      ],
+      "scale": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "material_properties": {
+        "shading": "pbr",
+        "base_color": [
+          0.2,
+          0.7,
+          0.9,
+          0.3
+        ],
+        "metallic": 0,
+        "roughness": 0.1,
+        "alpha_mode": "blend"
+      }
+    }
+  ]
+}

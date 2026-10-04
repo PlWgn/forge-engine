@@ -1,6 +1,8 @@
 #include <forge/engine.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
+#include <forge/material.hpp>
+#include <forge/geometry.hpp>
 #include <pybind11/stl.h>
 #include <chrono>
 #include <thread>
@@ -16,7 +18,8 @@ static std::array<float,3> tuple(glm::vec3 v){return {v.x,v.y,v.z};}
 static glm::vec3 vector(std::array<float,3> v,const std::string& field="vector"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field)};}
 static glm::vec4 color(std::array<float,4> v,const std::string& field="color"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field),finiteNumber(v[3],field)};}
 static float positive(float value,const std::string& field){finiteNumber(value,field);if(value<=0)throw std::runtime_error(field+" must be positive");return value;}
-static void physicsMutation(const Entity& e){if(rigidPhysics(rt().world) && rt().world.activeCollider(e))validatePhysicsEntity(e);}
+static void transformMutation(Entity& e,const Entity& next){auto old=e;e.position=next.position;e.rotation=next.rotation;e.scale=next.scale;try{rt().world.syncTransforms();}catch(...){e=std::move(old);rt().world.syncTransforms();throw;}}
+static void physicsMutation(const Entity& e){if(rigidPhysics(rt().world) && rt().world.activeCollider(e)){auto body=e;if(!e.parent.empty()){auto parent=rt().world.find(e.parent);if(parent)body.position=glm::vec3((glm::dmat4(parent->worldMatrix)*glm::dmat4(composeTransform(e)))[3]);}validatePhysicsEntity(body);}}
 static py::object toPython(const Json& j){return py::module_::import("json").attr("loads")(j.dump());}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
@@ -44,8 +47,9 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def("set_localized_text",[](Entity& e,const std::string& key,py::dict params){auto data=fromPython(params);auto text=rt().localization.translate(key,data);e.textKey=key;e.textParams=data;e.text=text;},py::arg("key"),py::arg("params")=py::dict())
         .def_property("font_size",[](Entity& e){return e.fontSize;},[](Entity& e,float value){e.fontSize=positive(value,"font_size");})
         .def_readwrite("visible",&Entity::visible).def_readonly("alive",&Entity::alive)
-        .def_readwrite("dynamic",&Entity::dynamic).def_readwrite("trigger",&Entity::trigger)
+        .def_property("dynamic",[](Entity& e){return e.dynamic;},[](Entity& e,bool value){if(value && !e.parent.empty())throw std::runtime_error("Dynamic bodies must be hierarchy roots");auto next=e;next.dynamic=value;physicsMutation(next);e.dynamic=value;}).def_readwrite("trigger",&Entity::trigger)
         .def_readwrite("texture",&Entity::texture).def_readwrite("model",&Entity::model)
+        .def_property("material_properties",[](Entity& e){return toPython(e.materialData);},[](Entity& e,py::dict properties){e.materialData=validateMaterial(rt().config,fromPython(properties));})
         .def_property("uv",[](Entity& e){return std::array<float,4>{e.uv.x,e.uv.y,e.uv.z,e.uv.w};},[](Entity& e,std::array<float,4> v){validateEntity(rt().config,Json{{"uv",v}});e.uv=color(v,"uv");})
         .def_readwrite("layer",&Entity::layer).def_readwrite("casts_shadow",&Entity::castsShadow)
         .def_property("uniforms",[](Entity& e){return toPython(e.uniforms);},[](Entity& e,py::dict values){auto data=fromPython(values);validateRenderSettings(Json{{"uniforms",data}});e.uniforms=std::move(data);})
@@ -53,17 +57,26 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_property_readonly("animation",[](Entity& e){return e.animation;})
         .def_property_readonly("animation_playing",[](Entity& e){return e.animationPlaying;})
         .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){auto next=e;next.mass=checkedMass(v);physicsMutation(next);e.mass=next.mass;})
-        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){auto next=e;next.position=vector(v,"position");physicsMutation(next);e.position=next.position;})
-        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){auto next=e;next.rotation=vector(v,"rotation");physicsMutation(next);e.rotation=next.rotation;})
-        .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){e.scale=vector(v,"scale");})
+        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){auto next=e;next.position=vector(v,"position");physicsMutation(next);transformMutation(e,next);})
+        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){auto next=e;next.rotation=vector(v,"rotation");physicsMutation(next);transformMutation(e,next);})
+        .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){auto next=e;next.scale=vector(v,"scale");transformMutation(e,next);})
         .def_property("velocity",[](Entity& e){return tuple(e.velocity);},[](Entity& e,std::array<float,3> v){auto next=e;next.velocity=vector(v,"velocity");physicsMutation(next);e.velocity=next.velocity;})
         .def_property("angular_velocity",[](Entity& e){return tuple(e.angularVelocity);},[](Entity& e,std::array<float,3> v){auto next=e;next.angularVelocity=vector(v,"angular_velocity");if(rigidPhysics(rt().world) && rt().world.activeCollider(next))validatePhysicsEntity(next);e.angularVelocity=next.angularVelocity;})
         .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){auto next=e;next.collider=vector(v,"collider");physicsMutation(next);e.collider=next.collider;})
+        .def_property_readonly("parent",[](Entity& e){return rt().world.find(e.parent);})
+        .def_property("local_position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){auto next=e;next.position=vector(v,"local_position");physicsMutation(next);transformMutation(e,next);})
+        .def_property("local_rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){auto next=e;next.rotation=vector(v,"local_rotation");physicsMutation(next);transformMutation(e,next);})
+        .def_property("local_scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){auto next=e;next.scale=vector(v,"local_scale");transformMutation(e,next);})
+        .def_property("world_position",[](Entity& e){rt().world.syncTransforms();return tuple(rt().world.worldPosition(e));},[](Entity& e,std::array<float,3> v){rt().world.setWorldPosition(e,vector(v,"world_position"));})
+        .def_property_readonly("world_rotation",[](Entity& e){rt().world.syncTransforms();return tuple(e.worldRotation);})
+        .def_property_readonly("world_matrix",[](Entity& e){rt().world.syncTransforms();py::list rows;for(int r=0;r<4;++r){py::list row;for(int c=0;c<4;++c)row.append(e.worldMatrix[c][r]);rows.append(row);}return rows;})
+        .def("set_parent",[](Entity& e,py::object parent,bool keep){std::string id;if(!parent.is_none())id=py::isinstance<py::str>(parent)?parent.cast<std::string>():parent.cast<Entity&>().id;rt().world.reparent(e,id,keep);},py::arg("parent")=py::none(),py::arg("keep_world")=false)
+        .def("children",[](Entity& e,bool recursive){return rt().world.children(e,recursive);},py::arg("recursive")=false)
         .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color=color(v);})
         .def_property("data",[](Entity& e){return toPython(e.data);},[](Entity& e,py::object v){e.data=fromPython(v);})
         .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){if(v.is_none()){e.clipped=false;return;}auto next=color(v.cast<std::array<float,4>>(),"clip");e.clip=next;e.clipped=true;})
-        .def("destroy",[](Entity& e){e.alive=false;})
-        .def("move",[](Entity& e,float x,float y,float z){auto next=e;next.position=vector(tuple(e.position+vector({x,y,z},"move")),"position");physicsMutation(next);e.position=next.position;},py::arg("x"),py::arg("y"),py::arg("z")=0)
+        .def("destroy",[](Entity& e,bool children){rt().world.destroy(e,children);},py::arg("children")=true)
+        .def("move",[](Entity& e,float x,float y,float z){auto next=e;next.position=vector(tuple(e.position+vector({x,y,z},"move")),"position");physicsMutation(next);transformMutation(e,next);},py::arg("x"),py::arg("y"),py::arg("z")=0)
         .def("impulse",[](Entity& e,float x,float y,float z){auto next=e;next.velocity=vector(tuple(e.velocity+vector({x,y,z},"impulse")/e.mass),"velocity");physicsMutation(next);e.velocity=next.velocity;},py::arg("x"),py::arg("y"),py::arg("z")=0);
     m.def("spawn",[](py::dict d){auto e=rt().world.spawn(fromPython(d));try{if(!e->textKey.empty())e->text=rt().localization.translate(e->textKey,e->textParams);}catch(...){e->alive=false;throw;}return e;});
     m.def("find",[](const std::string& id){return rt().world.find(id);});
@@ -102,6 +115,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("set_paused",[](bool value){rt().gamePaused=value;});m.def("is_paused",[](){return rt().gamePaused;});
     m.def("on_frame",[](py::object callback,bool persistent){if(!PyCallable_Check(callback.ptr()))throw std::runtime_error("Frame listener must be callable");unsigned id=++rt().listenerIndex;rt().listeners.push_back({id,callback,persistent});return id;},py::arg("callback"),py::arg("persistent")=false);
     m.def("remove_listener",[](unsigned id){auto& list=rt().listeners;list.erase(std::remove_if(list.begin(),list.end(),[&](auto& l){return l.id==id;}),list.end());});
+    m.def("user_screenshot",[](const std::string& file){if(rt().tearingDown)return;if(rt().renderer)rt().renderer->screenshot(userPath(rt().config,"captures",file));else logger.write("WARN","Screenshot requires a window");});
     m.def("screenshot",[](const std::string& file){if(rt().tearingDown)return;if(rt().renderer)rt().renderer->screenshot(rt().config.resolve(file));else logger.write("WARN","Screenshot requires a window");});
     m.def("stop_sounds",[](){rt().audio.stop();});
     m.def("log",[](py::object value,const std::string& level){if(level!="INFO" && level!="WARN" && level!="ERROR" && level!="DEBUG")throw std::runtime_error("Unknown log level");logger.write(level,py::str(value));},py::arg("message"),py::arg("level")="INFO");
@@ -114,8 +128,8 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     bindFeatures(m);
     for(auto init:nativeModules())init(m);
 }
-Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),assets(config),dev(development),headless(noWindow){world.config=&config;audio.silent=headless;localization.load(config,"",true);active=this;}
-Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();active=nullptr;}
+Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),assets(config),dev(development),headless(noWindow){if(active)throw std::runtime_error("Only one Python runtime can be active in this process");world.config=&config;audio.silent=headless;localization.load(config,"",true);active=this;}
+Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();if(active==this)active=nullptr;}
 py::object Runtime::loadModule(const fs::path& file) {
     if(!fs::is_regular_file(file))throw std::runtime_error("Script not found: "+file.u8string());
     auto types=py::module_::import("types");auto module=types.attr("ModuleType")("_forge_script_"+std::to_string(++moduleIndex));
@@ -142,7 +156,7 @@ void Runtime::attachPending(){
     unsigned initializedCount=0;
     for(;;){std::vector<std::shared_ptr<Entity>> pending;for(auto& e:world.entities)if(e->alive && !e->attached)pending.push_back(e);
         if(pending.empty())break;
-        for(auto e:pending){if(++initializedCount>8192)throw std::runtime_error("Lifecycle spawn limit exceeded (8192 per attachment pass)");attach(e);}
+        for(auto e:pending){if(!e->scripts.empty() && ++initializedCount>8192)throw std::runtime_error("Lifecycle spawn limit exceeded (8192 scripted entities per attachment pass)");attach(e);}
     }
 }
 void Runtime::destroyDead(){
@@ -151,6 +165,7 @@ void Runtime::destroyDead(){
         for(auto& s:dead){if(++count>8192)throw std::runtime_error("Lifecycle destroy limit exceeded");try{if(py::hasattr(s.instance,"on_destroy"))s.instance.attr("on_destroy")();}catch(...){if(!failure)failure=std::current_exception();}}
     }
     world.entities.erase(std::remove_if(world.entities.begin(),world.entities.end(),[](auto& e){return !e->alive;}),world.entities.end());
+    world.pruneIndex();
     if(failure)std::rethrow_exception(failure);
 }
 void Runtime::loadScene(const std::string& name,const Localization* teardownLocalization) {
@@ -165,7 +180,9 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[](auto& l){return !l.persistent;}),listeners.end());
     if(renderer)renderer->checkpointInput();
     audio.begin();initializing=true;
+    bool ownRendererStage=renderer && !reloading;
     try {
+        if(ownRendererStage)renderer->stage();
         if(reloading)audio.configure(config.data.value("audio_settings",Json::object()));
         py::object sceneModule;
         auto sceneFile=config.asset("scenes",name);
@@ -182,19 +199,21 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
                     if(j.contains("gravity"))world.gravity=vector(j["gravity"].get<std::array<float,3>>());
                     if(j.contains("background"))world.background=color(j["background"].get<std::array<float,4>>(),"background");
                     auto camera=j.value("camera",Json::object());if(camera.contains("position"))world.cameraPosition=vector(camera["position"].get<std::array<float,3>>());if(camera.contains("target"))world.cameraTarget=vector(camera["target"].get<std::array<float,3>>());world.fov=camera.value("fov",60.0f);if(world.fov<=0 || world.fov>=179)throw std::runtime_error("Camera fov must be between 0 and 179");
-                    for(auto& data:j.value("entities",Json::array()))world.spawn(data);
+                    world.loadEntities(j.value("entities",Json::array()));
                     world.configureSimulation(j);
                 }
             }
         } else if(world.scene.contains("script"))sceneModule=loadModule(config.asset("scenes",world.scene["script"]));
         refreshLocalizedEntities();
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
-        attachPending();destroyDead();refreshLocalizedEntities();if(rigidPhysics(world))physics3D(world).sync(world);if(renderer)renderer->validateWorld(world);
+        attachPending();destroyDead();world.syncTransforms();for(auto& e:world.entities)if(e->alive && proceduralName(e->model) && !geometry(world).entries.count(e->model))throw std::runtime_error("Missing procedural mesh: "+e->model);refreshLocalizedEntities();if(rigidPhysics(world))physics3D(world).sync(world);if(renderer)renderer->validateWorld(world);
     } catch(...) {
+        if(ownRendererStage)renderer->discard();
         assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
         persistence=std::move(previousPersistence);initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
         listeners=std::move(oldListeners);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
     }
+    if(ownRendererStage)renderer->commit();
     initializing=false;audio.commit();
     // Old callbacks see their own world. Their mutations cannot affect the new scene.
     auto readyWorld=std::move(world);auto readyScripts=std::move(scripts);auto readyListeners=listeners;auto readyPending=pendingScene;bool readyRunning=running,readyPaused=gamePaused;
@@ -253,7 +272,7 @@ class _ForgeStream:
 sys.stdout, sys.stderr = _ForgeStream('INFO'), _ForgeStream('ERROR')
 )");
     auto win=config.data.value("window",Json::object());world.width=win.value("width",1280);world.height=win.value("height",720);
-    if(!headless){renderer=std::make_unique<Renderer>();renderer->init(config,world);}
+    if(!headless){renderer=std::make_unique<Renderer>();renderer->init(config,world,*this);}
     for(auto& item:config.data.value("startup_scripts",Json::array())){auto module=loadModule(config.asset("scripts",item.get<std::string>()));startup.push_back(module);if(py::hasattr(module,"on_start"))module.attr("on_start")();}
     loadScene(config.entry());watched=snapshot();
 }

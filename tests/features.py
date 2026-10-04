@@ -249,7 +249,13 @@ def on_update(dt):
             assert json.loads((self.root/'saves/simple.json').read_text())['stage']==0
             assert json.loads((self.root/'saves/slots/managed.json').read_text())['data']['stage']==0
             self.assertEqual((self.root/'deferred.txt').read_text(),'0')
-            self.config['stage']=2;self.write_config();wait('STAGE_2');time.sleep(.05)
+            self.config['stage']=2;self.write_config();wait('STAGE_2')
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                if json.loads((self.root/'saves/simple.json').read_text())['stage']==2 and (self.root/'deferred.txt').read_text()=='2':break
+                if process.poll() is not None:self.fail((self.root/'forge.log').read_text())
+                time.sleep(.03)
+            else:self.fail('Timed out waiting for persistence commit')
             self.assertEqual(json.loads((self.root/'saves/simple.json').read_text())['stage'],2)
             self.assertEqual((self.root/'deferred.txt').read_text(),'2')
             (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)

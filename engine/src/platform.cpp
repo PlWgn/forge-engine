@@ -25,7 +25,7 @@ static fs::path confined(const fs::path &root, const std::string &name) {
     return result;
 }
 fs::path userPath(const Config &c, const std::string &kind, const std::string &file) {
-    if (kind != "data" && kind != "saves" && kind != "config" && kind != "cache" && kind != "logs")
+    if (kind != "data" && kind != "saves" && kind != "config" && kind != "cache" && kind != "logs" && kind != "captures")
         throw std::runtime_error("Unknown user directory kind");
     auto id = c.data.value("storage", Json::object()).value("application_id", std::string("org.forge.game"));
     if (id.empty() || id.size() > 120 || id == "." || id == "..")

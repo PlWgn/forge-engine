@@ -1,6 +1,8 @@
 #include <forge/engine.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
+#include <forge/material.hpp>
+#include <forge/geometry.hpp>
 #include <cmath>
 #include <limits>
 namespace forge {
@@ -49,7 +51,7 @@ Json validateEntity(const Config& c, Json j) {
     if(!j.is_object()) throw std::runtime_error("Entity must be an object");
     if(j.contains("prefab")) { auto base = readJson(c.asset("objects",j["prefab"])); j.erase("prefab"); base.merge_patch(j); j=base; }
     if(!j.is_object())throw std::runtime_error("Prefab must resolve to an entity object");
-    for(auto field:{"id","name","kind","model","texture","material","text","text_key"})
+    for(auto field:{"id","name","kind","model","texture","material","text","text_key","parent"})
         if(j.contains(field) && !j[field].is_string())throw std::runtime_error(std::string(field)+" must be a string");
     for(auto field:{"dynamic","trigger","visible","screen"})
         if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be a boolean");
@@ -63,6 +65,7 @@ Json validateEntity(const Config& c, Json j) {
         for(auto& v:j[field])finiteNumber(v,field);
     }
     checkedMass(finiteNumber(j.value("mass",Json(1)),"mass"));
+    if(j.contains("material_properties"))validateMaterial(c,j["material_properties"]);
     validateRigidBody(j.value("rigid_body",Json::object()));
     if(j.contains("layer") && (!j["layer"].is_number_integer() || j["layer"].get<double>()<0 || j["layer"].get<double>()>4294967295.0))throw std::runtime_error("layer must be an unsigned 32-bit integer");
     for(auto field:{"casts_shadow","animation_loop"})if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be boolean");
@@ -73,13 +76,14 @@ Json validateEntity(const Config& c, Json j) {
     auto kind=j.value("kind", "sprite"); if(kind!="sprite" && kind!="cube" && kind!="mesh" && kind!="text" && kind!="empty") throw std::runtime_error("Unknown entity kind: " + kind);
     for(auto group : {"texture","model","material"}) if(j.contains(group) && !j[group].get<std::string>().empty()) {
         std::string folder = std::string(group)=="texture"?"textures":std::string(group)=="model"?"models":"materials";
-        if(std::string(group)!="texture" || j[group].get<std::string>().rfind("@target:",0)!=0)requireFile(c.asset(folder,j[group]));
+        if(!(std::string(group)=="model" && proceduralName(j[group])) && (std::string(group)!="texture" || j[group].get<std::string>().rfind("@target:",0)!=0))requireFile(c.asset(folder,j[group]));
     }
     if(kind=="mesh" && j.value("model", "").empty()) throw std::runtime_error("mesh needs model");
     if(j.contains("scripts")) { if(!j["scripts"].is_array()) throw std::runtime_error("scripts must be an array"); for(auto& s:j["scripts"]) requireFile(c.asset("scripts",s.is_string()?s.get<std::string>():s.at("file").get<std::string>())); }
     return j;
 }
 void Config::validate(bool media) const {
+    auto geometryBudget=data.value("geometry_budget_bytes",Json(64*1024*1024));if(!geometryBudget.is_number_integer() || geometryBudget<1 || geometryBudget>1024*1024*1024)throw std::runtime_error("geometry_budget_bytes must be 1..1GiB");
     validatePhysics(data.value("physics",Json::object()));
     validateRenderSettings(data.value("rendering",Json::object()));
     storagePath(*this,data.value("save_directory","saves"));
@@ -90,6 +94,8 @@ void Config::validate(bool media) const {
     for(auto& s:data.value("startup_scripts",Json::array())) requireFile(asset("scripts",s.get<std::string>()));
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
     auto graphics = data.value("renderer",Json::object());
+    if(graphics.contains("texture_filter") && graphics["texture_filter"]!="nearest" && graphics["texture_filter"]!="linear")throw std::runtime_error("renderer.texture_filter must be nearest or linear");
+    if(graphics.contains("mipmaps") && !graphics["mipmaps"].is_boolean())throw std::runtime_error("renderer.mipmaps must be boolean");
     for(auto field:{"vertex_shader","fragment_shader","font","particle_vertex_shader","particle_fragment_shader"}) if(graphics.contains(field)) requireFile(asset("graphics",graphics[field]));
     for(auto& font:graphics.value("fallback_fonts",Json::array()))requireFile(asset("graphics",font));
     if(graphics.contains("post_shader"))requireFile(asset("graphics",graphics["post_shader"]));
@@ -97,11 +103,7 @@ void Config::validate(bool media) const {
     // Validate every reusable object and every declarative scene, not only the first one.
     for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.path().extension()==".json") validateEntity(*this,readJson(item.path()));
     for(auto& item:fs::recursive_directory_iterator(paths.at("materials"))) if(item.path().extension()==".json") {
-        auto m=readJson(item.path()); if(m.contains("texture")) requireFile(asset("textures",m["texture"]));
-        if(m.contains("color")) {
-            if(!m["color"].is_array() || m["color"].size()!=4)throw std::runtime_error(item.path().u8string()+": color must have 4 components");
-            for(auto& v:m["color"])finiteNumber(v,item.path().u8string()+": color");
-        }
+        validateMaterial(*this,readJson(item.path()));
     }
     for(auto& item:fs::recursive_directory_iterator(paths.at("scenes"))) if(item.path().extension()==".json") {
         auto scene=readJson(item.path()); auto mode=scene.value("mode","2d"); if(mode!="2d" && mode!="3d") throw std::runtime_error("Scene mode must be 2d or 3d");

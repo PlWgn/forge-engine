@@ -1,7 +1,9 @@
+#include <forge/engine.hpp>
 #include <algorithm>
 #include <forge/model.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
+#include <forge/geometry.hpp>
 #include <pybind11/stl.h>
 namespace forge {
 namespace {
@@ -165,6 +167,8 @@ Json validateRenderSettings(Json data) {
 void bindFeatures(py::module_ &m) {
     bindPhysics(m);
     bindParticles(m);
+    bindGeometry(m);
+    m.def("world_stats",[](){auto& world=runtime().world;return python(Json{{"entities",world.entities.size()},{"indexed",world.entityIndex.size()},{"candidate_pairs",world.physicsCandidates}});});
     m.def(
         "user_path",
         [](const std::string &kind, const std::string &file) {

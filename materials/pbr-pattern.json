@@ -1,0 +1,8 @@
+{
+  "shading": "pbr",
+  "albedo_texture": "pbr-base.png",
+  "normal_texture": "pbr-normal.png",
+  "metallic_roughness_texture": "pbr-orm.png",
+  "metallic": 1,
+  "roughness": 1
+}

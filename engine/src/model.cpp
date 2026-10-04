@@ -1,9 +1,11 @@
+#include <forge/engine.hpp>
 #include <assimp/IOStream.hpp>
 #include <assimp/IOSystem.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <forge/model.hpp>
+#include <assimp/GltfMaterial.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <stb_image.h>
@@ -136,6 +138,7 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
             for (unsigned i = 0; i < mesh->mNumVertices; ++i) {
                 auto &v = vertices[i];
                 v.p = vec(mesh->mVertices[i]);
+                if(mesh->HasVertexColors(0)){auto c=mesh->mColors[0][i];v.color={c.r,c.g,c.b,c.a};}
                 if (mesh->HasNormals())
                     v.n = vec(mesh->mNormals[i]);
                 if (mesh->HasTextureCoords(0))
@@ -144,6 +147,11 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                     checkedFloat(v.p[a], "model vertex");
                     checkedFloat(v.n[a], "model normal");
                 }
+                checkedFloat(v.uv.x, "model UV");
+                checkedFloat(v.uv.y, "model UV");
+                for (int a = 0; a < 4; ++a)
+                    if (checkedFloat(v.color[a], "model vertex color") < 0 || v.color[a] > 1)
+                        throw std::runtime_error("Model vertex color must be 0..1");
             }
             for (unsigned bi = 0; bi < mesh->mNumBones; ++bi) {
                 auto bone = mesh->mBones[bi];
@@ -178,15 +186,42 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
             aiColor4D color;
             if (aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
                 part.color = {color.r, color.g, color.b, color.a};
-            aiString texture;
-            if (material->GetTexture(aiTextureType_BASE_COLOR, 0, &texture) != AI_SUCCESS)
-                material->GetTexture(aiTextureType_DIFFUSE, 0, &texture);
-            if (texture.length) {
+            float metallic=0,roughness=1;
+            bool pbr=material->Get(AI_MATKEY_METALLIC_FACTOR,metallic)==AI_SUCCESS;
+            material->Get(AI_MATKEY_ROUGHNESS_FACTOR,roughness);
+            if(pbr){
+                part.material={{"shading","pbr"},{"metallic",metallic},{"roughness",roughness},{"alpha_mode","opaque"}};
+                if(aiGetMaterialColor(material,AI_MATKEY_BASE_COLOR,&color)==AI_SUCCESS)part.color={color.r,color.g,color.b,color.a};
+                aiString alpha;if(material->Get(AI_MATKEY_GLTF_ALPHAMODE,alpha)==AI_SUCCESS){auto name=std::string(alpha.C_Str());part.material["alpha_mode"]=name=="BLEND"?"blend":name=="MASK"?"mask":"opaque";}
+                float cutoff=.5;material->Get(AI_MATKEY_GLTF_ALPHACUTOFF,cutoff);part.material["alpha_cutoff"]=cutoff;
+                if(aiGetMaterialColor(material,AI_MATKEY_COLOR_EMISSIVE,&color)==AI_SUCCESS)part.material["emissive"]={color.r,color.g,color.b};
+            }
+            for (int a = 0; a < 4; ++a)
+                if ((checkedFloat(part.color[a], "model material color") < 0 || part.color[a] > 1) && pbr)
+                    throw std::runtime_error("Model material color must be 0..1");
+            if (pbr) {
+                for (auto field : {"metallic", "roughness", "alpha_cutoff"}) {
+                    float value = finiteNumber(part.material[field], std::string("model ") + field);
+                    if (value < 0 || value > 1)
+                        throw std::runtime_error(std::string("Model ") + field + " must be 0..1");
+                }
+                if (part.material.contains("emissive"))
+                    for (auto &component : part.material["emissive"]) {
+                        float value = finiteNumber(component, "model emissive");
+                        if (value < 0 || value > 1000)
+                            throw std::runtime_error("Model emissive must be 0..1000");
+                    }
+            }
+            auto channel=[&](aiTextureType type,const std::string& field){
+                aiString texture;material->GetTexture(type,0,&texture);
+            if (!texture.length)return;
+            std::shared_ptr<ImageData> imageData;fs::path imagePath;
+            {
                 auto raw = std::string(texture.C_Str());
                 auto embedded = scene->GetEmbeddedTexture(raw.c_str());
                 if (embedded) {
-                    part.embedded = std::make_shared<ImageData>();
-                    auto &image = *part.embedded;
+                    imageData = std::make_shared<ImageData>();
+                    auto &image = *imageData;
                     if (!embedded->mHeight) {
                         int channels;
                         auto pixels = stbi_load_from_memory(
@@ -208,11 +243,28 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                 } else {
                     std::replace(raw.begin(), raw.end(), '\\', '/');
                     ProjectIO io(projectRoot, file.parent_path());
-                    part.texture = io.path(raw.c_str());
-                    if (!fs::is_regular_file(part.texture))
-                        throw std::runtime_error("Model texture missing: " + part.texture.u8string());
+                    imagePath = io.path(raw.c_str());
+                    if (!fs::is_regular_file(imagePath))
+                        throw std::runtime_error("Model texture missing: " + imagePath.u8string());
                 }
             }
+
+                if(imageData)part.embeddedMaps[field]=imageData;
+                if(!imagePath.empty())part.maps[field]=imagePath;
+                if(field=="albedo_texture"){part.embedded=imageData;part.texture=imagePath;}
+            };
+            channel(aiTextureType_BASE_COLOR,"albedo_texture");
+            if(part.texture.empty() && !part.embedded)channel(aiTextureType_DIFFUSE,"albedo_texture");
+            channel(aiTextureType_NORMALS,"normal_texture");
+            channel(aiTextureType_AMBIENT_OCCLUSION,"occlusion_texture");
+            channel(aiTextureType_EMISSIVE,"emissive_texture");
+            // glTF packed metallic/roughness: Assimp exposes the same image for both types.
+            channel(aiTextureType_METALNESS,"metallic_texture");channel(aiTextureType_DIFFUSE_ROUGHNESS,"roughness_texture");
+            bool packed=(part.maps.count("metallic_texture") && part.maps.count("roughness_texture") && part.maps["metallic_texture"]==part.maps["roughness_texture"]);
+            if(part.embeddedMaps.count("metallic_texture") && part.embeddedMaps.count("roughness_texture")){
+                aiString m,r;material->GetTexture(aiTextureType_METALNESS,0,&m);material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS,0,&r);packed=std::string(m.C_Str())==r.C_Str();
+            }
+            if(packed){if(part.maps.count("metallic_texture"))part.maps["metallic_roughness_texture"]=part.maps["metallic_texture"];if(part.embeddedMaps.count("metallic_texture"))part.embeddedMaps["metallic_roughness_texture"]=part.embeddedMaps["metallic_texture"];for(auto field:{"metallic_texture","roughness_texture"}){part.maps.erase(field);part.embeddedMaps.erase(field);}}
             result->memoryBytes +=
                 part.vertices.size() * sizeof(ModelVertex) + part.bones.size() * sizeof(Model::Bone);
             result->parts.push_back(std::move(part));

@@ -1,3 +1,4 @@
+#include <forge/engine.hpp>
 #include <condition_variable>
 #include <deque>
 #include <forge/model.hpp>

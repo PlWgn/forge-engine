@@ -1,6 +1,6 @@
 # Forge 2.x — карта возможностей и проверок
 
-Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18 и 19](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
+Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19 и 20](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
 
 | Возможность | Реализация | Проверка |
 | --- | --- | --- |
@@ -29,6 +29,19 @@
 | glTF/GLB/FBX/DAE | Assimp importers, материалы и embedded/external textures | glTF fixture + FBX box; остальные варианты зависят от импортера |
 | Редактор | ImGui hierarchy/inspector/assets, transform/collider/text/light/camera, add/delete/duplicate, JSON/undo/preview | окно editor + serialization; ограничения Python state описаны |
 
-Минимальная сложность для игры: `engine.json` + сцена; все новые модули необязательные. Defaults прежних проектов сохраняются: project storage, базовый свет при пустом lights, прежние play_sound/Entity/UI API. Пример `advanced.json` показывает расширения вместе, `simulation.json` — Bullet и частицы; `editor-empty.json` — начало авторской сцены.
+| PBR | GGX/Smith/Schlick, albedo/normal/MR/AO/emissive; JSON/inline и glTF maps | rendering: validator atomic; rendering_graphics: карты/факторы меняют пиксели, embedded glTF emissive |
+| Прозрачность | opaque/mask/blend; opaque first, center-depth sort, no depth writes для blend; cutout shadows | rendering_graphics: порядок/alpha/mask по пикселям |
+| Родители/дети | Native local TRS, world matrix/position/orientation; cycle checks, reparent, subtree lifecycle | rendering: JSON/Python, rollback shear/overflow, colliders в обоих backend; GPU: дочерний sprite |
+| Процедурные меши | Scene-owned @mesh registry, revision, normals/UV/vertex colors, CPU/GPU budget/release | rendering: validation/lifetime/budget/reload; GPU: update/free, одно имя в разных сценах |
+| Масштабирование | Hash index find; legacy sweep по X, Bullet sync через индекс | rendering: 10000 boxes / 30000 lookups; tools/benchmark_world.py: локальные измерения без timing gates |
+| Texture sampling/captures | nearest/linear, mip chain с учётом GPU bytes; user_screenshot | rendering_graphics: mip budget и пользовательский capture |
+| Границы модулей | editor.cpp, hierarchy.cpp, geometry.cpp, material.cpp; lightweight scene/model headers, explicit renderer Runtime | прежние native/GPU regressions; один Python runtime остаётся ограничением |
+| Snapshot metadata | Deep JSON copy для отложенного SaveManager.write | rendering: настоящий успех/отказ reload, nested metadata/data, восстановление меша/дерева |
 
-Границы: legacy-физика остаётся AABB; Bullet поддерживает только box/sphere/capsule без mesh-коллайдеров, joints, navmesh и автоматического step climbing. Частицы — CPU-симуляция без столкновений, GPU compute и теней; локальная привязка переносит позицию без вращения/масштаба владельца. Остальные границы: базовое lighting без PBR, одна shadow map без cascades, TRS skinning без blend tree/morph/retarget, text без bidi/shaping, редактор без visual scripting/gizmos. Режим replay фиксирует ввод/dt, а не внешние сервисы и RNG. Crash reporter не отправляет данные автоматически. Windows должен пройти CI/локальные тесты на своей машине: исполнение macOS не подтверждает Windows binary.
+Минимальная сложность для игры: `engine.json` + сцена; все новые модули необязательные. Defaults прежних проектов сохраняются: project storage, базовый свет при пустом lights, прежние play_sound/Entity/UI API. Пример `advanced.json` показывает расширения вместе, `simulation.json` — Bullet и частицы, `materials.json` — PBR, иерархия и живые меши; `editor-empty.json` — начало авторской сцены.
+
+Границы: legacy-физика остаётся AABB; Bullet поддерживает только box/sphere/capsule без mesh-коллайдеров, joints, navmesh и автоматического step climbing. Частицы — CPU-симуляция без столкновений, GPU compute и теней; локальная привязка переносит позицию без вращения/масштаба владельца. Остальные границы: PBR без IBL/environment maps и HDR pipeline, одна shadow map без cascades, TRS skinning без blend tree/morph/retarget, text без bidi/shaping, редактор без visual scripting/gizmos. Режим replay фиксирует ввод/dt, а не внешние сервисы и RNG. Crash reporter не отправляет данные автоматически. Windows должен пройти CI/локальные тесты на своей машине: исполнение macOS не подтверждает Windows binary.
+
+CI запускает все шесть CTest suites на macOS/Windows и четыре GPU suites на Linux с Mesa/Xvfb и виртуальным аудиоустройством. Workflow описывает будущие проверки; его наличие не доказывает успешное исполнение. Графические наборы отдельно от CTest. Контракты PBR/иерархии/геометрии и воспроизводимые команды — раздел 20 инструкции.
+
+Динамическое физическое тело должно быть корнем дерева; визуальные дети разрешены, дочерние коллайдеры — статические/кинематические. Матрица рендера наследует scale, размеры коллайдера задаются явно. Blend сортируется по центрам объектов, без OIT и общей сортировки с частицами. В материале фиксированы стандартные каналы и один UV set; произвольный vertex layout требует изменения графического модуля. Процедурные меши не сериализуются в scene JSON. Состояние Python, ввод/окно/GPU пока не полностью разделены: множество параллельных Python runtimes не поддерживается.

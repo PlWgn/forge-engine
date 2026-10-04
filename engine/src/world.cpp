@@ -1,6 +1,7 @@
 #include <forge/engine.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
+#include <forge/material.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
@@ -24,7 +25,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->name=j.value("name",e->id); e->kind=j.value("kind","sprite");
     if(e->kind!="sprite" && e->kind!="cube" && e->kind!="mesh" && e->kind!="text" && e->kind!="empty") throw std::runtime_error("Unknown kind: "+e->kind);
     e->model=j.value("model",""); e->texture=j.value("texture",""); e->material=j.value("material","");
-    if(!e->material.empty()) { auto m=readJson(config->asset("materials",e->material)); e->color=vec4(m.value("color",Json()),e->color); if(e->texture.empty()) e->texture=m.value("texture",""); }
+    if(!e->material.empty()) { auto m=validateMaterial(*config,readJson(config->asset("materials",e->material)));e->materialData=m; e->color=vec4(m.value("color",Json()),e->color); if(e->texture.empty()) e->texture=m.value("texture",""); }
     e->position=vec3(j.value("position",Json()),e->position); e->rotation=vec3(j.value("rotation",Json()),e->rotation);
     e->scale=vec3(j.value("scale",Json()),e->scale); e->velocity=vec3(j.value("velocity",Json()),e->velocity);
     e->collider=vec3(j.value("collider",Json()),e->collider); e->color=vec4(j.value("color",Json()),e->color);
@@ -37,9 +38,17 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->text=j.value("text",""); e->fontSize=j.value("font_size",24.0f); e->scripts=j.value("scripts",Json::array()); e->data=j.value("data",Json::object());
     e->textKey=j.value("text_key","");e->textParams=j.value("text_params",Json::object());if(!e->textParams.is_object())throw std::runtime_error("text_params must be an object");
     if(rigidPhysics(*this) && activeCollider(*e))validatePhysicsEntity(*e);
-    entities.push_back(e); return e;
+    if(j.contains("material_properties"))e->materialData=validateMaterial(*config,j["material_properties"]);
+    e->parent=j.value("parent","");
+    e->worldMatrix=composeTransform(*e);e->worldRotation=e->rotation;
+    if(!assembling && !e->parent.empty()){
+        entities.push_back(e);entityIndex[e->id]=e;
+        try{syncTransforms();}catch(...){entities.pop_back();entityIndex.erase(e->id);throw;}
+    }else {entities.push_back(e);entityIndex[e->id]=e;}
+    return e;
 }
 void World::configureSimulation(const Json& data) {
+    syncTransforms();
     auto settings=config->data.value("physics",Json::object());settings.merge_patch(data.value("physics",Json::object()));
     settings=validatePhysics(std::move(settings));
     if(settings["backend"]=="bullet" && !is3d){
@@ -50,7 +59,7 @@ void World::configureSimulation(const Json& data) {
     if(settings["backend"]=="bullet"){
         for(int axis=0;axis<3;++axis)if(!std::isfinite(gravity[axis]) || std::abs(double(gravity[axis]))>1e6)
             throw std::runtime_error("physics gravity outside allowed range");
-        size_t count=0;for(auto& e:entities)if(activeCollider(*e)){validatePhysicsEntity(*e);++count;}
+        size_t count=0;for(auto& e:entities)if(activeCollider(*e)){auto body=*e;body.position=worldPosition(*e);body.rotation=e->worldRotation;validatePhysicsEntity(body);++count;}
         if(count>settings.value("max_bodies",10000u))throw std::runtime_error("physics.max_bodies exceeded");
     }
     auto next=std::make_shared<Particles>();
@@ -58,11 +67,10 @@ void World::configureSimulation(const Json& data) {
     physicsSettings=std::move(settings);physics3d.reset();particles=std::move(next);
 }
 std::shared_ptr<Entity> World::find(const std::string& id) {
-    for(auto& e:entities) if(e->alive && e->id==id) return e; return {};
+    auto found=entityIndex.find(id);if(found==entityIndex.end())return {};auto e=found->second.lock();return e && e->alive?e:nullptr;
 }
 void World::load(const std::string& scenePath) {
-    for(auto& e:entities) e->alive=false;
-    entities.clear(); contacts.clear();
+    clearEntities(); contacts.clear();
     physicsSettings=Json::object();physics3d.reset();particles.reset();
     auto file=config->asset("scenes",scenePath);
     if(file.extension()==".json") scene=readJson(file);
@@ -75,7 +83,7 @@ void World::load(const std::string& scenePath) {
     auto camera=scene.value("camera",Json::object());
     cameraPosition=vec3(camera.value("position",Json()),glm::vec3(0,0,5)); cameraTarget=vec3(camera.value("target",Json()),glm::vec3(0)); fov=camera.value("fov",60.0f);
     if(fov<=0 || fov>=179) throw std::runtime_error("Camera fov must be between 0 and 179");
-    for(auto& j:scene.value("entities",Json::array())) spawn(j);
+    loadEntities(scene.value("entities",Json::array()));
     configureSimulation(scene);
 }
 bool World::activeCollider(const Entity& e) const {
@@ -83,8 +91,9 @@ bool World::activeCollider(const Entity& e) const {
 }
 bool World::overlaps(const Entity& a,const Entity& b) const {
     if(rigidPhysics(*this))return physics3D(const_cast<World&>(*this)).overlaps(const_cast<World&>(*this),a,b);
+    const_cast<World*>(this)->syncTransforms();
     if(!activeCollider(a) || !activeCollider(b)) return false;
-    auto d=glm::abs(glm::dvec3(a.position)-glm::dvec3(b.position));
+    auto d=glm::abs(glm::dvec3(worldPosition(a))-glm::dvec3(worldPosition(b)));
     auto extent=(glm::dvec3(a.collider)+glm::dvec3(b.collider))*0.5;
     return d.x<=extent.x+0.00001 && d.y<=extent.y+0.00001 && (!is3d || d.z<=extent.z+0.00001);
 }
@@ -94,7 +103,7 @@ static glm::vec3 physicsVector(const glm::dvec3& value,const Entity& e,const std
 }
 void World::physics(float dt) {
     if(rigidPhysics(*this)){try{physics3D(*this).step(*this,dt);}catch(...){physics3d.reset();throw;}return;}
-    contacts.clear();
+    contacts.clear();physicsCandidates=0;
     // Fixed substeps reduce tunnelling; this is a translational AABB solver.
     double count=std::ceil(double(dt)/double(1.0f/120));
     if(!std::isfinite(count) || dt<0 || count>std::numeric_limits<int>::max())
@@ -111,11 +120,19 @@ void World::physics(float dt) {
             }
             if(activeCollider(*e))colliders.push_back(e.get());
         }
-        for(size_t i=0;i<colliders.size();++i) for(size_t k=i+1;k<colliders.size();++k) {
-            auto& a=*colliders[i]; auto& b=*colliders[k]; if(!overlaps(a,b)) continue;
+        syncTransforms();
+        struct Bound {size_t index;double low,high;};std::vector<Bound> sweep;
+        for(size_t i=0;i<colliders.size();++i){auto& e=*colliders[i];auto p=worldPosition(e);sweep.push_back({i,double(p.x)-e.collider.x*.5,double(p.x)+e.collider.x*.5});}
+        std::stable_sort(sweep.begin(),sweep.end(),[](auto& a,auto& b){return a.low<b.low;});
+        std::vector<std::pair<size_t,size_t>> pairs;
+        for(size_t i=0;i<sweep.size();++i)for(size_t k=i+1;k<sweep.size() && sweep[k].low<=sweep[i].high+.00001;++k)pairs.push_back(std::minmax(sweep[i].index,sweep[k].index));
+        std::sort(pairs.begin(),pairs.end());physicsCandidates+=pairs.size();
+        for(auto [i,k]:pairs) {
+            auto& a=*colliders[i];auto& b=*colliders[k];
+            auto difference=glm::dvec3(worldPosition(a))-glm::dvec3(worldPosition(b));auto extent=(glm::dvec3(a.collider)+glm::dvec3(b.collider))*.5;
+            auto distance=glm::abs(difference);if(distance.x>extent.x+.00001 || distance.y>extent.y+.00001 || (is3d && distance.z>extent.z+.00001))continue;
             contacts.insert(std::minmax(a.id,b.id));
             if(a.trigger || b.trigger || (!a.dynamic && !b.dynamic)) continue;
-            auto difference=glm::dvec3(a.position)-glm::dvec3(b.position);
             auto penetration=glm::max((glm::dvec3(a.collider)+glm::dvec3(b.collider))*0.5-glm::abs(difference),glm::dvec3(0));
             int axis=penetration.x<penetration.y?0:1; if(is3d && penetration.z<penetration[axis]) axis=2;
             double normal=difference[axis]>=0?1.0:-1.0;
@@ -132,18 +149,21 @@ void World::physics(float dt) {
             // Commit a collision only after every result has passed validation.
             a.position[axis]=positionA; b.position[axis]=positionB;
             a.velocity[axis]=velocityA; b.velocity[axis]=velocityB;
+            if(a.dynamic)a.worldMatrix[3]=glm::vec4(a.position,1);if(b.dynamic)b.worldMatrix[3]=glm::vec4(b.position,1);
         }
+        syncTransforms();
     }
 }
 std::shared_ptr<Entity> World::raycast(glm::vec3 origin,glm::vec3 direction,float distance) {
     if(rigidPhysics(*this)){auto result=physics3D(*this).raycast(*this,origin,direction,distance,65535,"",true);return result.is_null()?nullptr:find(result["entity"]);}
+    syncTransforms();
     auto ray=glm::dvec3(direction);auto length=glm::length(ray);
     if(length<0.00001 || distance<0) return {};
     ray/=length; std::shared_ptr<Entity> hit; double nearest=distance;
     for(auto& e:entities) if(activeCollider(*e)) {
         auto half=glm::dvec3(e->collider)*0.5; double low=0,high=nearest;
         for(int axis=0;axis<(is3d?3:2);++axis) {
-            double mn=e->position[axis]-half[axis], mx=e->position[axis]+half[axis];
+            double mn=double(worldPosition(*e)[axis])-half[axis], mx=double(worldPosition(*e)[axis])+half[axis];
             if(std::abs(ray[axis])<1e-8) { if(origin[axis]<mn || origin[axis]>mx) { high=-1; break; } }
             else { double a=(mn-origin[axis])/ray[axis],b=(mx-origin[axis])/ray[axis]; if(a>b) std::swap(a,b); low=std::max(low,a); high=std::min(high,b); }
         }
@@ -155,19 +175,20 @@ Json World::moveCharacter(Entity& body,glm::vec3 delta,float skin){
     if(rigidPhysics(*this))return physics3D(*this).move(*this,body,delta,skin);
     if(!activeCollider(body))throw std::runtime_error("Character needs an active collider");
     if(!std::isfinite(skin) || skin<0 || skin>1)throw std::runtime_error("Character skin must be in 0..1");
-    auto position=glm::dvec3(body.position);auto half=glm::dvec3(body.collider)*.5;Json hits=Json::array();bool grounded=false;
+    syncTransforms();
+    auto position=glm::dvec3(worldPosition(body));auto half=glm::dvec3(body.collider)*.5;Json hits=Json::array();bool grounded=false;
     for(int axis: {0,2,1}){if(!is3d && axis==2)continue;double requested=checkedFloat(delta[axis],"character delta"),allowed=requested;Entity* hit=nullptr;
         for(auto& pointer:entities){auto& other=*pointer;if(&other==&body || other.trigger || !activeCollider(other))continue;auto otherHalf=glm::dvec3(other.collider)*.5;
-            bool aligned=true;for(int k=0;k<(is3d?3:2);++k)if(k!=axis && std::abs(position[k]-double(other.position[k]))>=half[k]+otherHalf[k]-1e-8)aligned=false;
+            bool aligned=true;for(int k=0;k<(is3d?3:2);++k)if(k!=axis && std::abs(position[k]-double(worldPosition(other)[k]))>=half[k]+otherHalf[k]-1e-8)aligned=false;
             if(!aligned)continue;
-            double low=double(other.position[axis])-otherHalf[axis],high=double(other.position[axis])+otherHalf[axis];
+            double low=double(worldPosition(other)[axis])-otherHalf[axis],high=double(worldPosition(other)[axis])+otherHalf[axis];
             if(requested>0 && position[axis]+half[axis]<=low+skin){double gap=std::max(0.0,low-position[axis]-half[axis]-skin);if(gap<allowed){allowed=gap;hit=&other;}}
             if(requested<0 && position[axis]-half[axis]>=high-skin){double gap=std::min(0.0,high-position[axis]+half[axis]+skin);if(gap>allowed){allowed=gap;hit=&other;}}
         }
         position[axis]+=allowed;
         if(hit){glm::vec3 normal(0);normal[axis]=requested>0?-1.f:1.f;hits.push_back({{"entity",hit->id},{"normal",{normal.x,normal.y,normal.z}}});if(axis==1 && (is3d?requested<0:requested>0))grounded=true;}
     }
-    auto next=physicsVector(position,body,"character position");body.position=next;
+    auto next=physicsVector(position,body,"character position");setWorldPosition(body,next);
     return {{"position",{next.x,next.y,next.z}},{"grounded",grounded},{"hits",hits}};
 }
 Json World::serialize()const{
@@ -178,6 +199,8 @@ Json World::serialize()const{
     for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
         for(auto& field:std::vector<std::pair<std::string,std::string>>{{"model",e.model},{"texture",e.texture},{"material",e.material},{"text",e.text},{"text_key",e.textKey},{"animation",e.animation}})if(!field.second.empty())data[field.first]=field.second;
         if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}result["entities"].push_back(std::move(data));
+        if(!e.parent.empty())result["entities"].back()["parent"]=e.parent;
+        if(!e.materialData.empty())result["entities"].back()["material_properties"]=e.materialData;
         result["entities"].back()["angular_velocity"]=array3(e.angularVelocity);result["entities"].back()["rigid_body"]=e.rigidBody;
     }return result;
 }

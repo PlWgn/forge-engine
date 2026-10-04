@@ -15,9 +15,35 @@ jobs:
       - run: python -m pip install cmake==3.31.6
       - run: python tools/dependencies.py
       - run: python tools/forge.py compile
-      - run: python tools/forge.py test
+      - name: All native regressions (including numeric and packager_paths)
+        run: ctest --test-dir build -C Release --output-on-failure
       - run: python tools/forge.py build --output dist/Game
       - uses: actions/upload-artifact@v4
         with:
           name: Forge-${{ matrix.os }}
           path: dist/Game
+
+  graphics:
+    # Software OpenGL exercises pixels/shaders independently from native builds.
+    # This does not certify physical macOS/Windows GPU or audio devices.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y xorg-dev libgl1-mesa-dev xvfb xauth mesa-utils pulseaudio
+      - run: python -m pip install cmake==3.31.6
+      - run: python tools/dependencies.py
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGLFW_BUILD_WAYLAND=OFF -DPython_EXECUTABLE=$(which python)
+      - run: cmake --build build --parallel 4
+      - run: pulseaudio --start --exit-idle-time=-1
+      - run: pactl load-module module-null-sink sink_name=forge_test
+      - name: Shader, UI, particle, PBR and hierarchy pixel regressions
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          xvfb-run -a python tests/graphics.py build/bin/forge
+          xvfb-run -a python tests/features_graphics.py build/bin/forge
+          xvfb-run -a python tests/simulation_graphics.py build/bin/forge
+          xvfb-run -a python tests/rendering_graphics.py build/bin/forge

@@ -5,7 +5,9 @@
 #include <fstream>
 #include <functional>
 #include <glm/glm.hpp>
-#include <json.hpp>
+#include <forge/types.hpp>
+#include <forge/scene.hpp>
+#include <forge/image.hpp>
 #include <map>
 #include <memory>
 #include <pybind11/embed.h>
@@ -13,16 +15,10 @@
 #include <string>
 #include <vector>
 namespace forge {
-namespace fs = std::filesystem;
 namespace py = pybind11;
-using Json = nlohmann::json;
 struct Model;
 struct Physics3D;
 struct Particles;
-struct ImageData {
-    int width = 0, height = 0;
-    std::vector<unsigned char> pixels;
-};
 float finiteNumber(const Json &, const std::string &field);
 struct Config {
     fs::path root, file;
@@ -92,61 +88,14 @@ struct LocalizedText {
     std::string key;
     Json params = Json::object();
 };
-struct Entity {
-    std::string id, name, kind = "sprite", model, texture, material, text, textKey;
-    Json textParams = Json::object();
-    glm::vec3 position{0}, rotation{0}, scale{1}, velocity{0}, collider{0};
-    glm::vec3 angularVelocity{0}, force{0}, torque{0};
-    Json rigidBody = Json::object();
-    glm::vec4 color{1}, clip{0};
-    glm::vec4 uv{0, 0, 1, 1};
-    unsigned layer = 1;
-    bool castsShadow = true;
-    Json uniforms = Json::object();
-    std::string animation;
-    double animationTime = 0;
-    float animationSpeed = 1;
-    bool animationLoop = true, animationPlaying = false;
-    bool clipped = false;
-    bool attached = false;
-    bool visible = true, alive = true, dynamic = false, trigger = false, screen = false;
-    float mass = 1, fontSize = 24;
-    Json scripts = Json::array();
-    Json data = Json::object();
-};
-struct World {
-    Config *config = nullptr;
-    std::vector<std::shared_ptr<Entity>> entities;
-    Json scene;
-    Json physicsSettings = Json::object();
-    std::shared_ptr<Physics3D> physics3d;
-    std::shared_ptr<Particles> particles;
-    unsigned nextId = 0;
-    glm::vec3 cameraPosition{0, 0, 5}, cameraTarget{0}, gravity{0, -9.81f, 0};
-    bool is3d = false;
-    bool physicsEnabled = true;
-    Json renderSettings = Json::object();
-    float fov = 60;
-    int width = 1280, height = 720;
-    glm::vec4 background{0.025f, 0.04f, 0.075f, 1};
-    std::shared_ptr<Entity> spawn(Json data);
-    void configureSimulation(const Json &);
-    std::shared_ptr<Entity> find(const std::string &id);
-    void load(const std::string &scenePath);
-    std::set<std::pair<std::string, std::string>> contacts;
-    void physics(float dt);
-    bool activeCollider(const Entity &) const;
-    bool overlaps(const Entity &a, const Entity &b) const;
-    std::shared_ptr<Entity> raycast(glm::vec3 origin, glm::vec3 direction, float distance);
-    Json moveCharacter(Entity &, glm::vec3 delta, float skin = .001f);
-    Json serialize() const;
-};
+struct Runtime;
 struct Renderer {
     struct Impl;
     std::unique_ptr<Impl> impl, staged;
     Renderer();
     ~Renderer();
     void init(const Config &, World &);
+    void init(const Config &, World &, Runtime &);
     void render(World &);
     void validateWorld(const World &);
     void invalidate();

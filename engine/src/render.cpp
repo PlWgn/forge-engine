@@ -1,7 +1,11 @@
+#include <forge/engine.hpp>
 #include <chrono>
 #include <forge/gl.hpp>
 #include <forge/model.hpp>
 #include <forge/particles.hpp>
+#include <forge/editor.hpp>
+#include <forge/geometry.hpp>
+#include <forge/material.hpp>
 #include <forge/shaders.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -52,6 +56,8 @@ Mesh upload(const std::vector<Vertex> &vertices) {
     gl::EnableVertexAttribArray(4);
     gl::VertexAttribPointer(4, 4, gl::FLOAT, 0, sizeof(Vertex),
                             reinterpret_cast<void *>(offsetof(Vertex, weights)));
+    gl::EnableVertexAttribArray(5);
+    gl::VertexAttribPointer(5,4,gl::FLOAT,0,sizeof(Vertex),reinterpret_cast<void*>(offsetof(Vertex,color)));
     return m;
 }
 unsigned compile(unsigned kind, const std::string &source, const std::string &name) {
@@ -250,12 +256,10 @@ int fontFor(const std::vector<std::shared_ptr<FontFace>> &faces, int code) {
     }
     return 0;
 }
-glm::mat4 modelMatrix(const Entity &e) {
-    auto m = glm::translate(glm::mat4(1), e.position);
-    m = glm::rotate(m, glm::radians(e.rotation.x), glm::vec3(1, 0, 0));
-    m = glm::rotate(m, glm::radians(e.rotation.y), glm::vec3(0, 1, 0));
-    m = glm::rotate(m, glm::radians(e.rotation.z), glm::vec3(0, 0, 1));
-    return glm::scale(m, e.scale);
+glm::mat4 modelMatrix(const Entity &e) {return e.worldMatrix;}
+double textWorldScale(const Entity &e) {
+    return std::max(glm::length(glm::dvec3(e.worldMatrix[0])),
+                    glm::length(glm::dvec3(e.worldMatrix[1])));
 }
 unsigned linkProgram(const std::string &vertex, const std::string &fragment, const std::string &name) {
     auto vs = compile(gl::VERTEX_SHADER, vertex, name + ".vertex");
@@ -350,6 +354,10 @@ struct Renderer::Impl {
     };
     std::map<std::string, Target> targets;
     std::map<std::string, std::shared_ptr<Model>> models;
+    std::map<std::string,unsigned long long> modelRevisions;
+    Json materialOptions=Json::object();
+    const Model::Part* materialPart=nullptr;
+    glm::vec3 cameraPosition{0,0,5};
     std::vector<Vertex> batch;
     unsigned batchTexture = 0;
     glm::vec4 batchColor{1};
@@ -364,10 +372,9 @@ struct Renderer::Impl {
          previousWindow;
     glm::mat4 shadowMatrix{1};
     bool shadowEnabled = false;
-    bool editorEnabled = false, editorContext = false, preview = false;
-    std::string selected, status;
-    std::vector<Json> undo, redo;
-    char sceneFile[512] = "editor-scene.json";
+    bool editorEnabled = false, editorContext = false;
+    Editor editorState;
+    Runtime* context = nullptr;
     ~Impl() {
         if (editorContext) {
             ImGui_ImplOpenGL3_Shutdown();
@@ -399,7 +406,7 @@ struct Renderer::Impl {
         for (auto &[name, target] : targets)
             freeTarget(target);
         targets.clear();
-        models.clear();
+        models.clear();modelRevisions.clear();
         fontFaces.clear();
         if (whiteTexture)
             gl::DeleteTextures(1, &whiteTexture);
@@ -426,7 +433,7 @@ struct Renderer::Impl {
         pages.swap(other.pages);
         glyphs.swap(other.glyphs);
         targets.swap(other.targets);
-        models.swap(other.models);
+        models.swap(other.models);modelRevisions.swap(other.modelRevisions);
         std::swap(batchAllocated, other.batchAllocated);
         std::swap(particleAllocated, other.particleAllocated);
         std::swap(gpuBytes, other.gpuBytes);
@@ -467,7 +474,19 @@ struct Renderer::Impl {
                                       ? textFile(config->asset("graphics", options["post_shader"]))
                                       : postDefault,
                                   "Post shader");
-        shadowProgram = linkProgram(vertexDefault, "#version 330 core\nvoid main(){}", "Shadow shader");
+        shadowProgram = linkProgram(vertexDefault, R"(#version 330 core
+in vec2 v_uv;
+in vec4 v_vertex_color;
+uniform sampler2D u_texture;
+uniform vec4 u_color;
+uniform int u_textured, u_alpha_mode;
+uniform float u_alpha_cutoff;
+void main(){
+    float alpha=u_color.a*v_vertex_color.a;
+    if(u_textured==1) alpha*=texture(u_texture,v_uv).a;
+    if(u_alpha_mode==1 && alpha<u_alpha_cutoff) discard;
+}
+)", "Shadow shader");
         auto particleShader = [&](const char* field, const char* file, const char* fallback) {
             auto path = config->asset("graphics", options.value(field, std::string(file)));
             return options.contains(field) || fs::is_regular_file(path) ? textFile(path) : std::string(fallback);
@@ -482,7 +501,7 @@ struct Renderer::Impl {
                                    {{-.5f, .5f, 0}, {0, 1}, {0, 0, 1}}});
         meshes["batch"] = upload({});
         meshes["particles"] = upload({});
-        gl::BindVertexArray(meshes["particles"].vao);gl::DisableVertexAttribArray(3);gl::DisableVertexAttribArray(4);
+        gl::BindVertexArray(meshes["particles"].vao);gl::DisableVertexAttribArray(3);gl::DisableVertexAttribArray(4);gl::DisableVertexAttribArray(5);
         std::vector<Vertex> cube;
         for (int axis = 0; axis < 3; ++axis)
             for (int sign : {-1, 1}) {
@@ -540,6 +559,8 @@ struct Renderer::Impl {
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         return result;
     }
+    size_t textureStorage(int w,int h)const{size_t bytes=size_t(w)*h*4;if(config->data.value("renderer",Json::object()).value("mipmaps",false))while(w>1 || h>1){w=std::max(1,w/2);h=std::max(1,h/2);bytes+=size_t(w)*h*4;}return bytes;}
+    void filterTexture(){auto options=config->data.value("renderer",Json::object());bool nearest=options.value("texture_filter","linear")=="nearest";bool mip=options.value("mipmaps",false);gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MAG_FILTER,nearest?0x2600:gl::LINEAR);gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MIN_FILTER,mip?(nearest?0x2700:0x2703):(nearest?0x2600:gl::LINEAR));if(mip)gl::GenerateMipmap(gl::TEXTURE_2D);}
     unsigned imagePath(const fs::path &path) {
         auto name = path.u8string();
         auto found = textures.find(name);
@@ -547,11 +568,11 @@ struct Renderer::Impl {
             textureFrames[name] = frame;
             return found->second;
         }
-        auto pixels = active->assets.image(path);
-        reserve(pixels->pixels.size());
+        auto pixels = context->assets.image(path);
+        auto bytes=textureStorage(pixels->width,pixels->height);reserve(bytes);
         auto id = texture(pixels->pixels.data(), pixels->width, pixels->height);
-        textures[name] = id;
-        textureBytes[name] = pixels->pixels.size();
+        filterTexture();textures[name] = id;
+        textureBytes[name] = bytes;
         textureFrames[name] = frame;
         return id;
     }
@@ -608,6 +629,22 @@ struct Renderer::Impl {
             gl::Uniform1i(gl::GetUniformLocation(p, "u_shadow_map"), 1);
         }
     }
+    unsigned embeddedImage(const ImageData& pixels,const std::string& name){auto found=textures.find(name);if(found!=textures.end()){textureFrames[name]=frame;return found->second;}auto bytes=textureStorage(pixels.width,pixels.height);reserve(bytes);auto id=texture(pixels.pixels.data(),pixels.width,pixels.height);filterTexture();textures[name]=id;textureBytes[name]=bytes;textureFrames[name]=frame;return id;}
+    unsigned materialImage(const char* field){
+        auto name=materialOptions.value(field,"");if(!name.empty())return image(name);
+        if(materialPart){auto embedded=materialPart->embeddedMaps.find(field);if(embedded!=materialPart->embeddedMaps.end())return embeddedImage(*embedded->second,"material:"+std::to_string(reinterpret_cast<uintptr_t>(materialPart))+":"+field);auto found=materialPart->maps.find(field);if(found!=materialPart->maps.end())return imagePath(found->second);}
+        return 0;
+    }
+    glm::vec4 materialColor()const{auto c=materialOptions.value("base_color",Json::array({1,1,1,1}));return {c[0],c[1],c[2],c[3]};}
+    void material(unsigned p){
+        gl::Uniform1i(gl::GetUniformLocation(p,"u_pbr"),materialOptions.value("shading","legacy")=="pbr");
+        auto alpha=materialOptions.value("alpha_mode","blend");gl::Uniform1i(gl::GetUniformLocation(p,"u_alpha_mode"),alpha=="opaque"?0:alpha=="mask"?1:2);
+        for(auto field:{"metallic","roughness","normal_scale","occlusion_strength","alpha_cutoff"})gl::Uniform1f(gl::GetUniformLocation(p,(std::string("u_")+field).c_str()),materialOptions.value(field,std::string(field)=="metallic"?0.f:std::string(field)=="alpha_cutoff"?.5f:1.f));
+        auto e=materialOptions.value("emissive",Json::array({0,0,0}));glm::vec3 emission{e[0],e[1],e[2]};gl::Uniform3fv(gl::GetUniformLocation(p,"u_emissive"),1,glm::value_ptr(emission));gl::Uniform3fv(gl::GetUniformLocation(p,"u_camera_position"),1,glm::value_ptr(cameraPosition));
+        const char* fields[]={"normal_texture","metallic_roughness_texture","metallic_texture","roughness_texture","occlusion_texture","emissive_texture"};
+        const char* uniforms[]={"u_normal_map","u_mr_map","u_metallic_map","u_roughness_map","u_occlusion_map","u_emissive_map"};
+        for(int i=0;i<6;++i){auto tex=materialImage(fields[i]);gl::ActiveTexture(gl::TEXTURE0+2+i);gl::BindTexture(gl::TEXTURE_2D,tex?tex:whiteTexture);gl::Uniform1i(gl::GetUniformLocation(p,uniforms[i]),2+i);gl::Uniform1i(gl::GetUniformLocation(p,("u_maps["+std::to_string(i)+"]").c_str()),tex?1:0);}
+    }
     void draw(const Mesh &mesh, const glm::mat4 &model, const glm::mat4 &view, const glm::vec4 &color,
               unsigned tex, bool lit, const std::vector<glm::mat4> *bones = nullptr,
               unsigned overrideProgram = 0) {
@@ -622,16 +659,20 @@ struct Renderer::Impl {
         if (bones && !bones->empty())
             gl::UniformMatrix4fv(gl::GetUniformLocation(p, "u_bones"), int(bones->size()), 0,
                                  glm::value_ptr(bones->front()));
-        gl::Uniform4fv(gl::GetUniformLocation(p, "u_color"), 1, glm::value_ptr(color));
+        auto tint=color*materialColor();gl::Uniform4fv(gl::GetUniformLocation(p, "u_color"), 1, glm::value_ptr(tint));
         gl::Uniform1i(gl::GetUniformLocation(p, "u_textured"), tex ? 1 : 0);
-        gl::Uniform1f(gl::GetUniformLocation(p, "u_lit"), lit ? 1 : 0);
-        gl::Uniform1f(gl::GetUniformLocation(p, "u_time"), active ? float(active->time) : 0);
-        glm::vec2 resolution(active ? active->world.width : 1280, active ? active->world.height : 720);
+        gl::Uniform1f(gl::GetUniformLocation(p, "u_lit"), lit && materialOptions.value("shading","legacy")!="unlit" ? 1 : 0);
+        gl::Uniform1f(gl::GetUniformLocation(p, "u_time"), context ? float(context->time) : 0);
+        glm::vec2 resolution(context ? context->world.width : 1280, context ? context->world.height : 720);
         gl::Uniform2fv(gl::GetUniformLocation(p, "u_resolution"), 1, glm::value_ptr(resolution));
         if (!shadowPass && !overrideProgram) {
-            lighting(p);
+            lighting(p);material(p);
             uniforms(p, renderOptions.value("uniforms", Json::object()));
             uniforms(p, entityUniforms);
+        }
+        if (shadowPass) {
+            gl::Uniform1i(gl::GetUniformLocation(p,"u_alpha_mode"),materialOptions.value("alpha_mode","blend")=="mask"?1:0);
+            gl::Uniform1f(gl::GetUniformLocation(p,"u_alpha_cutoff"),materialOptions.value("alpha_cutoff",.5f));
         }
         gl::ActiveTexture(gl::TEXTURE0);
         gl::BindTexture(gl::TEXTURE_2D, tex ? tex : whiteTexture);
@@ -755,7 +796,7 @@ struct Renderer::Impl {
     void text(const Entity &e, const glm::mat4 &projection) {
         if (e.fontSize <= 0)
             return;
-        int raster = glyphRasterSize(e.fontSize, std::max(std::abs(e.scale.x), std::abs(e.scale.y)), density);
+        int raster = glyphRasterSize(e.fontSize, textWorldScale(e), density);
         int ascent, descent, gap;
         stbtt_GetFontVMetrics(&fontFaces.front()->font, &ascent, &descent, &gap);
         float primaryScale = stbtt_ScaleForPixelHeight(&fontFaces.front()->font, float(raster));
@@ -787,17 +828,22 @@ struct Renderer::Impl {
             previousFace = face;
         }
     }
+    std::string modelKey(const std::string& name){return proceduralName(name)?name:config->asset("models",name).u8string();}
+    void dropModel(const std::string& key){auto found=models.find(key);if(found==models.end())return;for(size_t i=0;i<found->second->parts.size();++i){auto id="model:"+key+":"+std::to_string(i);auto mesh=meshes.find(id);if(mesh!=meshes.end()){gl::DeleteBuffers(1,&mesh->second.vbo);gl::DeleteVertexArrays(1,&mesh->second.vao);gpuBytes-=found->second->parts[i].vertices.size()*sizeof(Vertex);meshes.erase(mesh);}}models.erase(found);modelRevisions.erase(key);}
     Model &prepareModel(const std::string &name) {
-        auto file = config->asset("models", name);
-        auto key = file.u8string();
-        auto found = models.find(key);
-        if (found == models.end()) {
-            auto asset = active->assets.model(file);
-            found = models.emplace(key, asset).first;
-            for (size_t i = 0; i < asset->parts.size(); ++i) {
-                reserve(asset->parts[i].vertices.size() * sizeof(Vertex));
-                meshes["model:" + key + ":" + std::to_string(i)] = upload(asset->parts[i].vertices);
-            }
+        auto key=modelKey(name);std::shared_ptr<Model> source;unsigned long long revision=0;
+        if(proceduralName(name)){auto& store=geometry(context->world);auto found=store.entries.find(name);if(found==store.entries.end())throw std::runtime_error("Missing procedural mesh: "+name);source=found->second.model;revision=found->second.revision;}
+        auto found=models.find(key);
+        if(found!=models.end() && (modelRevisions[key]!=revision || (source && found->second!=source))){
+            // Reserve the replacement before releasing the working GPU mesh.
+            size_t needed=0,previous=0;for(auto& part:source->parts)needed+=part.vertices.size()*sizeof(Vertex);for(auto& part:found->second->parts)previous+=part.vertices.size()*sizeof(Vertex);
+            if(needed>gpuLimit || gpuBytes-previous>gpuLimit-needed)throw std::runtime_error("Geometry GPU budget exceeded");dropModel(key);found=models.end();
+        }
+        if(found==models.end()){
+            if(!source)source=context->assets.model(config->asset("models",name));
+            size_t bytes=0;for(auto& part:source->parts)bytes+=part.vertices.size()*sizeof(Vertex);reserve(bytes);
+            for(size_t i=0;i<source->parts.size();++i)meshes["model:"+key+":"+std::to_string(i)]=upload(source->parts[i].vertices);
+            found=models.emplace(key,source).first;modelRevisions[key]=revision;
         }
         return *found->second;
     }
@@ -808,10 +854,10 @@ struct Renderer::Impl {
             auto cached = textures.find(name);
             unsigned result;
             if (cached == textures.end()) {
-                reserve(part.embedded->pixels.size());
+                reserve(textureStorage(part.embedded->width,part.embedded->height));
                 result = texture(part.embedded->pixels.data(), part.embedded->width, part.embedded->height);
-                textures[name] = result;
-                textureBytes[name] = part.embedded->pixels.size();
+                filterTexture();textures[name] = result;
+                textureBytes[name] = textureStorage(part.embedded->width,part.embedded->height);
             } else
                 result = cached->second;
             textureFrames[name] = frame;
@@ -820,7 +866,7 @@ struct Renderer::Impl {
         return part.texture.empty() ? 0 : imagePath(part.texture);
     }
     void model(const Entity &e, const glm::mat4 &view, bool lit) {
-        auto key = config->asset("models", e.model).u8string();
+        auto key = modelKey(e.model);
         auto &asset = prepareModel(e.model);
         auto pose = asset.pose(e.animation, e.animationTime, e.animationLoop);
         auto base = modelMatrix(e);
@@ -833,11 +879,12 @@ struct Renderer::Impl {
             else
                 for (auto &bone : part.bones)
                     bones.push_back(asset.rootInverse * pose[bone.node] * bone.offset);
+            auto saved=materialOptions;materialPart=&part;if(e.materialData.empty())materialOptions=part.material;
             unsigned tex = 0;
-            if (!shadowPass)
-                tex = !e.texture.empty() ? image(e.texture) : modelTexture(part, key, i);
+            if (!shadowPass || materialOptions.value("alpha_mode","blend")=="mask")
+                tex = !e.texture.empty() ? image(e.texture) : !materialOptions.value("albedo_texture","").empty()?image(materialOptions["albedo_texture"]):modelTexture(part, key, i);
             draw(meshes.at("model:" + key + ":" + std::to_string(i)), transform, view, e.color * part.color,
-                 tex, lit, &bones);
+                 tex, lit, &bones);materialOptions=std::move(saved);materialPart=nullptr;
         }
     }
     void particles(World &world, const glm::mat4 &view, const glm::mat4 &ortho, unsigned layers, bool screen) {
@@ -916,20 +963,26 @@ struct Renderer::Impl {
         auto entities = world.entities;
         bool stateSet = false, previousClip = false, previousDepth = false, particlesDrawn = false;
         glm::vec4 previousRect{0};
+        auto blended=[&](const Entity& e){if(!e.alive || !e.visible || !world.is3d || e.screen)return false;if(e.materialData.contains("alpha_mode"))return e.materialData["alpha_mode"]=="blend";if(e.color.a<.999f)return true;if(e.kind=="mesh"){auto& model=prepareModel(e.model);for(auto& p:model.parts)if(p.material.value("alpha_mode","opaque")=="blend")return true;}return false;};
         std::stable_sort(entities.begin(), entities.end(), [&](auto &a, auto &b) {
             if (a->screen != b->screen)
                 return !a->screen;
+            if(!a->screen && world.is3d){bool aa=blended(*a),bb=blended(*b);if(aa!=bb)return !aa;if(aa){auto p=view*glm::vec4(world.worldPosition(*a),1),q=view*glm::vec4(world.worldPosition(*b),1);return p.z/std::max(std::abs(p.w),1e-8f)>q.z/std::max(std::abs(q.w),1e-8f);}}
             return (a->screen || !world.is3d) && a->position.z < b->position.z;
         });
         for (auto &pointer : entities) {
             auto &e = *pointer;
             if (!e.alive || !e.visible || e.kind == "empty" || (!includeUI && e.screen) ||
                 !(e.layer & layers) || (shadowPass && (e.screen || !e.castsShadow || e.kind == "text")) ||
+                (shadowPass && blended(e)) ||
                 (!currentTarget.empty() && e.texture == "@target:" + currentTarget))
                 continue;
             if (e.screen && !particlesDrawn && !shadowPass) {
                 flush();particles(world,view,ortho,layers,false);particlesDrawn=true;stateSet=false;
             }
+            bool blend=!shadowPass && blended(e);
+            if(materialOptions!=e.materialData){flush();materialOptions=e.materialData;}
+            gl::DepthMask(blend?0:1);
             // Scissor/depth/uniform changes terminate an adjacent compatible batch.
             bool clip = e.clipped && e.screen, depth = shadowPass || (world.is3d && !e.screen);
             if (!stateSet || clip != previousClip || depth != previousDepth ||
@@ -973,8 +1026,8 @@ struct Renderer::Impl {
                 continue;
             }
             auto matrix = modelMatrix(e);
-            auto tex = shadowPass ? 0 : image(e.texture);
-            if (!shadowPass && e.kind == "sprite" && (!world.is3d || e.screen))
+            auto tex = shadowPass && materialOptions.value("alpha_mode","blend")!="mask" ? 0 : image(!e.texture.empty()?e.texture:materialOptions.value("albedo_texture",""));
+            if (!shadowPass && e.materialData.empty() && e.kind == "sprite" && (!world.is3d || e.screen))
                 quad(matrix, projection, e.color, tex, e.uv, e.texture.rfind("@target:", 0) == 0);
             else {
                 flush();
@@ -984,12 +1037,13 @@ struct Renderer::Impl {
         flush();
         if (!particlesDrawn) particles(world,view,ortho,layers,false);
         if (includeUI) particles(world,view,ortho,layers,true);
+        gl::DepthMask(1);materialOptions=Json::object();materialPart=nullptr;
         entityUniforms = Json::object();
         drawUV = {0, 0, 1, 1};
         drawFlip = false;
         gl::Disable(gl::SCISSOR_TEST);
     }
-    void edit(World &world);
+    void edit(World &world){editorState.draw(world,*context,keys,buttons,mouseDelta,stats);}
 };
 std::array<float, 3> measureText(const Config &config, const std::string &value, float size) {
     if (!std::isfinite(size) || size <= 0)
@@ -1042,10 +1096,15 @@ void validateMedia(const Config &c) {
                 obj(entry.path());
             if (ext == ".obj" || ext == ".gltf" || ext == ".glb" || ext == ".fbx" || ext == ".dae") {
                 auto model = loadModel(entry.path(), c.root);
-                for (auto &part : model->parts) if (!part.texture.empty()) {
+                std::set<fs::path> maps;
+                for (auto &part : model->parts) {
+                    if (!part.texture.empty()) maps.insert(part.texture);
+                    for (auto &map : part.maps) maps.insert(map.second);
+                }
+                for (auto &path : maps) {
                     int width, height, channels;
-                    auto image = stbi_load(part.texture.u8string().c_str(), &width, &height, &channels, 4);
-                    if (!image) throw std::runtime_error("Invalid model texture: " + part.texture.u8string());
+                    auto image = stbi_load(path.u8string().c_str(), &width, &height, &channels, 4);
+                    if (!image) throw std::runtime_error("Invalid model texture: " + path.u8string());
                     stbi_image_free(image);
                 }
             }
@@ -1054,7 +1113,9 @@ void validateMedia(const Config &c) {
 }
 Renderer::Renderer() : impl(std::make_unique<Impl>()) {}
 Renderer::~Renderer() = default;
-void Renderer::init(const Config &c, World &world) {
+void Renderer::init(const Config &c, World &world){if(!active)throw std::runtime_error("Renderer needs explicit runtime context");init(c,world,*active);}
+void Renderer::init(const Config &c, World &world, Runtime &context) {
+    impl->context=&context;
     impl->config = &c;
     glfwSetErrorCallback([](int code, const char *message) {
         logger.write("ERROR", "GLFW " + std::to_string(code) + ": " + message);
@@ -1102,12 +1163,13 @@ void Renderer::init(const Config &c, World &world) {
     impl->setup();
     gl::Enable(gl::BLEND);
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-    if (active && active->editing)
+    if (impl->context && impl->context->editing)
         editor(true);
 }
 void Renderer::stage() {
     staged = std::make_unique<Impl>();
     staged->config = impl->config;
+    staged->context = impl->context;
     try {
         staged->setup();
     } catch (...) {
@@ -1165,7 +1227,7 @@ void Renderer::validateWorld(const World &world) {
         if (e.kind == "text") {
             if (!std::isfinite(e.fontSize) || e.fontSize <= 0)
                 throw std::runtime_error("Text size must be positive: " + e.id);
-            int raster = glyphRasterSize(e.fontSize, std::max(std::abs(e.scale.x), std::abs(e.scale.y)),
+            int raster = glyphRasterSize(e.fontSize, textWorldScale(e),
                                          resources.density);
             for (auto code : unicode(e.text))
                 if (code != '\n')
@@ -1174,13 +1236,14 @@ void Renderer::validateWorld(const World &world) {
         }
         if (e.scale.x == 0 || e.scale.y == 0 || e.scale.z == 0)
             throw std::runtime_error("Drawable scale cannot be zero: " + e.id);
-        resources.image(e.texture);
+        resources.image(e.texture);for(auto& file:materialTextures(e.materialData))resources.image(file);
         if (e.kind == "mesh") {
             auto &asset = resources.prepareModel(e.model);
+            for(auto& part:asset.parts){for(auto& [field,file]:part.maps)resources.imagePath(file);for(auto& [field,pixels]:part.embeddedMaps)resources.embeddedImage(*pixels,"material:"+std::to_string(reinterpret_cast<uintptr_t>(&part))+":"+field);}
             if (!e.animation.empty())
                 asset.pose(e.animation, 0, e.animationLoop);
             if (e.texture.empty()) {
-                auto key = resources.config->asset("models", e.model).u8string();
+                auto key = resources.modelKey(e.model);
                 for (size_t i = 0; i < asset.parts.size(); ++i)
                     resources.modelTexture(asset.parts[i], key, i);
             }
@@ -1188,6 +1251,8 @@ void Renderer::validateWorld(const World &world) {
     }
 }
 void Renderer::render(World &world) {
+    world.syncTransforms();
+    std::vector<std::string> obsolete;for(auto& [key,model]:impl->models)if(proceduralName(key) && !geometry(world).entries.count(key))obsolete.push_back(key);for(auto& key:obsolete)impl->dropModel(key);
     auto started = std::chrono::steady_clock::now();
     int w, h;
     glfwGetFramebufferSize(impl->window, &w, &h);
@@ -1263,6 +1328,7 @@ void Renderer::render(World &world) {
                               glm::translate(glm::mat4(1), -position);
         bool originalMode = world.is3d;
         world.is3d = options.value("mode", "3d") == "3d";
+        impl->cameraPosition = position;
         try {
             impl->scene(world, view, width, height, width, height, options.value("include_ui", false),
                         options.value("layers", ~0u), it.key());
@@ -1293,6 +1359,7 @@ void Renderer::render(World &world) {
                                  glm::lookAt(world.cameraPosition, world.cameraTarget, up)
                            : ortho * glm::translate(glm::mat4(1), glm::vec3(-world.cameraPosition.x,
                                                                             -world.cameraPosition.y, 0));
+    impl->cameraPosition = world.cameraPosition;
     impl->scene(world, view, w, h, world.width, world.height, true, ~0u);
     if (processing) {
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
@@ -1502,7 +1569,7 @@ void Renderer::windowOptions(const Json &options) {
     impl->vsync = current.value("vsync", true);
     glfwSwapInterval(impl->vsync ? 1 : 0);
 }
-bool Renderer::previewing() const { return impl->preview; }
+bool Renderer::previewing() const { return impl->editorState.preview; }
 void Renderer::editor(bool enabled) {
     impl->editorEnabled = enabled;
     if (!enabled)
@@ -1519,280 +1586,5 @@ void Renderer::editor(bool enabled) {
         ImGui_ImplOpenGL3_Init("#version 330 core");
         impl->editorContext = true;
     }
-}
-void Renderer::Impl::edit(World &world) {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-    auto before = world.serialize();
-    bool changed = false;
-    auto restore = [&](const Json &data) {
-        for (auto &e : world.entities)
-            e->alive = false;
-        world.entities.clear();
-        world.contacts.clear();
-        world.physicsSettings=Json::object();world.physics3d.reset();world.particles.reset();
-        world.scene = data;
-        world.is3d = data.value("mode", "2d") == "3d";
-        world.physicsEnabled = data.value("physics_enabled", true);
-        auto bg = data.value("background", Json::array({0, 0, 0, 1}));
-        world.background = {bg[0].get<float>(), bg[1].get<float>(), bg[2].get<float>(), bg[3].get<float>()};
-        auto camera = data.value("camera", Json::object()),
-             position = camera.value("position", Json::array({0, 0, 5})),
-             target = camera.value("target", Json::array({0, 0, 0}));
-        world.cameraPosition = {position[0].get<float>(), position[1].get<float>(), position[2].get<float>()};
-        world.cameraTarget = {target[0].get<float>(), target[1].get<float>(), target[2].get<float>()};
-        world.fov = camera.value("fov", 60.f);
-        world.renderSettings = validateRenderSettings(data.value("rendering", Json::object()));
-        auto v = data.value("gravity", Json::array({0, -9.81, 0}));
-        world.gravity = {v[0].get<float>(), v[1].get<float>(), v[2].get<float>()};
-        for (auto &entity : data["entities"])
-            world.spawn(entity);
-        world.configureSimulation(data);
-    };
-    auto save = [&]() {
-        try {
-            py::module_::import("forge").attr("save_scene")(std::string(sceneFile));
-            status = "Saved " + std::string(sceneFile);
-        } catch (const std::exception &error) {
-            status = error.what();
-        }
-    };
-    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(290, float(world.height)), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Forge Scene Editor");
-    ImGui::TextUnformatted("Scene / hierarchy");
-    ImGui::InputText("Save as", sceneFile, sizeof(sceneFile));
-    if (ImGui::Button("Save JSON"))
-        save();
-    ImGui::SameLine();
-    if (ImGui::Button("Reload")) {
-        active->pendingScene = active->currentScene;
-        undo.clear();
-        redo.clear();
-    }
-    if (ImGui::Checkbox("Play preview", &preview)) {
-        active->gamePaused = !preview;
-        world.contacts.clear();
-    }
-    if (ImGui::Button("Undo") && !preview && !undo.empty()) {
-        redo.push_back(before);
-        auto previous = undo.back();
-        undo.pop_back();
-        restore(previous);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Redo") && !preview && !redo.empty()) {
-        undo.push_back(before);
-        auto next = redo.back();
-        redo.pop_back();
-        restore(next);
-    }
-    if (ImGui::Button("Add sprite")) {
-        auto e = world.spawn(Json{{"kind", "sprite"},
-                                  {"name", "Sprite"},
-                                  {"position", {float(world.width) / 2, float(world.height) / 2, 0}},
-                                  {"scale", {100, 100, 1}}});
-        selected = e->id;
-        changed = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add cube")) {
-        auto e = world.spawn(Json{{"kind", "cube"}, {"name", "Cube"}});
-        selected = e->id;
-        changed = true;
-    }
-    if (ImGui::Button("Add text")) {
-        auto e = world.spawn(Json{{"kind", "text"},
-                                  {"name", "Text"},
-                                  {"text", "New text"},
-                                  {"screen", true},
-                                  {"position", {100, 100, 0}}});
-        selected = e->id;
-        changed = true;
-    }
-    ImGui::Separator();
-    for (auto &e : world.entities)
-        if (e->alive) {
-            auto label = e->name + "##" + e->id;
-            if (ImGui::Selectable(label.c_str(), selected == e->id))
-                selected = e->id;
-        }
-    ImGui::Separator();
-    ImGui::TextWrapped("%s", status.c_str());
-    ImGui::TextWrapped("Middle mouse: pan. WASD: move camera. Ctrl+S: save. Preview enables game scripts.");
-    ImGui::End();
-    ImGui::SetNextWindowPos(ImVec2(float(world.width) - 340, 0), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(340, float(world.height)), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Inspector");
-    auto entity = world.find(selected);
-    if (entity) {
-        ImGui::Text("ID: %s", entity->id.c_str());
-        char name[512]{};
-        std::snprintf(name, sizeof(name), "%s", entity->name.c_str());
-        if (ImGui::InputText("Name", name, sizeof(name))) {
-            entity->name = name;
-            changed = true;
-        }
-        changed |= ImGui::DragFloat3("Position", glm::value_ptr(entity->position), world.is3d ? .05f : 1.f);
-        changed |= ImGui::DragFloat3("Rotation", glm::value_ptr(entity->rotation), .5f);
-        changed |= ImGui::DragFloat3("Scale", glm::value_ptr(entity->scale), world.is3d ? .02f : 1.f, .001f,
-                                     100000.f);
-        changed |= ImGui::ColorEdit4("Color", glm::value_ptr(entity->color));
-        changed |= ImGui::DragFloat3("Collider", glm::value_ptr(entity->collider), .05f, 0, 100000);
-        changed |= ImGui::Checkbox("Visible", &entity->visible);
-        changed |= ImGui::Checkbox("Screen UI", &entity->screen);
-        changed |= ImGui::Checkbox("Dynamic", &entity->dynamic);
-        changed |= ImGui::Checkbox("Trigger", &entity->trigger);
-        changed |= ImGui::Checkbox("Cast shadow", &entity->castsShadow);
-        if (entity->kind == "text") {
-            char text[4096]{};
-            std::snprintf(text, sizeof(text), "%s", entity->text.c_str());
-            if (ImGui::InputTextMultiline("Text", text, sizeof(text))) {
-                entity->text = text;
-                changed = true;
-            }
-            changed |= ImGui::DragFloat("Font size", &entity->fontSize, .5f, 1, 1024);
-        }
-        if (ImGui::Button("Duplicate")) {
-            auto data = world.serialize();
-            auto copy = *std::find_if(data["entities"].begin(), data["entities"].end(),
-                                      [&](auto &e) { return e["id"] == entity->id; });
-            copy.erase("id");
-            copy["name"] = entity->name + " copy";
-            auto added = world.spawn(copy);
-            selected = added->id;
-            changed = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Delete")) {
-            entity->alive = false;
-            selected.clear();
-            changed = true;
-        }
-        if (!entity->model.empty()) {
-            auto info = active->assets.model(config->asset("models", entity->model))->info();
-            for (auto &clip : info["animations"])
-                if (ImGui::Button(clip["name"].get<std::string>().c_str())) {
-                    entity->animation = clip["name"];
-                    entity->animationTime = 0;
-                    entity->animationPlaying = true;
-                }
-        }
-    }
-    ImGui::Separator();
-    bool threeD = world.is3d;
-    if (ImGui::Checkbox("3D world", &threeD)) {
-        world.is3d = threeD;
-        changed = true;
-    }
-    changed |= ImGui::ColorEdit4("Background", glm::value_ptr(world.background));
-    changed |= ImGui::Checkbox("Physics enabled", &world.physicsEnabled);
-    changed |= ImGui::DragFloat3("Gravity", glm::value_ptr(world.gravity), .1f);
-    changed |= ImGui::DragFloat3("Camera position", glm::value_ptr(world.cameraPosition), .05f);
-    changed |= ImGui::DragFloat3("Camera target", glm::value_ptr(world.cameraTarget), .05f);
-    if (ImGui::Button("Add sunlight")) {
-        world.renderSettings["lights"] = Json::array({{{"type", "directional"},
-                                                       {"direction", {-.5, -1, -.5}},
-                                                       {"color", {1, 1, 1}},
-                                                       {"intensity", 1},
-                                                       {"shadows", true}}});
-        changed = true;
-    }
-    if (world.renderSettings.contains("lights"))
-        for (size_t i = 0; i < world.renderSettings["lights"].size(); ++i) {
-            auto &light = world.renderSettings["lights"][i];
-            ImGui::PushID(int(i));
-            float intensity = light.value("intensity", 1.f);
-            if (ImGui::SliderFloat("Intensity", &intensity, 0, 10)) {
-                light["intensity"] = intensity;
-                changed = true;
-            }
-            ImGui::PopID();
-        }
-    ImGui::Separator();
-    if (ImGui::CollapsingHeader("Assets")) {
-        for (auto group : {"textures", "models", "scenes"}) {
-            if (!ImGui::TreeNode(group))
-                continue;
-            for (auto &item : fs::recursive_directory_iterator(config->paths.at(group))) {
-                if (item.is_regular_file()) {
-                    auto extension = item.path().extension().u8string();
-                    if (std::string(group) == "textures" && extension != ".png" && extension != ".jpg" &&
-                        extension != ".jpeg" && extension != ".tga" && extension != ".bmp")
-                        continue;
-                    if (std::string(group) == "models" && extension != ".obj" && extension != ".gltf" &&
-                        extension != ".glb" && extension != ".fbx" && extension != ".dae")
-                        continue;
-                    if (std::string(group) == "scenes" && extension != ".json" && extension != ".py")
-                        continue;
-                    auto relative =
-                        item.path().lexically_relative(config->paths.at(group)).generic_u8string();
-                    if (ImGui::Selectable(relative.c_str())) {
-                        if (std::string(group) == "scenes" &&
-                            (item.path().extension() == ".json" || item.path().extension() == ".py"))
-                            active->pendingScene = relative;
-                        else if (entity && std::string(group) == "textures") {
-                            entity->texture = relative;
-                            changed = true;
-                        } else if (std::string(group) == "models") {
-                            if (!entity)
-                                entity = world.spawn(Json{{"kind", "mesh"},
-                                                          {"model", relative},
-                                                          {"name", item.path().stem().u8string()}});
-                            else {
-                                entity->model = relative;
-                                entity->kind = "mesh";
-                            }
-                            selected = entity->id;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            ImGui::TreePop();
-        }
-    }
-    auto assetStats = active->assets.stats();
-    ImGui::Text("Draw calls: %u; batches: %u", drawCalls, batchCalls);
-    ImGui::Text("GPU: %.1f MiB", double(gpuBytes) / (1024 * 1024));
-    ImGui::Text("Assets: %.1f MiB", assetStats["resident_bytes"].get<double>() / (1024 * 1024));
-    ImGui::End();
-    auto &io = ImGui::GetIO();
-    if (!io.WantCaptureKeyboard && !preview) {
-        if (keys[GLFW_KEY_S] && (keys[GLFW_KEY_LEFT_CONTROL] || keys[GLFW_KEY_LEFT_SUPER]))
-            save();
-        glm::vec3 forward = world.cameraTarget - world.cameraPosition;
-        if (glm::length(forward) < .0001f)
-            forward = {0, 0, -1};
-        forward = glm::normalize(forward);
-        auto right = glm::cross(forward, glm::vec3(0, 1, 0));
-        right = glm::length(right) > 1e-6f ? glm::normalize(right) : glm::vec3(1, 0, 0);
-        auto move = glm::vec3(0);
-        if (keys[GLFW_KEY_W])
-            move += forward;
-        if (keys[GLFW_KEY_S])
-            move -= forward;
-        if (keys[GLFW_KEY_D])
-            move += right;
-        if (keys[GLFW_KEY_A])
-            move -= right;
-        move *= active->dt * 5;
-        world.cameraPosition += move;
-        world.cameraTarget += move;
-    }
-    if (!io.WantCaptureMouse && buttons[GLFW_MOUSE_BUTTON_MIDDLE]) {
-        auto move = glm::vec3(-mouseDelta.x, mouseDelta.y, 0) * (world.is3d ? .01f : 1.f);
-        world.cameraPosition += move;
-        world.cameraTarget += move;
-    }
-    if (changed && !preview) {
-        undo.push_back(std::move(before));
-        if (undo.size() > 100)
-            undo.erase(undo.begin());
-        redo.clear();
-    }
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 } // namespace forge

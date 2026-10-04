@@ -1,3 +1,4 @@
+#include <forge/engine.hpp>
 #include <forge/particles.hpp>
 #include <pybind11/stl.h>
 #include <algorithm>
@@ -35,7 +36,7 @@ glm::vec3 origin(World &world, ParticleEmitter &emitter) {
     auto position = vector(emitter.settings["position"]);
     auto follow = emitter.settings.value("follow", "");
     if (!follow.empty()) {
-        if (auto entity = world.find(follow)) position += entity->position;
+        if (auto entity = world.find(follow)) position += world.worldPosition(*entity);
         else return emitter.origin; // Existing particles keep the last attachment position.
     }
     emitter.origin = position;
@@ -150,6 +151,7 @@ size_t Particles::burst(World &world, unsigned id, unsigned count) {
 }
 void Particles::update(World &world, float dt) {
     number(dt, "dt", 0, 1);
+    world.syncTransforms();
     for (auto &emitter : emitters) {
         auto acceleration = glm::dvec3(vector(emitter.settings["gravity"]));
         double decay = std::exp(-emitter.settings["drag"].get<double>() * dt);

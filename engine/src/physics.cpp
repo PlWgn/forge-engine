@@ -1,3 +1,4 @@
+#include <forge/engine.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <forge/physics.hpp>
 #include <btBulletDynamicsCommon.h>
@@ -26,6 +27,7 @@ glm::vec3 vector(const Json &j, const std::string &field, double limit = 1e6) {
     if (!j.is_array() || j.size() != 3) throw std::runtime_error(field + " needs three components");
     return {range(j[0], field, -limit, limit), range(j[1], field, -limit, limit), range(j[2], field, -limit, limit)};
 }
+Entity bodyPose(const World& world,const Entity& e){auto pose=e;pose.position=world.worldPosition(e);pose.rotation=e.worldRotation;return pose;}
 btTransform transform(const Entity &e) {
     auto r = glm::radians(glm::dvec3(e.rotation));
     auto q = glm::angleAxis(r.x, glm::dvec3(1, 0, 0)) * glm::angleAxis(r.y, glm::dvec3(0, 1, 0)) * glm::angleAxis(r.z, glm::dvec3(0, 0, 1));
@@ -140,9 +142,10 @@ Physics3D &physics3D(World &world) {
     return *world.physics3d;
 }
 void Physics3D::sync(World &world) {
+    world.syncTransforms();
     size_t count = 0;
     // Validate the entire input before changing Bullet objects or broadphase membership.
-    for (auto &e : world.entities) if (world.activeCollider(*e)) { validatePhysicsEntity(*e); ++count; }
+    for (auto &e : world.entities) if (world.activeCollider(*e)) { validatePhysicsEntity(bodyPose(world,*e)); ++count; }
     if (count > world.physicsSettings.value("max_bodies", 10000u)) throw std::runtime_error("physics.max_bodies exceeded");
     for(int axis=0;axis<3;++axis)range(world.gravity[axis],"physics gravity",-1e6,1e6);
     auto gravity = vector(world.gravity);
@@ -185,20 +188,20 @@ void Physics3D::sync(World &world) {
                 record.body->setCcdSweptSphereRadius(radius);
             }
             // Initialize transforms before insertion, so the broadphase sees the right bounds.
-            record.body->setWorldTransform(transform(e));
+            record.body->setWorldTransform(transform(bodyPose(world,e)));
             impl->world.addRigidBody(record.body.get(), int(e.rigidBody.value("group", 1u)), int(e.rigidBody.value("mask", 65535u)));
             it = impl->bodies.emplace(e.id, std::move(record)).first;
         }
         auto &record = it->second;
-        if (created || e.position != record.position || e.rotation != record.rotation) {
-            auto next = transform(e);
+        if (created || world.worldPosition(e) != record.position || e.worldRotation != record.rotation) {
+            auto next = transform(bodyPose(world,e));
             record.body->setWorldTransform(next);
             if(created || !e.rigidBody.value("kinematic",false))record.body->setInterpolationWorldTransform(next);
             record.body->activate(true); impl->world.updateSingleAabb(record.body.get());
         }
         if (created || e.velocity != record.velocity) { record.body->setLinearVelocity(vector(e.velocity)); record.body->activate(true); }
         if (created || e.angularVelocity != record.angular) { record.body->setAngularVelocity(vector(e.angularVelocity)); record.body->activate(true); }
-        record.position = e.position; record.rotation = e.rotation; record.velocity = e.velocity; record.angular = e.angularVelocity;
+        record.position = world.worldPosition(e); record.rotation = e.worldRotation; record.velocity = e.velocity; record.angular = e.angularVelocity;
     }
 }
 void Physics3D::step(World &world, float dt) {
@@ -303,12 +306,12 @@ Json Physics3D::move(World &world, Entity &e, glm::vec3 delta, float skin) {
     if (found == impl->bodies.end() || found->second.entity.get() != &e) throw std::runtime_error("Character needs an active collider in current scene");
     if (e.dynamic) throw std::runtime_error("Character movement needs a static or kinematic body");
     auto *convex = static_cast<btConvexShape *>(found->second.shape.get());
-    btVector3 position = vector(e.position), remaining = vector(delta);
+    btVector3 position = vector(world.worldPosition(e)), remaining = vector(delta);
     Json hits = Json::array(); bool grounded = false;
     // Bounded recovery lets a resized/spawned controller leave shallow initial penetration.
     btCollisionObject probe;probe.setCollisionShape(convex);
     for(int iteration=0;iteration<8;++iteration){
-        auto pose=transform(e);pose.setOrigin(position);probe.setWorldTransform(pose);
+        auto pose=transform(bodyPose(world,e));pose.setOrigin(position);probe.setWorldTransform(pose);
         struct Recovery : btCollisionWorld::ContactResultCallback {
             const Entity* self;const btCollisionObject* probe;btVector3 normal{0,0,0};double depth=0;
             Recovery(const Entity* e,const btCollisionObject* p):self(e),probe(p){}
@@ -326,7 +329,7 @@ Json Physics3D::move(World &world, Entity &e, glm::vec3 delta, float skin) {
         position+=callback.normal*(callback.depth+skin);
     }
     for (int iteration = 0; iteration < 6 && remaining.length2() > 1e-14; ++iteration) {
-        auto from = transform(e), to = from; from.setOrigin(position); to.setOrigin(position + remaining);
+        auto from = transform(bodyPose(world,e)), to = from; from.setOrigin(position); to.setOrigin(position + remaining);
         struct Sweep : btCollisionWorld::ClosestConvexResultCallback {
             const Entity *self; btVector3 delta;
             Sweep(btVector3 from, btVector3 to, const Entity *e) : ClosestConvexResultCallback(from, to), self(e), delta(to - from) {
@@ -358,7 +361,7 @@ Json Physics3D::move(World &world, Entity &e, glm::vec3 delta, float skin) {
         double into = remaining.dot(normal); if (into < 0) remaining -= normal * into;
     }
     auto next = vector(position, "character position");
-    e.position = next;
+    world.setWorldPosition(e,next);
     sync(world);
     return {{"position", {next.x, next.y, next.z}}, {"grounded", grounded}, {"hits", hits}};
 }
