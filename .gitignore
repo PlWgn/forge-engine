@@ -1,15 +1,71 @@
-.tools/
-build/
-dist/
+# Reproducible local toolchain and downloaded dependencies.
+/.tools/
+/.venv/
+/venv/
+/vendor/*
+!/vendor/README.md
+!/vendor/dependencies.lock.json
+
+# Out-of-source CMake builds and packaged games.
+/build/
+/build-*/
+/cmake-build-*/
+/dist/
+/out/
+*.app/
+.forge-build-*/
+*.dSYM/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/CTestTestfile.cmake
+/Testing/
+/compile_commands.json
+/CMakeUserPresets.json
+
+# Python bytecode, caches and local coverage results.
 __pycache__/
 *.pyc
-*.log
-.DS_Store
-vendor/*
-!vendor/dependencies.lock.json
-!vendor/README.md
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+/htmlcov/
+/coverage.xml
 
-# Local game state and temporary packaging directories
-saves/
-.forge-build-*/
-crash-reports/
+# Player state and diagnostics; custom storage paths need matching rules.
+/saves/
+/crash-reports/
+/replay/
+*.log
+
+# Local screenshots and session reports, not starter game assets.
+/artifacts/
+/Проверка.md
+/docs/FORGE_EXPERIENCE.md
+
+# Personal editor/OS files.
+/.idea/
+/.vscode/
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo
+
+# Local secrets and publishing credentials. Keep public entitlements in Git.
+.env
+.env.*
+!.env.example
+/.credentials/
+*.p12
+*.pfx
+*.mobileprovision
+*.notarization.zip
+
+# Do not ignore *.obj, *.json, *.png, *.wav, *.gltf or native module sources:
+# these can be original models, configuration, fixtures and built-in examples.
