@@ -1,4 +1,4 @@
-# Forge 2.3
+# Forge 2.4
 
 Модульный игровой runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS и Windows.
 
@@ -72,7 +72,7 @@ python tools/benchmark_world.py build/bin/forge
 
 Git хранит C++-исходники, изменяемые Python-модули, инструменты, встроенные примеры с исходными ресурсами, тесты, документацию, лицензии и lock-файл зависимостей. Сборки, окружения, скачанные библиотеки, сохранения, логи, скриншоты и локальные отчёты исключены через [.gitignore](.gitignore). Шрифт, модели `.obj`/glTF, изображения и WAV примеров — необходимые исходные ресурсы и остаются в Git.
 
-После компиляции `python tools/forge.py validate` проверяет ресурсы и синтаксис, `python tools/forge.py test` запускает интеграционные наборы. Полный CTest запускает шесть наборов, включая numeric, packager_paths и новые rendering-регрессии: `ctest --test-dir build -C Release --output-on-failure`. Workflow macOS/Windows выполняет CTest, отдельный Linux job — четыре графических набора на Mesa/Xvfb. Software OpenGL не подтверждает работу физических GPU или аудиоустройств этих ОС. Команды — [инструкция, раздел 20.6](Инструкция.md).
+После компиляции `python tools/forge.py validate` проверяет ресурсы и синтаксис, `python tools/forge.py test` запускает интеграционные наборы. Полный CTest запускает семь наборов, включая numeric, packager_paths, rendering и authoring-регрессии: `ctest --test-dir build -C Release --output-on-failure`. Workflow macOS/Windows выполняет CTest, отдельный Linux job — четыре графических набора на Mesa/Xvfb. Software OpenGL не подтверждает работу физических GPU или аудиоустройств этих ОС. Команды — [инструкция, раздел 20.6](Инструкция.md).
 
 ## Лицензия и изменения
 
@@ -81,3 +81,5 @@ Forge распространяется по пользовательской **F
 Всё вне [перечня файлов ядра](CORE.md) можно изменять для своей игры, если отдельная лицензия не устанавливает другие условия. Это включает шейдеры, физику, графические и звуковые модули. Изменение ядра тоже разрешено, но обычным разработчикам игр рекомендуется использовать конфигурацию и расширения: так проще сохранять совместимость с обновлениями движка. Лицензии сторонних компонентов сохраняются.
 
 Лицензия пользовательская и не имеет статуса OSI-approved. Полные условия: [LICENSE](LICENSE).
+
+Forge 2.4 добавляет prefab-иерархии и независимые экземпляры, property clips, layered skeletal animation с переходами/событиями, state machine, retarget по rest pose и morph targets. В сценовом редакторе доступны клипы, bone keys, layers, scrub, marker timeline, morph sliders и retarget JSON. Пример: `python tools/forge.py dev --scene authoring.py`; API/границы — раздел 22 инструкции. Watcher работает в фоне, listener/contact dispatch избегает повторных полных обходов; лёгкие C++ контракты сохраняют совместимый engine.hpp. CI проверяет также запуск самостоятельной поставки через `tools/verify_package.py`.

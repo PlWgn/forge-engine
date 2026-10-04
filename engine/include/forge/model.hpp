@@ -21,10 +21,12 @@ struct Model {
         int node;
         glm::mat4 offset;
     };
+    struct MorphTarget {std::string name;double weight=0;std::vector<glm::vec3> positions,normals;};
     struct Part {
         std::vector<ModelVertex> vertices;
         std::vector<Bone> bones;
         int node = 0;
+        std::vector<MorphTarget> morphs;
         glm::vec4 color{1};
         Json material = Json::object();
         std::map<std::string,fs::path> maps;
@@ -37,10 +39,12 @@ struct Model {
         std::vector<std::pair<double, glm::vec3>> positions, scales;
         std::vector<std::pair<double, glm::quat>> rotations;
     };
+    struct MorphChannel {int node;std::vector<std::pair<double,std::vector<double>>> keys;};
     struct Clip {
         std::string name;
         double duration = 0, ticks = 25;
         std::vector<Channel> channels;
+        std::vector<MorphChannel> morphs;
     };
     std::vector<Node> nodes;
     std::vector<Part> parts;
@@ -48,6 +52,8 @@ struct Model {
     glm::mat4 rootInverse{1};
     size_t memoryBytes = 0;
     std::vector<glm::mat4> pose(const std::string &, double seconds, bool loop) const;
+    std::vector<glm::mat4> localPose(const std::string&,double,bool) const;
+    std::vector<double> morphPose(size_t part,const std::string&,double,bool) const;
     Json info() const;
 };
 std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRoot);

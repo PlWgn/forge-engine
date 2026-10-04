@@ -148,4 +148,64 @@ def on_update(dt):
         log=(self.root/'forge.log').read_text();line=next(l for l in log.splitlines() if 'USER_CAPTURE_PATH=' in l);path=base.Path(line.split('USER_CAPTURE_PATH=',1)[1]);self.assertTrue(path.exists());self.assertNotEqual(path.parent,self.root)
         try:self.assertGreater(base.point(path,320,240)[1],240)
         finally:path.unlink(missing_ok=True)
+    def test_morph_skinning_retarget_and_shared_model_isolation(self):
+        from model_fixture import authoring_triangle
+        authoring_triangle(self.root/'models/authoring.gltf')
+        authoring_triangle(self.root/'models/target.gltf',joint='TargetJoint',rest=2)
+        self.run_scene("""import forge
+from animation import Animator
+frame=0
+def build():return {'mode':'3d','physics_enabled':False,'background':[0,0,0,1],'camera':{'position':[0,0,4],'target':[0,0,0]}}
+def on_start():
+    global e,b,target,a,t
+    e=forge.spawn({'kind':'mesh','model':'authoring.gltf','material_properties':{'shading':'unlit'}})
+    a=Animator(e,'Idle',auto_update=False)
+    b=forge.spawn({'kind':'mesh','model':'authoring.gltf','position':[1.8,0,0],'visible':False,'material_properties':{'shading':'unlit'}})
+    target=forge.spawn({'kind':'mesh','model':'target.gltf','visible':False,'material_properties':{'shading':'unlit'}})
+    t=Animator(target,layers=[{'model':'authoring.gltf','clip':'Move','mapping':{'Joint':'TargetJoint'}}],auto_update=False)
+def on_update(dt):
+    global frame
+    frame+=1
+    if frame==2:forge.screenshot('morph0.ppm')
+    if frame==3:a.morph(Smile=1)
+    if frame==4:forge.screenshot('morph1.ppm')
+    if frame==5:
+        e.position=(-1,0,0);b.visible=True
+    if frame==6:forge.screenshot('independent.ppm')
+    if frame==7:forge.set_morph_weights(b,{'Smile':1})
+    if frame==8:forge.screenshot('both.ppm')
+    if frame==9:
+        e.visible=False;b.visible=False;target.visible=True;t.seek(0)
+    if frame==10:forge.screenshot('retarget0.ppm')
+    if frame==11:t.seek(.8)
+    if frame==12:forge.screenshot('retarget1.ppm')
+    if frame==13:
+        target.visible=False;e.visible=True;e.position=(0,0,0);forge.set_morph_weights(e,{})
+        a.configure(layers=[{'clip':'Move','time':.8}],auto_update=False)
+    if frame==14:forge.screenshot('animated-morph.ppm')
+    if frame==15:a.configure(layers=[{'clip':'Authored','duration':2,'time':1,'tracks':[{'node':'Joint','position':[{'time':0,'value':[0,0,0]},{'time':2,'value':[0,2,0]}]}]}],auto_update=False)
+    if frame==16:forge.screenshot('authored.ppm')
+""",frames=18)
+        for first,second in [('morph0.ppm','morph1.ppm'),('independent.ppm','both.ppm'),('retarget0.ppm','retarget1.ppm'),('morph0.ppm','animated-morph.ppm'),('morph0.ppm','authored.ppm')]:
+            self.assertNotEqual((self.root/first).read_bytes(),(self.root/second).read_bytes(),(first,second))
+        # Updating the second instance must not alter pixels of the first instance.
+        w,h,a=base.ppm(self.root/'independent.ppm');_,_,b=base.ppm(self.root/'both.ppm')
+        for y in range(h):self.assertEqual(a[(y*w)*3:(y*w+w//2)*3],b[(y*w)*3:(y*w+w//2)*3])
+
+    def test_animation_editor_panel_with_native_playback(self):
+        from model_fixture import authoring_triangle
+        authoring_triangle(self.root/'models/authoring.gltf')
+        self.config['window'].update(width=1280,height=720)
+        # run_scene supplies its standard viewport; the inspector panel still opens.
+        output=self.run_scene("""import forge
+def build():return {'mode':'3d','physics_enabled':False}
+def on_start():
+    e=forge.spawn({'kind':'mesh','model':'authoring.gltf','animator':{'layers':[{'clip':'Move','events':[{'name':'middle','time':.5}]}]}})
+    forge.set_window({'width':1280,'height':900})
+    forge.editor_select(e);forge.screenshot('animation-editor.ppm')
+""",command='edit',frames=4)
+        self.assertNotIn('[ERROR]',output)
+        w,h,pixels=base.ppm(self.root/'animation-editor.ppm')
+        self.assertGreater(len(set(pixels)),30)
+
 if __name__=='__main__':unittest.main(verbosity=2)

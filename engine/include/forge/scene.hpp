@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <forge/types.hpp>
 #include <unordered_map>
 namespace forge {
@@ -7,6 +8,7 @@ struct Physics3D;
 struct Particles;
 struct Geometry;
 struct TransformCache;
+struct AnimatorState;
 struct Entity {
     std::string id, name, kind = "sprite", model, texture, material, text, textKey;
     std::string parent;
@@ -23,6 +25,8 @@ struct Entity {
     bool castsShadow = true;
     Json uniforms = Json::object();
     std::string animation;
+    Json animatorSettings=Json::object(),morphWeights=Json::object();
+    std::shared_ptr<AnimatorState> animator;
     double animationTime = 0;
     float animationSpeed = 1;
     bool animationLoop = true, animationPlaying = false;
@@ -35,6 +39,8 @@ struct Entity {
 };
 glm::mat4 composeTransform(const Entity &);
 struct World {
+    // Optional host preparation; independent Worlds need no Python runtime.
+    std::function<void(Entity&)> prepareEntity;
     Config *config = nullptr;
     std::vector<std::shared_ptr<Entity>> entities;
     std::unordered_map<std::string, std::weak_ptr<Entity>> entityIndex;

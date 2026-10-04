@@ -2,13 +2,53 @@
 #include <forge/engine.hpp>
 #include <pybind11/stl.h>
 #include <algorithm>
+#include <forge/file_watch.hpp>
 namespace forge {
 std::map<fs::path,fs::file_time_type> Runtime::snapshot() const {
     std::map<fs::path,fs::file_time_type> result;result[config.file]=fs::last_write_time(config.file);
     for(auto& [group,path]:config.paths)if(fs::exists(path))for(auto& entry:fs::recursive_directory_iterator(path))if(entry.is_regular_file() && entry.path().extension()!=".pyc" && entry.path().u8string().find("__pycache__")==std::string::npos)result[entry.path()]=entry.last_write_time();
     return result;
 }
-bool Runtime::changed(){auto now=snapshot();if(now==watched)return false;watched=std::move(now);return true;}
+std::unique_ptr<FileWatch> Runtime::prepareWatcher(){
+    if(!dev)return {};
+    std::vector<fs::path> roots;
+    for(auto& [group,path]:config.paths)roots.push_back(path);
+    for(auto& path:config.data.value("python_paths",Json::array()))roots.push_back(config.resolve(path.get<std::string>()));
+    std::sort(roots.begin(),roots.end());roots.erase(std::unique(roots.begin(),roots.end()),roots.end());
+    auto options=config.data.value("development",Json::object());
+    auto interval=std::chrono::milliseconds(int(options.value("watch_interval",.3)*1000));
+    if(watcher && watcher->matches(config.file,roots,interval))return {};
+    return std::make_unique<FileWatch>(config.file,std::move(roots),interval);
+}
+void Runtime::restartWatcher(){auto candidate=prepareWatcher();if(candidate)watcher=std::move(candidate);}
+bool Runtime::changed(){
+    if(!watcher)return false;
+    auto result=watcher->poll();
+    profile["watcher"]={{"scans",result.scans},{"files",result.files},{"scan_ms",result.scanMs},{"error",result.error}};
+    if(!result.error.empty())logger.write("WARN","Development watcher: "+result.error);
+    if(result.changed){changedFiles=std::move(result.filesChanged);changedFilesOverflow=result.overflow;}
+    return result.changed;
+}
+bool Runtime::tryReload(){
+    try {
+        reload();
+        logger.write("INFO","Hot reload complete");
+        return true;
+    }catch(const std::exception& error){
+        logger.error(error.what());
+        logger.write("WARN","Development paused. Edit a watched file to retry.");
+        auto notify=[&](py::object instance){
+            if(!py::hasattr(instance,"on_reload_failed"))return;
+            try {instance.attr("on_reload_failed")(std::string(error.what()));}
+            catch(const std::exception& failure){logger.error(failure.what());}
+        };
+        auto previousScripts=scripts;
+        for(auto& script:previousScripts)notify(script.instance);
+        auto previousStartup=startup;
+        for(auto& module:previousStartup)notify(module);
+        return false;
+    }
+}
 static std::vector<std::string> searchPaths(const Config& config) {
     std::vector<std::string> paths;
     for(auto group:{"modules","scripts","scenes"})paths.push_back(config.paths.at(group).u8string());
@@ -36,9 +76,9 @@ void Runtime::reload(){
         auto updated=Config::load(config.file);if(!entryOverride.empty())updated.data["entry_scene"]=entryOverride;updated.validate(false);auto nextPaths=searchPaths(updated);
         std::vector<fs::path> invalidatedRoots;
         for(auto group:{"modules","scripts","scenes"})invalidatedRoots.push_back(config.paths.at(group));
-        // Keep installed extension packages cached while their configured path remains.
-        for(auto& path:pythonPaths)if(std::find(nextPaths.begin(),nextPaths.end(),path)==nextPaths.end())invalidatedRoots.push_back(fs::u8path(path));
-        auto obsolete=[&](const std::string& input){auto file=fs::weakly_canonical(fs::u8path(input));for(auto& root:invalidatedRoots){auto relative=file.lexically_relative(root);if(!relative.empty() && *relative.begin()!="..")return true;}return false;};
+        // Preserve unchanged extension packages; remove retired paths and changed files.
+        for(auto& path:pythonPaths)if(changedFilesOverflow || std::find(nextPaths.begin(),nextPaths.end(),path)==nextPaths.end())invalidatedRoots.push_back(fs::u8path(path));
+        auto obsolete=[&](const std::string& input){auto file=fs::weakly_canonical(fs::u8path(input));if(changedFiles.count(file))return true;for(auto& root:invalidatedRoots){auto relative=file.lexically_relative(root);if(!relative.empty() && *relative.begin()!="..")return true;}return false;};
         py::module_::import("importlib").attr("invalidate_caches")();py::list remove;
         for(auto item:modules){bool discard=false;
             if(py::hasattr(item.second,"__file__") && !item.second.attr("__file__").is_none())discard=obsolete(item.second.attr("__file__").cast<std::string>());
@@ -47,10 +87,12 @@ void Runtime::reload(){
         }
         for(auto item:remove)modules.attr("pop")(item,py::none());
         auto previousEntry=config.entry();config=std::move(updated);world.config=&config;assets.budget(config.data.value("asset_budget_bytes",size_t(256*1024*1024)));
+        auto nextWatcher=prepareWatcher(); // Baseline before reading scene scripts, never after commit.
         refreshPythonPaths();
         localization.load(config,previousLocalization.language);
         if(renderer)renderer->stage();
         loadScene(previousEntry==config.entry()?currentScene:config.entry(),&previousLocalization);
+        if(nextWatcher)watcher=std::move(nextWatcher);
         if(renderer)renderer->commit();if(editing)gamePaused=renderer?!renderer->previewing():true;
     }catch(...){assets.budget(previousBudget);reloading=false;persistence=std::move(previousPersistence);if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);pythonPaths=std::move(previousPythonPaths);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
     reloading=false;auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}

@@ -3,6 +3,7 @@
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/geometry.hpp>
+#include <forge/animation.hpp>
 #include <pybind11/stl.h>
 #include <algorithm>
 namespace forge {
@@ -50,7 +51,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     auto previousPersistence=persistence;
     auto assetCheckpoint=assets.checkpoint();auto previousInput=inputFrame;auto previousTime=time;auto previousDt=dt;
     // Keep a usable world until the replacement scene and its Python scripts initialize.
-    World replacement;replacement.config=&config;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
+    World replacement;replacement.config=&config;replacement.prepareEntity=world.prepareEntity;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
     auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
     auto oldLocalization=localization;
     auto oldPending=pendingScene;bool oldRunning=running,oldPaused=gamePaused;

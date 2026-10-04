@@ -109,6 +109,7 @@ def main():
         execute([sys.executable, ROOT / 'tests/features.py', binary()])
         execute([sys.executable, ROOT / 'tests/simulation.py', binary()])
         execute([sys.executable, ROOT / 'tests/rendering.py', binary()])
+        execute([sys.executable, ROOT / 'tests/authoring.py', binary()])
         return
     command = [binary(), args.command, '--project', settings]
     if args.output: command += ['--output', args.output.resolve()]

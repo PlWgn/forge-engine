@@ -1,6 +1,6 @@
 # Forge 2.x — карта возможностей и проверок
 
-Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19, 20 и 21](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
+Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19, 20, 21 и 22](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
 
 | Возможность | Реализация | Проверка |
 | --- | --- | --- |
@@ -53,3 +53,19 @@ CI запускает все шесть CTest suites на macOS/Windows и че�
 Динамическое физическое тело должно быть корнем дерева; визуальные дети разрешены, дочерние коллайдеры — статические/кинематические. Матрица рендера наследует scale, размеры коллайдера задаются явно. Blend сортируется по центрам объектов, без OIT и общей сортировки с частицами. В материале фиксированы стандартные каналы и один UV set; произвольный vertex layout требует изменения графического модуля. Процедурные меши не сериализуются в scene JSON. Состояние Python, ввод/окно/GPU пока не полностью разделены: множество параллельных Python runtimes не поддерживается.
 
 Профилирование 2.3: `tools/benchmark_hotpaths.py` создаёт временный проект и измеряет scalar setters, повторные raycast, Python/JSON roundtrips; `--particles` добавляет настоящий GPU-прогон. Это локальный benchmark без timing assertions, а не гарантия FPS. Bullet и нативные публичные поля по-прежнему требуют линейного аудита, legacy raycast сканирует коллайдеры; `raycast_many` сокращает число аудитов. IBL/HDR, cascaded shadows, mesh colliders, joints, navmesh и bidi/shaping в этом этапе не добавлены.
+
+## Forge 2.4
+
+| Возможность | Реализация | Проверка |
+| --- | --- | --- |
+| Prefab hierarchy/inheritance | prefab.cpp, modules/prefabs.py, JSON Merge Patch, local IDs/atomic create | authoring: independent copies, attachment, cycles, duplicate IDs, world overflow rollback |
+| Layered animation/playback | animation.cpp/api, masks, TRS blends, interruptible crossfade, markers/finished queues | authoring: weighted poses, authored bone keys, pause/seek/loops/events/budget rejection |
+| Retarget | source-to-target names, local rest TRS delta, translation_scale | authoring: renamed/proportioned skeleton; rendering_graphics: actual movement pixels |
+| Morph targets | Assimp deltas/default/animated weights, CPU deformation before GPU skinning | authoring: named weights/numeric failures; rendering_graphics: deformation and per-instance pixel isolation |
+| Property clips/state machine | animation.py tracks, events, parameters, triggers and exit_time | authoring: 2D properties/playback and native-backed graph transitions |
+| Animation editor | animation_editor.cpp, Inspector layers/scrub/markers/morphs/retarget JSON/prefab export | rendering_graphics: native panel opens/render; authoring tests cover applied API; button interactions are manual QA |
+| Dispatch | dispatch.cpp, listener IDs and per-entity contact changes | authoring: 5000 listeners/removal/addition; integration/simulation: lifecycle/contact behavior |
+| Background watch | file_watch.cpp worker; prepared snapshots of paths/python_paths | authoring/integration: reload, path changes/rollback; metadata scan, no content hash guarantee |
+| Stable extensions/build | api_version/capabilities, light contracts, shader configure dependencies, Threads | compile/CTest; CI verify_package hashes/notices/three private-Python launches |
+
+Семь CTest suites и четыре GPU suites. Retarget не включает IK/anatomy inference/foot locking; morphs используют CPU upload, до 32 targets/part. Визуальный редактор редактирует playback/layers/markers/settings и TRS bone keyframes; node-graph state machine отсутствует. Один активный Python runtime сохраняется; renderer остаётся крупным GPU orchestration модулем. Остальные ранее описанные функциональные границы действуют. Подробные defaults, budgets и миграция legacy playback — раздел 22 инструкции.

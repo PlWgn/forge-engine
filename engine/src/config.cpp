@@ -3,6 +3,8 @@
 #include <forge/particles.hpp>
 #include <forge/material.hpp>
 #include <forge/geometry.hpp>
+#include <forge/prefab.hpp>
+#include <forge/animation.hpp>
 #include <cmath>
 #include <limits>
 namespace forge {
@@ -48,7 +50,7 @@ std::string Config::entry() const {
 static void requireFile(const fs::path& p) { if(!fs::is_regular_file(p)) throw std::runtime_error("Missing file: " + p.u8string()); }
 Json validateEntity(const Config& c, Json j) {
     if(!j.is_object()) throw std::runtime_error("Entity must be an object");
-    if(j.contains("prefab")) { auto base = readJson(c.asset("objects",j["prefab"])); j.erase("prefab"); base.merge_patch(j); j=base; }
+    j=entityPrefab(c,std::move(j));
     if(!j.is_object())throw std::runtime_error("Prefab must resolve to an entity object");
     for(auto field:{"id","name","kind","model","texture","material","text","text_key","parent"})
         if(j.contains(field) && !j[field].is_string())throw std::runtime_error(std::string(field)+" must be a string");
@@ -67,6 +69,7 @@ Json validateEntity(const Config& c, Json j) {
     if(j.contains("material_properties"))validateMaterial(c,j["material_properties"]);
     validateRigidBody(j.value("rigid_body",Json::object()));
     if(j.contains("layer") && (!j["layer"].is_number_integer() || j["layer"].get<double>()<0 || j["layer"].get<double>()>4294967295.0))throw std::runtime_error("layer must be an unsigned 32-bit integer");
+    for(auto field:{"animator","morph_weights"})if(j.contains(field) && !j[field].is_object())throw std::runtime_error(std::string(field)+" must be an object");
     for(auto field:{"casts_shadow","animation_loop"})if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be boolean");
     if(j.contains("animation") && !j["animation"].is_string())throw std::runtime_error("animation must be string");finiteNumber(j.value("animation_speed",Json(1)),"animation_speed");
     validateRenderSettings(Json{{"uniforms",j.value("uniforms",Json::object())}});
@@ -92,6 +95,10 @@ void Config::validate(bool media) const {
     if(window.value("width",1280)<1 || window.value("height",720)<1) throw std::runtime_error("Window dimensions must be positive");
     for(auto& s:data.value("startup_scripts",Json::array())) requireFile(asset("scripts",s.get<std::string>()));
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
+    auto development=data.value("development",Json::object());
+    if(!development.is_object())throw std::runtime_error("development must be an object");
+    auto watchInterval=finiteNumber(development.value("watch_interval",Json(.3)),"development.watch_interval");
+    if(watchInterval<.05 || watchInterval>10)throw std::runtime_error("development.watch_interval must be .05..10 seconds");
     auto graphics = data.value("renderer",Json::object());
     if(graphics.contains("texture_filter") && graphics["texture_filter"]!="nearest" && graphics["texture_filter"]!="linear")throw std::runtime_error("renderer.texture_filter must be nearest or linear");
     if(graphics.contains("particle_instancing") && !graphics["particle_instancing"].is_boolean())throw std::runtime_error("renderer.particle_instancing must be boolean");
@@ -102,7 +109,7 @@ void Config::validate(bool media) const {
     if(graphics.contains("post_shader"))requireFile(asset("graphics",graphics["post_shader"]));
     if(data["project"].contains("icon")) requireFile(resolve(data["project"]["icon"]));
     // Validate every reusable object and every declarative scene, not only the first one.
-    for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.path().extension()==".json") validateEntity(*this,readJson(item.path()));
+    for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.path().extension()==".json"){auto object=readJson(item.path());if(object.contains("entities") || object.contains("extends"))prefabDocument(*this,item.path().lexically_relative(paths.at("objects")).generic_u8string());else validateEntity(*this,std::move(object));}
     for(auto& item:fs::recursive_directory_iterator(paths.at("materials"))) if(item.path().extension()==".json") {
         validateMaterial(*this,readJson(item.path()));
     }
@@ -115,7 +122,7 @@ void Config::validate(bool media) const {
         for(auto& e:scene.value("entities",Json::array())) { validateEntity(*this,e); auto id=e.value("id",""); if(!id.empty() && !ids.insert(id).second) throw std::runtime_error("Duplicate entity id: "+id); }
         World simulation;simulation.config=const_cast<Config*>(this);simulation.load(item.path().lexically_relative(paths.at("scenes")).generic_u8string());
     }
-    if(media)validateMedia(*this);
+    if(media){validateMedia(*this);validateAnimationAssets(*this);}
     Localization validation;validation.load(*this);
 }
 }

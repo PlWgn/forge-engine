@@ -15,6 +15,8 @@ static void physicsMutation(const Entity& e){if(rigidPhysics(rt().world) && rt()
 static py::object toPython(const Json& j){return pythonValue(j);}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
+    m.attr("api_version")=1;
+    m.def("capabilities",[](){return pythonValue(Json{{"api_version",1},{"features",Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","animation_editor","background_watch","bullet","particles","pbr"})},{"python_runtimes_per_process",1}});});
     m.doc()="Forge native engine modules. Coordinates: 2D pixels; 3D world units.";
     py::class_<LocalizedText>(m,"LocalizedText")
         .def(py::init([](const std::string& key,py::dict params){return LocalizedText{key,fromPython(params)};}),py::arg("key"),py::arg("params")=py::dict())
@@ -119,8 +121,8 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("pause_sound",[](unsigned id,bool paused){rt().audio.pause(id,paused);},py::arg("id"),py::arg("paused")=true);
     m.def("measure_text",[](const std::string& text,float size){return measureText(rt().config,text,size);},py::arg("text"),py::arg("size")=24);
     m.def("set_paused",[](bool value){rt().gamePaused=value;});m.def("is_paused",[](){return rt().gamePaused;});
-    m.def("on_frame",[](py::object callback,bool persistent){if(!PyCallable_Check(callback.ptr()))throw std::runtime_error("Frame listener must be callable");unsigned id=++rt().listenerIndex;rt().listeners.push_back({id,callback,persistent});return id;},py::arg("callback"),py::arg("persistent")=false);
-    m.def("remove_listener",[](unsigned id){auto& list=rt().listeners;list.erase(std::remove_if(list.begin(),list.end(),[&](auto& l){return l.id==id;}),list.end());});
+    m.def("on_frame",[](py::object callback,bool persistent){return rt().onFrame(callback,persistent);},py::arg("callback"),py::arg("persistent")=false);
+    m.def("remove_listener",[](unsigned id){rt().removeListener(id);});
     m.def("user_screenshot",[](const std::string& file){if(rt().tearingDown)return;if(rt().renderer)rt().renderer->screenshot(userPath(rt().config,"captures",file));else logger.write("WARN","Screenshot requires a window");});
     m.def("screenshot",[](const std::string& file){if(rt().tearingDown)return;if(rt().renderer)rt().renderer->screenshot(rt().config.resolve(file));else logger.write("WARN","Screenshot requires a window");});
     m.def("stop_sounds",[](){rt().audio.stop();});

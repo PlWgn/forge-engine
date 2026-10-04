@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.3.0 LANGUAGES C CXX)
+project(Forge VERSION 2.4.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -15,6 +15,7 @@ endif()
 add_subdirectory(vendor/glfw EXCLUDE_FROM_ALL)
 add_subdirectory(vendor/pybind11 EXCLUDE_FROM_ALL)
 find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
@@ -51,6 +52,15 @@ add_executable(forge
   engine/src/world.cpp
   engine/src/render.cpp
   engine/src/runtime.cpp
+  engine/src/game_loop.cpp
+  engine/src/window.cpp
+  engine/src/dispatch.cpp
+  engine/src/file_watch.cpp
+  engine/src/prefab.cpp
+  engine/src/animation.cpp
+  engine/src/animation_editor.cpp
+  engine/src/animation_api.cpp
+  engine/src/morph.cpp
   engine/src/audio.cpp
   engine/src/localization.cpp
   engine/src/platform.cpp
@@ -74,6 +84,7 @@ add_executable(forge
 )
 target_include_directories(forge PRIVATE engine/include vendor vendor/glm)
 target_include_directories(forge SYSTEM PRIVATE vendor/bullet/src)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS graphics/default.vert graphics/default.frag graphics/post.frag graphics/particle.vert graphics/particle-instance.vert graphics/particle.frag)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/default.vert" FORGE_VERTEX)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/default.frag" FORGE_FRAGMENT)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/post.frag" FORGE_POST)
@@ -82,7 +93,7 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle-instance.vert" FORGE_PA
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.frag" FORGE_PARTICLE_FRAGMENT)
 configure_file(engine/resources/shaders.hpp.in generated/forge/shaders.hpp @ONLY)
 target_include_directories(forge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(forge PRIVATE glfw pybind11::embed OpenGL::GL assimp forge_editor_ui BulletDynamics BulletCollision LinearMath)
+target_link_libraries(forge PRIVATE glfw pybind11::embed OpenGL::GL Threads::Threads assimp forge_editor_ui BulletDynamics BulletCollision LinearMath)
 target_compile_definitions(forge PRIVATE FORGE_VERSION="${PROJECT_VERSION}" FORGE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}" GL_SILENCE_DEPRECATION)
 if(APPLE)
   target_link_libraries(forge PRIVATE "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
@@ -108,6 +119,7 @@ if(BUILD_TESTING)
   add_test(NAME packager_paths COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/packager_paths.py)
   add_test(NAME integration COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:forge>)
   add_test(NAME features COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/features.py $<TARGET_FILE:forge>)
+  add_test(NAME authoring COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/authoring.py $<TARGET_FILE:forge>)
   add_test(NAME rendering COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/rendering.py $<TARGET_FILE:forge>)
   add_test(NAME simulation COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/simulation.py $<TARGET_FILE:forge>)
 endif()

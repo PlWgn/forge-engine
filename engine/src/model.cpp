@@ -182,6 +182,26 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                     part.vertices.push_back(v);
                 }
             }
+            if(mesh->mNumAnimMeshes>32)throw std::runtime_error("Model exceeds 32 morph targets per part");
+            for(unsigned target=0;target<mesh->mNumAnimMeshes;++target){
+                auto* source=mesh->mAnimMeshes[target];
+                if(source->mNumVertices!=mesh->mNumVertices)throw std::runtime_error("Morph topology mismatch");
+                Model::MorphTarget morph;
+                morph.name=source->mName.length?source->mName.C_Str():"morph_"+std::to_string(target);
+                morph.weight=checkedFloat(source->mWeight,"morph default weight");
+                if(std::abs(morph.weight)>10)throw std::runtime_error("Morph default outside -10..10");
+                for(auto& previous:part.morphs)if(previous.name==morph.name)throw std::runtime_error("Duplicate morph target name");
+                for(unsigned fi=0;fi<mesh->mNumFaces;++fi){auto& face=mesh->mFaces[fi];if(face.mNumIndices!=3)continue;
+                    for(unsigned k=0;k<3;++k){auto index=face.mIndices[k];
+                        auto position=source->mVertices?vec(source->mVertices[index])-vertices[index].p:glm::vec3(0);
+                        auto normal=source->mNormals?vec(source->mNormals[index])-vertices[index].n:glm::vec3(0);
+                        for(int axis=0;axis<3;++axis){checkedFloat(position[axis],"morph position");checkedFloat(normal[axis],"morph normal");}
+                        morph.positions.push_back(position);morph.normals.push_back(normal);
+                    }
+                }
+                result->memoryBytes+=(morph.positions.size()+morph.normals.size())*sizeof(glm::vec3);
+                part.morphs.push_back(std::move(morph));
+            }
             auto material = scene->mMaterials[mesh->mMaterialIndex];
             aiColor4D color;
             if (aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
@@ -279,6 +299,8 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
         clip.name = animation->mName.length ? animation->mName.C_Str() : "animation_" + std::to_string(ci);
         clip.duration = animation->mDuration;
         clip.ticks = animation->mTicksPerSecond > 0 ? animation->mTicksPerSecond : 25;
+        if(!std::isfinite(clip.duration) || clip.duration<0 || !std::isfinite(clip.ticks) || clip.ticks<=0 || !std::isfinite(clip.duration/clip.ticks))throw std::runtime_error("Invalid animation duration/ticks");
+        for(auto& previous:result->clips)if(previous.name==clip.name)throw std::runtime_error("Duplicate animation clip name");
         for (unsigned k = 0; k < animation->mNumChannels; ++k) {
             auto source = animation->mChannels[k];
             auto found = names.find(source->mNodeName.C_Str());
@@ -296,7 +318,29 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                 auto q = source->mRotationKeys[i].mValue;
                 channel.rotations.push_back({source->mRotationKeys[i].mTime, {q.w, q.x, q.y, q.z}});
             }
+            auto validateKeys=[](const auto& keys){
+                double previous=-1;
+                for(auto& key:keys){
+                    if(!std::isfinite(key.first) || key.first<0 || key.first<=previous)throw std::runtime_error("Animation key times must strictly increase");
+                    previous=key.first;for(int axis=0;axis<int(key.second.length());++axis)checkedFloat(key.second[axis],"animation key");
+                }
+            };
+            validateKeys(channel.positions);validateKeys(channel.scales);validateKeys(channel.rotations);
+            for(auto& key:channel.rotations)if(glm::length(key.second)<1e-8)throw std::runtime_error("Animation quaternion cannot be zero");
             clip.channels.push_back(std::move(channel));
+        }
+        for(unsigned k=0;k<animation->mNumMorphMeshChannels;++k){
+            auto* source=animation->mMorphMeshChannels[k];auto found=names.find(source->mName.C_Str());
+            if(found==names.end())continue;
+            Model::MorphChannel channel;channel.node=found->second;
+            size_t count=0;for(auto& part:result->parts)if(part.node==channel.node)count=std::max(count,part.morphs.size());
+            for(unsigned i=0;i<source->mNumKeys;++i){auto& key=source->mKeys[i];std::vector<double> weights(count,0);
+                for(unsigned j=0;j<key.mNumValuesAndWeights;++j){if(key.mValues[j]>=count)throw std::runtime_error("Morph animation index outside target range");weights[key.mValues[j]]=checkedFloat(key.mWeights[j],"morph animation weight");}
+                if(!std::isfinite(key.mTime) || key.mTime<0 || (!channel.keys.empty() && key.mTime<=channel.keys.back().first))throw std::runtime_error("Morph key times must strictly increase");
+                for(double value:weights)if(std::abs(value)>10)throw std::runtime_error("Morph animation weight outside -10..10");
+                channel.keys.push_back({key.mTime,std::move(weights)});result->memoryBytes+=count*sizeof(double);
+            }
+            clip.morphs.push_back(std::move(channel));
         }
         result->clips.push_back(std::move(clip));
     }
@@ -308,7 +352,7 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                                    channel.rotations.size() * sizeof(channel.rotations[0]);
     return result;
 }
-std::vector<glm::mat4> Model::pose(const std::string &name, double seconds, bool loop) const {
+std::vector<glm::mat4> Model::localPose(const std::string &name, double seconds, bool loop) const {
     std::vector<glm::mat4> local;
     for (auto &node : nodes)
         local.push_back(node.transform);
@@ -333,6 +377,10 @@ std::vector<glm::mat4> Model::pose(const std::string &name, double seconds, bool
                                   glm::scale(glm::mat4(1), sample(channel.scales, t, scale));
         }
     }
+    return local;
+}
+std::vector<glm::mat4> Model::pose(const std::string& name,double seconds,bool loop) const {
+    auto local=localPose(name,seconds,loop);
     std::vector<glm::mat4> globals(local.size());
     for (size_t i = 0; i < nodes.size(); ++i)
         globals[i] = nodes[i].parent < 0 ? local[i] : globals[nodes[i].parent] * local[i];
@@ -342,6 +390,9 @@ Json Model::info() const {
     Json animations = Json::array();
     for (auto &clip : clips)
         animations.push_back({{"name", clip.name}, {"duration", clip.duration / clip.ticks}});
+    Json morphs=Json::array(),skeleton=Json::array();
+    for(auto& n:nodes)skeleton.push_back(Json{{"name",n.name},{"parent",n.parent}});
+    for(size_t i=0;i<parts.size();++i)for(auto& morph:parts[i].morphs)morphs.push_back(Json{{"part",i},{"name",morph.name},{"weight",morph.weight}});
     Json textures = Json::array();
     size_t vertices = 0, bones = 0;
     for (auto &part : parts) {
@@ -351,6 +402,6 @@ Json Model::info() const {
             textures.push_back(part.texture.u8string());
     }
     return {{"parts", parts.size()},    {"vertices", vertices}, {"bones", bones},
-            {"animations", animations}, {"bytes", memoryBytes}, {"textures", textures}};
+            {"animations", animations}, {"bytes", memoryBytes}, {"textures", textures},{"morph_targets",morphs},{"skeleton",skeleton}};
 }
 } // namespace forge

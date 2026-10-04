@@ -4,6 +4,7 @@
 #include <forge/geometry.hpp>
 #include <forge/material.hpp>
 #include <forge/physics.hpp>
+#include <forge/animation.hpp>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -195,15 +196,8 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
             selected.clear();
             changed = true;
         }
-        if (!entity->model.empty() && !proceduralName(entity->model)) {
-            auto info = runtime.assets.model(config->asset("models", entity->model))->info();
-            for (auto &clip : info["animations"])
-                if (ImGui::Button(clip["name"].get<std::string>().c_str())) {
-                    entity->animation = clip["name"];
-                    entity->animationTime = 0;
-                    entity->animationPlaying = true;
-                }
-        }
+        if (!entity->model.empty() && !proceduralName(entity->model))
+            changed |= animationEditor(*entity,runtime,*this);
     }
     ImGui::Separator();
     bool threeD = world.is3d;
@@ -266,6 +260,7 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
                                                           {"model", relative},
                                                           {"name", item.path().stem().u8string()}});
                             else {
+                                entity->animator.reset();entity->animatorSettings=Json::object();entity->morphWeights=Json::object();entity->animation.clear();
                                 entity->model = relative;
                                 entity->kind = "mesh";
                             }

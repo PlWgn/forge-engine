@@ -30,6 +30,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     e->scale=vec3(j.value("scale",Json()),e->scale); e->velocity=vec3(j.value("velocity",Json()),e->velocity);
     e->collider=vec3(j.value("collider",Json()),e->collider); e->color=vec4(j.value("color",Json()),e->color);
     e->uv=vec4(j.value("uv",Json()),e->uv);e->layer=j.value("layer",1u);e->castsShadow=j.value("casts_shadow",true);e->uniforms=j.value("uniforms",Json::object());
+    e->animatorSettings=j.value("animator",Json::object());e->morphWeights=j.value("morph_weights",Json::object());
     e->animation=j.value("animation","");e->animationSpeed=j.value("animation_speed",1.f);e->animationPlaying=!e->animation.empty();e->animationLoop=j.value("animation_loop",true);
     e->dynamic=j.value("dynamic",false); e->trigger=j.value("trigger",false); e->visible=j.value("visible",true);
     if(j.contains("clip") && !j["clip"].is_null()){e->clip=vec4(j["clip"],glm::vec4(0));e->clipped=true;}
@@ -41,6 +42,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     if(j.contains("material_properties"))e->materialData=validateMaterial(*config,j["material_properties"]);
     e->parent=j.value("parent","");
     e->worldMatrix=composeTransform(*e);e->worldRotation=e->rotation;
+    if(prepareEntity)prepareEntity(*e);
     transformCache.reset();
     if(!assembling && !e->parent.empty()){
         entities.push_back(e);entityIndex[e->id]=e;
@@ -199,7 +201,7 @@ Json World::serialize()const{
     result["camera"]={{"position",array3(cameraPosition)},{"target",array3(cameraTarget)},{"fov",fov}};result["entities"]=Json::array();
     for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
         for(auto& field:std::vector<std::pair<std::string,std::string>>{{"model",e.model},{"texture",e.texture},{"material",e.material},{"text",e.text},{"text_key",e.textKey},{"animation",e.animation}})if(!field.second.empty())data[field.first]=field.second;
-        if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}result["entities"].push_back(std::move(data));
+        if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}if(!e.animatorSettings.empty())data["animator"]=e.animatorSettings;if(!e.morphWeights.empty())data["morph_weights"]=e.morphWeights;result["entities"].push_back(std::move(data));
         if(!e.parent.empty())result["entities"].back()["parent"]=e.parent;
         if(!e.materialData.empty())result["entities"].back()["material_properties"]=e.materialData;
         result["entities"].back()["angular_velocity"]=array3(e.angularVelocity);result["entities"].back()["rigid_body"]=e.rigidBody;

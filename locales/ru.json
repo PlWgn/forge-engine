@@ -22,5 +22,6 @@
   "simulation.title": "Частицы и 3D-физика",
   "simulation.help": "WASD — capsule-контроллер; Space — прыжок; E — искры; R — импульс шару; Esc — выход",
   "materials.title": "Материалы и локальные координаты",
-  "materials.help": "P — снимок в пользовательскую папку   /   Esc — выход"
+  "materials.help": "P — снимок в пользовательскую папку   /   Esc — выход",
+  "animation.title": "Анимация: пробел — переход, Esc — назад"
 }

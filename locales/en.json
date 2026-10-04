@@ -22,5 +22,6 @@
   "simulation.title": "Particles and 3D physics",
   "simulation.help": "WASD: capsule controller; Space: jump; E: sparks; R: ball impulse; Esc: exit",
   "materials.title": "Materials and local coordinates",
-  "materials.help": "P — capture to user storage   /   Esc — exit"
+  "materials.help": "P — capture to user storage   /   Esc — exit",
+  "animation.title": "Animation: Space to transition, Esc to return"
 }

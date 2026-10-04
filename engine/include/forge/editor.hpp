@@ -6,6 +6,14 @@ namespace forge {
 struct World;struct Runtime;
 struct Editor {
     bool preview=false;
+    bool animationPlaying=false,animationOpen=true;
+    float animationFade=.25f,boneTime=0;
+    std::string boneNode;
+    glm::vec3 bonePosition{0},boneRotation{0},boneScale{1};
+    std::string animationEntity,animationStatus;
+    Json animationDraft;
+    std::array<char,32768> animationJson{};
+    char animationPrefab[512]="animation-prefab.json";
     std::string selected,status;
     std::vector<Json> undo,redo;
     char sceneFile[512]="editor-scene.json";

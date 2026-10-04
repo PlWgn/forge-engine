@@ -1,5 +1,7 @@
 name: macOS and Windows
 on: [push, pull_request, workflow_dispatch]
+env:
+  PYTHONUTF8: '1'
 jobs:
   engine:
     strategy:
@@ -18,6 +20,8 @@ jobs:
       - name: All native regressions (including numeric and packager_paths)
         run: ctest --test-dir build -C Release --output-on-failure
       - run: python tools/forge.py build --output dist/Game
+      - name: Verify standalone hashes and launch outside checkout
+        run: python tools/verify_package.py dist/Game
       - uses: actions/upload-artifact@v4
         with:
           name: Forge-${{ matrix.os }}

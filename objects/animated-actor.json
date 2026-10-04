@@ -1,0 +1,21 @@
+{
+  "entities": [
+    {
+      "id": "root",
+      "kind": "empty"
+    },
+    {
+      "id": "mesh",
+      "parent": "root",
+      "kind": "mesh",
+      "model": "authoring.gltf",
+      "animator": {
+        "layers": [
+          {
+            "clip": "Idle"
+          }
+        ]
+      }
+    }
+  ]
+}

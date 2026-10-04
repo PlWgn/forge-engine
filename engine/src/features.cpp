@@ -4,6 +4,8 @@
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/geometry.hpp>
+#include <forge/prefab.hpp>
+#include <forge/animation.hpp>
 #include <pybind11/stl.h>
 namespace forge {
 namespace {
@@ -168,6 +170,8 @@ void bindFeatures(py::module_ &m) {
     bindPhysics(m);
     bindParticles(m);
     bindGeometry(m);
+    bindPrefabs(m);
+    bindAnimation(m);
     m.def("world_stats",[](){auto& world=runtime().world;return python(Json{{"entities",world.entities.size()},{"indexed",world.entityIndex.size()},{"candidate_pairs",world.physicsCandidates},{"transform_audits",world.transformAudits},{"transform_computations",world.transformComputations}});});
     m.def(
         "user_path",
@@ -220,6 +224,7 @@ void bindFeatures(py::module_ &m) {
             finiteNumber(speed, "animation speed");
             auto model = runtime().assets.model(runtime().config.asset("models", entity.model));
             model->pose(clip, 0, loop);
+            entity.animator.reset();entity.animatorSettings=Json::object();
             entity.animation = clip;
             entity.animationTime = 0;
             entity.animationSpeed = speed;
@@ -228,7 +233,7 @@ void bindFeatures(py::module_ &m) {
         },
         py::arg("entity"), py::arg("clip"), py::arg("speed") = 1, py::arg("loop") = true);
     m.def(
-        "pause_animation", [](Entity &entity, bool paused) { entity.animationPlaying = !paused; },
+        "pause_animation", [](Entity &entity, bool paused) { entity.animationPlaying = !paused;if(entity.animator)entity.animator->playing=!paused; },
         py::arg("entity"), py::arg("paused") = true);
     m.def("set_render_target", [](const std::string &name, py::dict options) {
         auto data = runtime().world.renderSettings;
@@ -332,6 +337,10 @@ void bindFeatures(py::module_ &m) {
             fs::remove(path);
             fs::rename(temp, path);
         }
+    });
+    m.def("editor_select",[](const Entity& e){
+        if(runtime().world.find(e.id).get()!=&e || !runtime().renderer)throw std::runtime_error("Editor selection needs a current entity and window");
+        runtime().renderer->select(e.id);
     });
     m.def("editor_enabled", []() { return runtime().editing; });
     m.def("set_sound_options",
