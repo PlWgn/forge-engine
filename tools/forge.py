@@ -33,7 +33,7 @@ def binary():
     raise RuntimeError('Engine is not compiled. Run: python tools/forge.py compile')
 
 def configure(settings):
-    if any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in ('glfw','assimp')) or not (ROOT / 'vendor/imgui/imgui.cpp').exists(): execute([sys.executable, ROOT / 'tools/dependencies.py'])
+    if any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in ('glfw','assimp','bullet')) or not (ROOT / 'vendor/imgui/imgui.cpp').exists(): execute([sys.executable, ROOT / 'tools/dependencies.py'])
     args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}']
     data = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else {}
     native = []
@@ -107,6 +107,7 @@ def main():
     if args.command == 'test':
         execute([sys.executable, ROOT / 'tests/integration.py', binary()])
         execute([sys.executable, ROOT / 'tests/features.py', binary()])
+        execute([sys.executable, ROOT / 'tests/simulation.py', binary()])
         return
     command = [binary(), args.command, '--project', settings]
     if args.output: command += ['--output', args.output.resolve()]

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project": {
     "name": "Forge — New World",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "icon": "textures/icon.png"
   },
   "entry_scene": "welcome.json",

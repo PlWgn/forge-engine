@@ -1,6 +1,7 @@
 #include <chrono>
 #include <forge/gl.hpp>
 #include <forge/model.hpp>
+#include <forge/particles.hpp>
 #include <forge/shaders.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -324,7 +325,9 @@ struct Renderer::Impl {
     std::array<bool, 8> buttons{}, previousButtons{};
     glm::vec2 mousePosition{0}, mouseDelta{0}, mouseScroll{0};
     std::vector<unsigned> characters;
-    unsigned program = 0, postProgram = 0, shadowProgram = 0, whiteTexture = 0;
+    unsigned program = 0, postProgram = 0, shadowProgram = 0, particleProgram = 0, whiteTexture = 0;
+    size_t particleAllocated = 0;
+    unsigned particleCalls = 0, particleQuads = 0;
     std::map<std::string, Mesh> meshes;
     std::map<std::string, unsigned> textures;
     std::map<std::string, size_t> textureBytes;
@@ -401,7 +404,7 @@ struct Renderer::Impl {
         if (whiteTexture)
             gl::DeleteTextures(1, &whiteTexture);
         whiteTexture = 0;
-        for (auto *p : {&program, &postProgram, &shadowProgram})
+        for (auto *p : {&program, &postProgram, &shadowProgram, &particleProgram})
             if (*p) {
                 gl::DeleteProgram(*p);
                 *p = 0;
@@ -412,6 +415,7 @@ struct Renderer::Impl {
         for (auto pair : {std::pair<unsigned *, unsigned *>{&program, &other.program},
                           {&postProgram, &other.postProgram},
                           {&shadowProgram, &other.shadowProgram},
+                          {&particleProgram, &other.particleProgram},
                           {&whiteTexture, &other.whiteTexture}})
             std::swap(*pair.first, *pair.second);
         meshes.swap(other.meshes);
@@ -424,6 +428,7 @@ struct Renderer::Impl {
         targets.swap(other.targets);
         models.swap(other.models);
         std::swap(batchAllocated, other.batchAllocated);
+        std::swap(particleAllocated, other.particleAllocated);
         std::swap(gpuBytes, other.gpuBytes);
         std::swap(gpuLimit, other.gpuLimit);
         std::swap(batching, other.batching);
@@ -463,6 +468,12 @@ struct Renderer::Impl {
                                       : postDefault,
                                   "Post shader");
         shadowProgram = linkProgram(vertexDefault, "#version 330 core\nvoid main(){}", "Shadow shader");
+        auto particleShader = [&](const char* field, const char* file, const char* fallback) {
+            auto path = config->asset("graphics", options.value(field, std::string(file)));
+            return options.contains(field) || fs::is_regular_file(path) ? textFile(path) : std::string(fallback);
+        };
+        particleProgram = linkProgram(particleShader("particle_vertex_shader", "particle.vert", particleVertexDefault),
+                                      particleShader("particle_fragment_shader", "particle.frag", particleFragmentDefault), "Particle shader");
         meshes["sprite"] = upload({{{-.5f, -.5f, 0}, {0, 0}, {0, 0, 1}},
                                    {{.5f, -.5f, 0}, {1, 0}, {0, 0, 1}},
                                    {{.5f, .5f, 0}, {1, 1}, {0, 0, 1}},
@@ -470,6 +481,8 @@ struct Renderer::Impl {
                                    {{.5f, .5f, 0}, {1, 1}, {0, 0, 1}},
                                    {{-.5f, .5f, 0}, {0, 1}, {0, 0, 1}}});
         meshes["batch"] = upload({});
+        meshes["particles"] = upload({});
+        gl::BindVertexArray(meshes["particles"].vao);gl::DisableVertexAttribArray(3);gl::DisableVertexAttribArray(4);
         std::vector<Vertex> cube;
         for (int axis = 0; axis < 3; ++axis)
             for (int sign : {-1, 1}) {
@@ -827,11 +840,81 @@ struct Renderer::Impl {
                  tex, lit, &bones);
         }
     }
+    void particles(World &world, const glm::mat4 &view, const glm::mat4 &ortho, unsigned layers, bool screen) {
+        if (!world.particles || shadowPass) return;
+        auto particles = world.particles->draw(world);
+        particles.erase(std::remove_if(particles.begin(), particles.end(), [&](const ParticleDraw &p) {
+            return p.screen != screen || !(p.layer & layers) || p.size <= 0 || p.color.a <= 0;
+        }), particles.end());
+        if (particles.empty()) return;
+        const auto projection = screen ? ortho : view;
+        auto depth = [&](const ParticleDraw &p) {
+            auto clip = projection * glm::vec4(p.position, 1);
+            return world.is3d && !screen && std::abs(clip.w) > 1e-8 ? -clip.z / clip.w : p.position.z;
+        };
+        std::stable_sort(particles.begin(), particles.end(), [&](const auto &a, const auto &b) {
+            if (a.additive != b.additive) return !a.additive;
+            if (a.additive && a.texture != b.texture) return a.texture < b.texture;
+            return depth(a) < depth(b);
+        });
+        glm::vec3 right(1,0,0), up(0,1,0);
+        if (world.is3d && !screen) {
+            auto inverse = glm::inverse(projection);
+            auto unproject = [&](float x, float y) { auto v = inverse * glm::vec4(x,y,0,1); return glm::vec3(v) / v.w; };
+            auto center = unproject(0,0);
+            right = glm::normalize(unproject(1,0)-center);
+            up = glm::normalize(unproject(0,1)-center);
+        }
+        struct ParticleVertex { glm::vec3 position; glm::vec2 uv; glm::vec4 color; };
+        std::vector<ParticleVertex> vertices;
+        vertices.reserve(24576);
+        auto &mesh = meshes.at("particles");
+        unsigned currentTexture = 0; bool currentBlend = false, prepared = false;
+        gl::Disable(gl::SCISSOR_TEST);
+        if (world.is3d && !screen) gl::Enable(gl::DEPTH_TEST); else gl::Disable(gl::DEPTH_TEST);
+        gl::DepthMask(0);
+        auto flushParticles = [&]() {
+            if (vertices.empty()) return;
+            size_t bytes = vertices.size() * sizeof(ParticleVertex);
+            if (bytes > particleAllocated) reserve(bytes-particleAllocated); else gpuBytes -= particleAllocated-bytes;
+            particleAllocated = bytes;
+            gl::UseProgram(particleProgram);
+            gl::UniformMatrix4fv(gl::GetUniformLocation(particleProgram,"u_view"),1,0,glm::value_ptr(projection));
+            gl::Uniform1i(gl::GetUniformLocation(particleProgram,"u_texture"),0);
+            gl::ActiveTexture(gl::TEXTURE0);gl::BindTexture(gl::TEXTURE_2D,currentTexture?currentTexture:whiteTexture);
+            gl::BlendFunc(gl::SRC_ALPHA,currentBlend?1:gl::ONE_MINUS_SRC_ALPHA);
+            gl::BindVertexArray(mesh.vao);gl::BindBuffer(gl::ARRAY_BUFFER,mesh.vbo);
+            gl::BufferData(gl::ARRAY_BUFFER,bytes,vertices.data(),gl::STREAM_DRAW);
+            gl::VertexAttribPointer(0,3,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,position)));
+            gl::VertexAttribPointer(1,2,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,uv)));
+            gl::VertexAttribPointer(2,4,gl::FLOAT,0,sizeof(ParticleVertex),reinterpret_cast<void*>(offsetof(ParticleVertex,color)));
+            gl::DrawArrays(gl::TRIANGLES,0,int(vertices.size()));
+            ++drawCalls;++particleCalls;triangles+=unsigned(vertices.size()/3);particleQuads+=unsigned(vertices.size()/6);
+            vertices.clear();
+        };
+        static const glm::vec2 corners[]={{-.5f,-.5f},{.5f,-.5f},{.5f,.5f},{-.5f,-.5f},{.5f,.5f},{-.5f,.5f}};
+        static const glm::vec2 uv[]={{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}};
+        try {
+            for (const auto &p : particles) {
+                auto texture = image(p.texture);
+                if (prepared && (texture!=currentTexture || p.additive!=currentBlend || vertices.size()>=24576)) flushParticles();
+                prepared=true;currentTexture=texture;currentBlend=p.additive;
+                float angle=glm::radians(p.angle), c=std::cos(angle), s=std::sin(angle);
+                for(int i=0;i<6;++i) {
+                    auto corner=corners[i]*p.size;
+                    float x=corner.x*c-corner.y*s, y=corner.x*s+corner.y*c;
+                    vertices.push_back({p.position+right*x+up*y,{p.uv.x+uv[i].x*p.uv.z,p.uv.y+uv[i].y*p.uv.w},p.color});
+                }
+            }
+            flushParticles();
+        } catch (...) { gl::DepthMask(1);gl::BlendFunc(gl::SRC_ALPHA,gl::ONE_MINUS_SRC_ALPHA);throw; }
+        gl::DepthMask(1);gl::BlendFunc(gl::SRC_ALPHA,gl::ONE_MINUS_SRC_ALPHA);
+    }
     void scene(World &world, const glm::mat4 &view, int width, int height, int logicalWidth,
                int logicalHeight, bool includeUI, unsigned layers, const std::string &currentTarget = "") {
         auto ortho = glm::ortho(0.f, float(logicalWidth), float(logicalHeight), 0.f, -10000.f, 10000.f);
         auto entities = world.entities;
-        bool stateSet = false, previousClip = false, previousDepth = false;
+        bool stateSet = false, previousClip = false, previousDepth = false, particlesDrawn = false;
         glm::vec4 previousRect{0};
         std::stable_sort(entities.begin(), entities.end(), [&](auto &a, auto &b) {
             if (a->screen != b->screen)
@@ -844,6 +927,9 @@ struct Renderer::Impl {
                 !(e.layer & layers) || (shadowPass && (e.screen || !e.castsShadow || e.kind == "text")) ||
                 (!currentTarget.empty() && e.texture == "@target:" + currentTarget))
                 continue;
+            if (e.screen && !particlesDrawn && !shadowPass) {
+                flush();particles(world,view,ortho,layers,false);particlesDrawn=true;stateSet=false;
+            }
             // Scissor/depth/uniform changes terminate an adjacent compatible batch.
             bool clip = e.clipped && e.screen, depth = shadowPass || (world.is3d && !e.screen);
             if (!stateSet || clip != previousClip || depth != previousDepth ||
@@ -896,6 +982,8 @@ struct Renderer::Impl {
             }
         }
         flush();
+        if (!particlesDrawn) particles(world,view,ortho,layers,false);
+        if (includeUI) particles(world,view,ortho,layers,true);
         entityUniforms = Json::object();
         drawUV = {0, 0, 1, 1};
         drawFlip = false;
@@ -1069,6 +1157,7 @@ void Renderer::validateWorld(const World &world) {
         int size = world.renderSettings.value("shadow_size", 1024);
         resources.target("shadow", size, size);
     }
+    if (world.particles) for (const auto &emitter : world.particles->emitters) resources.image(emitter.settings["texture"]);
     for (auto &pointer : world.entities) {
         auto &e = *pointer;
         if (!e.alive || e.kind == "empty")
@@ -1106,7 +1195,7 @@ void Renderer::render(World &world) {
     if (w <= 0 || h <= 0 || world.width <= 0 || world.height <= 0)
         return;
     ++impl->frame;
-    impl->drawCalls = impl->batchCalls = impl->triangles = 0;
+    impl->drawCalls = impl->batchCalls = impl->triangles = impl->particleCalls = impl->particleQuads = 0;
     impl->density = std::max(float(w) / world.width, float(h) / world.height);
     impl->renderOptions = world.renderSettings;
     auto targets = world.renderSettings.value("targets", Json::object());
@@ -1244,6 +1333,8 @@ void Renderer::render(World &world) {
     }
     impl->stats = {
         {"draw_calls", impl->drawCalls},
+        {"particle_draw_calls",impl->particleCalls},
+        {"particle_quads",impl->particleQuads},
         {"batches", impl->batchCalls},
         {"triangles", impl->triangles},
         {"gpu_bytes", impl->gpuBytes},
@@ -1440,6 +1531,7 @@ void Renderer::Impl::edit(World &world) {
             e->alive = false;
         world.entities.clear();
         world.contacts.clear();
+        world.physicsSettings=Json::object();world.physics3d.reset();world.particles.reset();
         world.scene = data;
         world.is3d = data.value("mode", "2d") == "3d";
         world.physicsEnabled = data.value("physics_enabled", true);
@@ -1456,6 +1548,7 @@ void Renderer::Impl::edit(World &world) {
         world.gravity = {v[0].get<float>(), v[1].get<float>(), v[2].get<float>()};
         for (auto &entity : data["entities"])
             world.spawn(entity);
+        world.configureSimulation(data);
     };
     auto save = [&]() {
         try {

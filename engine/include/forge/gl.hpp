@@ -19,9 +19,11 @@ constexpr U FRAMEBUFFER=0x8D40,COLOR_ATTACHMENT0=0x8CE0,DEPTH_ATTACHMENT=0x8D00,
 #define GL_FUNC(ret,name,args) using name##Fn=ret(FORGE_GL_CALL*)args; inline name##Fn name=nullptr;
 GL_FUNC(void,Viewport,(I,I,I,I)) GL_FUNC(void,Scissor,(I,I,I,I)) GL_FUNC(void,ClearColor,(F,F,F,F)) GL_FUNC(void,Clear,(U))
 GL_FUNC(void,Enable,(U)) GL_FUNC(void,Disable,(U)) GL_FUNC(void,BlendFunc,(U,U))
+GL_FUNC(void,DepthMask,(B))
 GL_FUNC(void,GenBuffers,(I,U*)) GL_FUNC(void,BindBuffer,(U,U)) GL_FUNC(void,BufferData,(U,S,const void*,U)) GL_FUNC(void,DeleteBuffers,(I,const U*))
 GL_FUNC(void,GenVertexArrays,(I,U*)) GL_FUNC(void,BindVertexArray,(U)) GL_FUNC(void,DeleteVertexArrays,(I,const U*))
 GL_FUNC(void,EnableVertexAttribArray,(U)) GL_FUNC(void,VertexAttribPointer,(U,I,U,B,I,const void*))
+GL_FUNC(void,DisableVertexAttribArray,(U))
 GL_FUNC(void,VertexAttribIPointer,(U,I,U,I,const void*))
 GL_FUNC(U,CreateShader,(U)) GL_FUNC(void,ShaderSource,(U,I,const char*const*,const I*)) GL_FUNC(void,CompileShader,(U))
 GL_FUNC(void,GetShaderiv,(U,U,I*)) GL_FUNC(void,GetShaderInfoLog,(U,I,I*,char*)) GL_FUNC(void,DeleteShader,(U))
@@ -39,7 +41,9 @@ GL_FUNC(void,GenFramebuffers,(I,U*)) GL_FUNC(void,BindFramebuffer,(U,U)) GL_FUNC
 inline void load() {
 #define LOAD(name) name=reinterpret_cast<name##Fn>(glfwGetProcAddress("gl" #name)); if(!name) throw std::runtime_error("Missing OpenGL function gl" #name);
 LOAD(Scissor) LOAD(Viewport) LOAD(ClearColor) LOAD(Clear) LOAD(Enable) LOAD(Disable) LOAD(BlendFunc)
+LOAD(DepthMask)
 LOAD(GenBuffers) LOAD(BindBuffer) LOAD(BufferData) LOAD(DeleteBuffers) LOAD(GenVertexArrays) LOAD(BindVertexArray) LOAD(DeleteVertexArrays)
+LOAD(DisableVertexAttribArray)
 LOAD(EnableVertexAttribArray) LOAD(VertexAttribPointer) LOAD(CreateShader) LOAD(ShaderSource) LOAD(CompileShader) LOAD(GetShaderiv)
 LOAD(GetShaderInfoLog) LOAD(DeleteShader) LOAD(CreateProgram) LOAD(AttachShader) LOAD(LinkProgram) LOAD(GetProgramiv) LOAD(GetProgramInfoLog)
 LOAD(DeleteProgram) LOAD(UseProgram) LOAD(GetUniformLocation) LOAD(UniformMatrix4fv) LOAD(Uniform4fv) LOAD(Uniform1i) LOAD(Uniform1f) LOAD(DrawArrays)

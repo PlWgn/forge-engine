@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
+    'bullet': ('https://codeload.github.com/bulletphysics/bullet3/tar.gz/refs/tags/3.25', 'archive'),
     'assimp': ('https://codeload.github.com/assimp/assimp/tar.gz/refs/tags/v6.0.5', 'archive'),
     'imgui': ('https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b', 'archive'),
     'glfw': ('https://codeload.github.com/glfw/glfw/tar.gz/refs/tags/3.4', 'archive'),

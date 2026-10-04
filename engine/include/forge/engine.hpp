@@ -17,6 +17,8 @@ namespace fs = std::filesystem;
 namespace py = pybind11;
 using Json = nlohmann::json;
 struct Model;
+struct Physics3D;
+struct Particles;
 struct ImageData {
     int width = 0, height = 0;
     std::vector<unsigned char> pixels;
@@ -94,6 +96,8 @@ struct Entity {
     std::string id, name, kind = "sprite", model, texture, material, text, textKey;
     Json textParams = Json::object();
     glm::vec3 position{0}, rotation{0}, scale{1}, velocity{0}, collider{0};
+    glm::vec3 angularVelocity{0}, force{0}, torque{0};
+    Json rigidBody = Json::object();
     glm::vec4 color{1}, clip{0};
     glm::vec4 uv{0, 0, 1, 1};
     unsigned layer = 1;
@@ -114,6 +118,9 @@ struct World {
     Config *config = nullptr;
     std::vector<std::shared_ptr<Entity>> entities;
     Json scene;
+    Json physicsSettings = Json::object();
+    std::shared_ptr<Physics3D> physics3d;
+    std::shared_ptr<Particles> particles;
     unsigned nextId = 0;
     glm::vec3 cameraPosition{0, 0, 5}, cameraTarget{0}, gravity{0, -9.81f, 0};
     bool is3d = false;
@@ -123,6 +130,7 @@ struct World {
     int width = 1280, height = 720;
     glm::vec4 background{0.025f, 0.04f, 0.075f, 1};
     std::shared_ptr<Entity> spawn(Json data);
+    void configureSimulation(const Json &);
     std::shared_ptr<Entity> find(const std::string &id);
     void load(const std::string &scenePath);
     std::set<std::pair<std::string, std::string>> contacts;

@@ -1,0 +1,523 @@
+{
+  "mode": "3d",
+  "script": "simulation.py",
+  "gravity": [
+    0,
+    -9.81,
+    0
+  ],
+  "physics": {
+    "backend": "bullet",
+    "iterations": 30
+  },
+  "background": [
+    0.025,
+    0.04,
+    0.075,
+    1
+  ],
+  "camera": {
+    "position": [
+      9,
+      6,
+      11
+    ],
+    "target": [
+      0,
+      1,
+      0
+    ]
+  },
+  "rendering": {
+    "ambient": [
+      0.2,
+      0.2,
+      0.3
+    ],
+    "lights": [
+      {
+        "type": "directional",
+        "direction": [
+          -0.4,
+          -1,
+          -0.3
+        ],
+        "color": [
+          0.8,
+          0.9,
+          1
+        ],
+        "intensity": 1,
+        "shadows": true,
+        "shadow_extent": 18
+      }
+    ]
+  },
+  "entities": [
+    {
+      "id": "floor",
+      "kind": "cube",
+      "position": [
+        0,
+        -0.5,
+        0
+      ],
+      "scale": [
+        20,
+        1,
+        20
+      ],
+      "collider": [
+        20,
+        1,
+        20
+      ],
+      "color": [
+        0.17,
+        0.22,
+        0.3,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.9
+      }
+    },
+    {
+      "id": "ramp",
+      "kind": "cube",
+      "position": [
+        -3,
+        1,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -20
+      ],
+      "scale": [
+        6,
+        0.35,
+        4
+      ],
+      "collider": [
+        6,
+        0.35,
+        4
+      ],
+      "color": [
+        0.2,
+        0.4,
+        0.5,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7
+      }
+    },
+    {
+      "id": "player",
+      "name": "Capsule character",
+      "kind": "mesh",
+      "model": "capsule.obj",
+      "position": [
+        3,
+        1.1,
+        3
+      ],
+      "collider": [
+        1,
+        2,
+        1
+      ],
+      "color": [
+        0.25,
+        0.8,
+        0.55,
+        1
+      ],
+      "rigid_body": {
+        "shape": "capsule",
+        "kinematic": true
+      }
+    },
+    {
+      "id": "ball",
+      "kind": "mesh",
+      "model": "sphere.obj",
+      "position": [
+        -4,
+        4,
+        0
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        1,
+        0.55,
+        0.15,
+        1
+      ],
+      "rigid_body": {
+        "shape": "sphere",
+        "restitution": 0.65,
+        "friction": 0.5,
+        "rolling_friction": 0.03
+      }
+    },
+    {
+      "id": "box_0_0",
+      "kind": "cube",
+      "position": [
+        -1,
+        0.51,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.4,
+        0.25,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_1_0",
+      "kind": "cube",
+      "position": [
+        0,
+        0.51,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.55,
+        0.25,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_2_0",
+      "kind": "cube",
+      "position": [
+        1,
+        0.51,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.7,
+        0.25,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_0_1",
+      "kind": "cube",
+      "position": [
+        -1,
+        1.56,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.4,
+        0.35,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_1_1",
+      "kind": "cube",
+      "position": [
+        0,
+        1.56,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.55,
+        0.35,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_2_1",
+      "kind": "cube",
+      "position": [
+        1,
+        1.56,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.7,
+        0.35,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_0_2",
+      "kind": "cube",
+      "position": [
+        -1,
+        2.6100000000000003,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.4,
+        0.45,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_1_2",
+      "kind": "cube",
+      "position": [
+        0,
+        2.6100000000000003,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.55,
+        0.45,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_2_2",
+      "kind": "cube",
+      "position": [
+        1,
+        2.6100000000000003,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.7,
+        0.45,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_0_3",
+      "kind": "cube",
+      "position": [
+        -1,
+        3.66,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.4,
+        0.55,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_1_3",
+      "kind": "cube",
+      "position": [
+        0,
+        3.66,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.55,
+        0.55,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    },
+    {
+      "id": "box_2_3",
+      "kind": "cube",
+      "position": [
+        1,
+        3.66,
+        -3
+      ],
+      "collider": [
+        1,
+        1,
+        1
+      ],
+      "dynamic": true,
+      "color": [
+        0.7,
+        0.55,
+        0.7,
+        1
+      ],
+      "rigid_body": {
+        "friction": 0.7,
+        "restitution": 0.05
+      }
+    }
+  ],
+  "emitters": [
+    {
+      "name": "Steam",
+      "position": [
+        -5,
+        0.1,
+        3
+      ],
+      "texture": "particle.png",
+      "rate": 45,
+      "velocity": [
+        0,
+        1.5,
+        0
+      ],
+      "velocity_random": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "lifetime": [
+        2,
+        3
+      ],
+      "size": [
+        0.2,
+        1.2
+      ],
+      "color_start": [
+        0.65,
+        0.8,
+        1,
+        0.4
+      ],
+      "color_end": [
+        0.65,
+        0.8,
+        1,
+        0
+      ],
+      "max_particles": 256,
+      "shape": "box",
+      "extent": [
+        0.3,
+        0,
+        0.3
+      ],
+      "seed": 7
+    }
+  ]
+}

@@ -18,5 +18,7 @@
   "example.welcome.controls": "A / D — движение     Space — прыжок",
   "example.welcome.status": "LIVE   /   Скрипты можно менять без пересборки",
   "example.welcome.saved": "SAVED   /   Прогресс сохранён в saves/progress.json",
-  "example.world3d.help": "WASD — движение   /   Стрелки — обзор   /   M — мышь   /   1 — 2D   /   Esc — выход"
+  "example.world3d.help": "WASD — движение   /   Стрелки — обзор   /   M — мышь   /   1 — 2D   /   Esc — выход",
+  "simulation.title": "Частицы и 3D-физика",
+  "simulation.help": "WASD — capsule-контроллер; Space — прыжок; E — искры; R — импульс шару; Esc — выход"
 }

@@ -1,5 +1,5 @@
-"""Kinematic 2D/3D character: swept AABB movement, slide, gravity and grounded jump.
-Rotation does not change the AABB. The entity is kinematic (dynamic=False).
+"""Kinematic character: swept AABB (legacy) or convex shape (Bullet), slide and jump.
+The entity is kinematic (dynamic=False); collider dimensions are world units.
 """
 import math
 import forge
@@ -13,6 +13,9 @@ class CharacterController:
         self.velocity = [0., 0., 0.]
         self.direction, self.grounded, self.hits = (0., 0., 0.), False, []
         entity.dynamic = False
+        if forge.physics_settings().get('backend') == 'bullet':
+            settings=forge.rigid_body_settings(entity)
+            forge.set_rigid_body(entity,dict(settings,kinematic=True))
         self._listener = forge.on_frame(self.update) if automatic else None
     def walk(self, x, z=0):
         if not math.isfinite(x) or not math.isfinite(z): raise ValueError('Direction must be finite')
@@ -28,8 +31,9 @@ class CharacterController:
         result = forge.move_character(self.entity, delta, self.skin)
         self.grounded, self.hits = result['grounded'], result['hits']
         for hit in self.hits:
-            for axis, normal in enumerate(hit['normal']):
-                if normal and self.velocity[axis]*normal < 0: self.velocity[axis] = 0
+            normal=hit['normal']
+            into=sum(v*n for v,n in zip(self.velocity,normal))
+            if into<0:self.velocity=[v-into*n for v,n in zip(self.velocity,normal)]
         return result
     def update(self, dt):
         if not math.isfinite(dt) or not 0 <= dt <= 1: raise ValueError('dt must be 0..1')

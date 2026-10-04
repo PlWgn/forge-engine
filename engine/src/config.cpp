@@ -1,4 +1,6 @@
 #include <forge/engine.hpp>
+#include <forge/physics.hpp>
+#include <forge/particles.hpp>
 #include <cmath>
 #include <limits>
 namespace forge {
@@ -51,7 +53,7 @@ Json validateEntity(const Config& c, Json j) {
         if(j.contains(field) && !j[field].is_string())throw std::runtime_error(std::string(field)+" must be a string");
     for(auto field:{"dynamic","trigger","visible","screen"})
         if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be a boolean");
-    for(auto field : {"position","rotation","scale","velocity","collider"}) if(j.contains(field)) {
+    for(auto field : {"position","rotation","scale","velocity","collider","angular_velocity"}) if(j.contains(field)) {
         if(!j[field].is_array() || j[field].size()!=3) throw std::runtime_error(std::string(field)+" must contain 3 numbers");
         for(auto& v:j[field])finiteNumber(v,field);
     }
@@ -61,6 +63,7 @@ Json validateEntity(const Config& c, Json j) {
         for(auto& v:j[field])finiteNumber(v,field);
     }
     checkedMass(finiteNumber(j.value("mass",Json(1)),"mass"));
+    validateRigidBody(j.value("rigid_body",Json::object()));
     if(j.contains("layer") && (!j["layer"].is_number_integer() || j["layer"].get<double>()<0 || j["layer"].get<double>()>4294967295.0))throw std::runtime_error("layer must be an unsigned 32-bit integer");
     for(auto field:{"casts_shadow","animation_loop"})if(j.contains(field) && !j[field].is_boolean())throw std::runtime_error(std::string(field)+" must be boolean");
     if(j.contains("animation") && !j["animation"].is_string())throw std::runtime_error("animation must be string");finiteNumber(j.value("animation_speed",Json(1)),"animation_speed");
@@ -77,6 +80,7 @@ Json validateEntity(const Config& c, Json j) {
     return j;
 }
 void Config::validate(bool media) const {
+    validatePhysics(data.value("physics",Json::object()));
     validateRenderSettings(data.value("rendering",Json::object()));
     storagePath(*this,data.value("save_directory","saves"));
     for(auto& [key,p]:paths) if(!fs::is_directory(p)) throw std::runtime_error("Missing directory paths."+key+": "+p.u8string());
@@ -86,7 +90,7 @@ void Config::validate(bool media) const {
     for(auto& s:data.value("startup_scripts",Json::array())) requireFile(asset("scripts",s.get<std::string>()));
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
     auto graphics = data.value("renderer",Json::object());
-    for(auto field:{"vertex_shader","fragment_shader","font"}) if(graphics.contains(field)) requireFile(asset("graphics",graphics[field]));
+    for(auto field:{"vertex_shader","fragment_shader","font","particle_vertex_shader","particle_fragment_shader"}) if(graphics.contains(field)) requireFile(asset("graphics",graphics[field]));
     for(auto& font:graphics.value("fallback_fonts",Json::array()))requireFile(asset("graphics",font));
     if(graphics.contains("post_shader"))requireFile(asset("graphics",graphics["post_shader"]));
     if(data["project"].contains("icon")) requireFile(resolve(data["project"]["icon"]));
@@ -106,6 +110,7 @@ void Config::validate(bool media) const {
         if(!scene.value("entities",Json::array()).is_array()) throw std::runtime_error("Scene.entities must be array");
         std::set<std::string> ids;
         for(auto& e:scene.value("entities",Json::array())) { validateEntity(*this,e); auto id=e.value("id",""); if(!id.empty() && !ids.insert(id).second) throw std::runtime_error("Duplicate entity id: "+id); }
+        World simulation;simulation.config=const_cast<Config*>(this);simulation.load(item.path().lexically_relative(paths.at("scenes")).generic_u8string());
     }
     if(media)validateMedia(*this);
     Localization validation;validation.load(*this);

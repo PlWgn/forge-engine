@@ -1,4 +1,6 @@
 #include <forge/engine.hpp>
+#include <forge/physics.hpp>
+#include <forge/particles.hpp>
 #include <pybind11/stl.h>
 #include <chrono>
 #include <thread>
@@ -14,6 +16,7 @@ static std::array<float,3> tuple(glm::vec3 v){return {v.x,v.y,v.z};}
 static glm::vec3 vector(std::array<float,3> v,const std::string& field="vector"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field)};}
 static glm::vec4 color(std::array<float,4> v,const std::string& field="color"){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field),finiteNumber(v[3],field)};}
 static float positive(float value,const std::string& field){finiteNumber(value,field);if(value<=0)throw std::runtime_error(field+" must be positive");return value;}
+static void physicsMutation(const Entity& e){if(rigidPhysics(rt().world) && rt().world.activeCollider(e))validatePhysicsEntity(e);}
 static py::object toPython(const Json& j){return py::module_::import("json").attr("loads")(j.dump());}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
@@ -49,18 +52,19 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_property("animation_time",[](Entity& e){return e.animationTime;},[](Entity& e,float value){e.animationTime=finiteNumber(value,"animation time");})
         .def_property_readonly("animation",[](Entity& e){return e.animation;})
         .def_property_readonly("animation_playing",[](Entity& e){return e.animationPlaying;})
-        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){e.mass=checkedMass(v);})
-        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){e.position=vector(v,"position");})
-        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){e.rotation=vector(v,"rotation");})
+        .def_property("mass",[](Entity& e){return e.mass;},[](Entity& e,float v){auto next=e;next.mass=checkedMass(v);physicsMutation(next);e.mass=next.mass;})
+        .def_property("position",[](Entity& e){return tuple(e.position);},[](Entity& e,std::array<float,3> v){auto next=e;next.position=vector(v,"position");physicsMutation(next);e.position=next.position;})
+        .def_property("rotation",[](Entity& e){return tuple(e.rotation);},[](Entity& e,std::array<float,3> v){auto next=e;next.rotation=vector(v,"rotation");physicsMutation(next);e.rotation=next.rotation;})
         .def_property("scale",[](Entity& e){return tuple(e.scale);},[](Entity& e,std::array<float,3> v){e.scale=vector(v,"scale");})
-        .def_property("velocity",[](Entity& e){return tuple(e.velocity);},[](Entity& e,std::array<float,3> v){e.velocity=vector(v,"velocity");})
-        .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){e.collider=vector(v,"collider");})
+        .def_property("velocity",[](Entity& e){return tuple(e.velocity);},[](Entity& e,std::array<float,3> v){auto next=e;next.velocity=vector(v,"velocity");physicsMutation(next);e.velocity=next.velocity;})
+        .def_property("angular_velocity",[](Entity& e){return tuple(e.angularVelocity);},[](Entity& e,std::array<float,3> v){auto next=e;next.angularVelocity=vector(v,"angular_velocity");if(rigidPhysics(rt().world) && rt().world.activeCollider(next))validatePhysicsEntity(next);e.angularVelocity=next.angularVelocity;})
+        .def_property("collider",[](Entity& e){return tuple(e.collider);},[](Entity& e,std::array<float,3> v){auto next=e;next.collider=vector(v,"collider");physicsMutation(next);e.collider=next.collider;})
         .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color=color(v);})
         .def_property("data",[](Entity& e){return toPython(e.data);},[](Entity& e,py::object v){e.data=fromPython(v);})
         .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){if(v.is_none()){e.clipped=false;return;}auto next=color(v.cast<std::array<float,4>>(),"clip");e.clip=next;e.clipped=true;})
         .def("destroy",[](Entity& e){e.alive=false;})
-        .def("move",[](Entity& e,float x,float y,float z){auto next=e.position+vector({x,y,z},"move");e.position=vector(tuple(next),"position");},py::arg("x"),py::arg("y"),py::arg("z")=0)
-        .def("impulse",[](Entity& e,float x,float y,float z){auto next=e.velocity+vector({x,y,z},"impulse")/e.mass;e.velocity=vector(tuple(next),"velocity");},py::arg("x"),py::arg("y"),py::arg("z")=0);
+        .def("move",[](Entity& e,float x,float y,float z){auto next=e;next.position=vector(tuple(e.position+vector({x,y,z},"move")),"position");physicsMutation(next);e.position=next.position;},py::arg("x"),py::arg("y"),py::arg("z")=0)
+        .def("impulse",[](Entity& e,float x,float y,float z){auto next=e;next.velocity=vector(tuple(e.velocity+vector({x,y,z},"impulse")/e.mass),"velocity");physicsMutation(next);e.velocity=next.velocity;},py::arg("x"),py::arg("y"),py::arg("z")=0);
     m.def("spawn",[](py::dict d){auto e=rt().world.spawn(fromPython(d));try{if(!e->textKey.empty())e->text=rt().localization.translate(e->textKey,e->textParams);}catch(...){e->alive=false;throw;}return e;});
     m.def("find",[](const std::string& id){return rt().world.find(id);});
     m.def("entities",[](){std::vector<std::shared_ptr<Entity>> result;for(auto& e:rt().world.entities)if(e->alive)result.push_back(e);return result;});
@@ -179,12 +183,13 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
                     if(j.contains("background"))world.background=color(j["background"].get<std::array<float,4>>(),"background");
                     auto camera=j.value("camera",Json::object());if(camera.contains("position"))world.cameraPosition=vector(camera["position"].get<std::array<float,3>>());if(camera.contains("target"))world.cameraTarget=vector(camera["target"].get<std::array<float,3>>());world.fov=camera.value("fov",60.0f);if(world.fov<=0 || world.fov>=179)throw std::runtime_error("Camera fov must be between 0 and 179");
                     for(auto& data:j.value("entities",Json::array()))world.spawn(data);
+                    world.configureSimulation(j);
                 }
             }
         } else if(world.scene.contains("script"))sceneModule=loadModule(config.asset("scenes",world.scene["script"]));
         refreshLocalizedEntities();
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
-        attachPending();destroyDead();refreshLocalizedEntities();if(renderer)renderer->validateWorld(world);
+        attachPending();destroyDead();refreshLocalizedEntities();if(rigidPhysics(world))physics3D(world).sync(world);if(renderer)renderer->validateWorld(world);
     } catch(...) {
         assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
         persistence=std::move(previousPersistence);initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
@@ -329,8 +334,10 @@ int Runtime::run(int frames) {
                 profile["scripts_ms"]=elapsed(scriptsStart);auto physicsStart=std::chrono::steady_clock::now();
                 physicsAccumulator+=dt;
                 if(!world.physicsEnabled)physicsAccumulator=0;
+                std::unique_ptr<PhysicsForces> forceFrame;
+                if(world.physicsEnabled && physicsAccumulator>=1.0f/120)forceFrame=std::make_unique<PhysicsForces>(world);
                 while(world.physicsEnabled && physicsAccumulator>=1.0f/120){
-                    auto old=world.contacts;world.physics(1.0f/120);physicsAccumulator-=1.0f/120;
+                    auto old=world.contacts;forceFrame->step(1.0f/120);physicsAccumulator-=1.0f/120;
                     for(auto& script:current)if(script.entity && script.entity->alive) {
                         auto id=script.entity->id;
                         for(auto& pair:world.contacts)if(!old.count(pair) && (pair.first==id || pair.second==id) && py::hasattr(script.instance,"on_collision"))script.instance.attr("on_collision")(world.find(pair.first==id?pair.second:pair.first));
@@ -339,11 +346,14 @@ int Runtime::run(int frames) {
                 }
                 profile["physics_ms"]=elapsed(physicsStart);
                 }
+                auto particleStart=std::chrono::steady_clock::now();
+                if(!gamePaused && world.particles)world.particles->update(world,dt);
+                profile["particles_ms"]=elapsed(particleStart);
                 destroyDead();attachPending();destroyDead();
                 if(!gamePaused)for(auto& entity:world.entities)if(entity->alive && entity->animationPlaying)entity->animationTime=std::max(0.0,entity->animationTime+double(dt)*entity->animationSpeed);
                 refreshLocalizedEntities();localization.flush();
                 if(renderer)renderer->render(world);
-                profile["frame_ms"]=elapsed(frameStart);profile["entities"]=world.entities.size();profile["assets"]=assets.stats();if(renderer)profile["renderer"]=renderer->diagnostics();
+                profile["frame_ms"]=elapsed(frameStart);profile["entities"]=world.entities.size();profile["assets"]=assets.stats();if(world.particles)profile["particles"]=world.particles->stats();if(world.physics3d)profile["physics"]=world.physics3d->stats();if(renderer)profile["renderer"]=renderer->diagnostics();
             }catch(const std::exception& e){logger.error(e.what());if(!dev){result=1;break;}paused=true;}
             if(headless && dev)std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }

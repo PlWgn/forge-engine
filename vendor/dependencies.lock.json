@@ -42,5 +42,9 @@
   "imgui": {
     "url": "https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b",
     "sha256": "8e1bbc76c71d74fef2fb85db7e7ca8eba13d6a86623c54992b60162db554ffdb"
+  },
+  "bullet": {
+    "url": "https://codeload.github.com/bulletphysics/bullet3/tar.gz/refs/tags/3.25",
+    "sha256": "c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77"
   }
 }

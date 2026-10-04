@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <forge/model.hpp>
+#include <forge/physics.hpp>
+#include <forge/particles.hpp>
 #include <pybind11/stl.h>
 namespace forge {
 namespace {
@@ -161,6 +163,8 @@ Json validateRenderSettings(Json data) {
     return data;
 }
 void bindFeatures(py::module_ &m) {
+    bindPhysics(m);
+    bindParticles(m);
     m.def(
         "user_path",
         [](const std::string &kind, const std::string &file) {

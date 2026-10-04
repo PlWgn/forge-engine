@@ -27,7 +27,8 @@ Forge должен оставаться универсальным и прост
 - текстуры, модели, аудио и прочие игровые ресурсы;
 - `graphics/*`, включая GLSL-шейдеры;
 - `modules/*`, включая Python- и C++-расширения;
-- физику и реализацию мира в `engine/src/world.cpp`;
+- физику и реализацию мира в `engine/src/world.cpp`, Bullet bridge в `engine/src/physics.cpp` / `engine/include/forge/physics.hpp`;
+- систему частиц в `engine/src/particles.cpp` / `engine/include/forge/particles.hpp`, её Python-модуль и шейдеры;
 - графический модуль в `engine/src/render.cpp` и загрузчик `engine/include/forge/gl.hpp`;
 - звуковой модуль в `engine/src/audio.cpp`;
 - загрузку ресурсов, импорт моделей, локализацию и платформенные сервисы в `engine/src/assets.cpp`, `model.cpp`, `localization.cpp`, `platform.cpp`, а также дополнительные API в `features.cpp`;

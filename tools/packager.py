@@ -145,7 +145,7 @@ def build_bundle(config_file, engine_file, output):
         if (source_root / 'THIRD_PARTY.md').exists(): shutil.copy2(source_root / 'THIRD_PARTY.md', stage / 'THIRD_PARTY.md')
         licenses = stage / 'licenses'; licenses.mkdir()
         vendor = source_root / 'vendor'
-        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt')]:
+        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt'), ('bullet','LICENSE.txt')]:
             f = vendor / name / filename
             if f.exists(): shutil.copy2(f, licenses / (name + '.txt'))
         for filename in ['stb_image.h', 'stb_truetype.h', 'miniaudio.h', 'json.hpp']:
