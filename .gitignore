@@ -47,6 +47,7 @@ __pycache__/
 /docs/FORGE_EXPERIENCE.md
 
 # Personal editor/OS files.
+/AGENTS.md
 /.idea/
 /.vscode/
 .DS_Store
