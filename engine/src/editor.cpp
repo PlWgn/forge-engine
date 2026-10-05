@@ -10,6 +10,7 @@
 #include <imgui_impl_opengl3.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
+#include <cstdio>
 namespace forge {
 void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KEY_LAST+1> &keys, const std::array<bool,8> &buttons, glm::vec2 mouseDelta, const Json &diagnostics) {
     const Config* config=&runtime.config;
@@ -18,27 +19,13 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
     ImGui::NewFrame();
     auto before = world.serialize();
     bool changed = false;
-    auto restore = [&](const Json &data) {
-        world.clearEntities();
-        world.contacts.clear();
-        world.physicsSettings=Json::object();world.physics3d.reset();world.particles.reset();
-        world.scene = data;
-        world.is3d = data.value("mode", "2d") == "3d";
-        world.physicsEnabled = data.value("physics_enabled", true);
-        auto bg = data.value("background", Json::array({0, 0, 0, 1}));
-        world.background = {bg[0].get<float>(), bg[1].get<float>(), bg[2].get<float>(), bg[3].get<float>()};
-        auto camera = data.value("camera", Json::object()),
-             position = camera.value("position", Json::array({0, 0, 5})),
-             target = camera.value("target", Json::array({0, 0, 0}));
-        world.cameraPosition = {position[0].get<float>(), position[1].get<float>(), position[2].get<float>()};
-        world.cameraTarget = {target[0].get<float>(), target[1].get<float>(), target[2].get<float>()};
-        world.fov = camera.value("fov", 60.f);
-        world.renderSettings = validateRenderSettings(data.value("rendering", Json::object()));
-        auto v = data.value("gravity", Json::array({0, -9.81, 0}));
-        world.gravity = {v[0].get<float>(), v[1].get<float>(), v[2].get<float>()};
-        world.loadEntities(data["entities"]);
-        world.configureSimulation(data);
-    };
+    auto &session=runtime.editorSession;
+    auto &selected=session.selected;
+    preview=!runtime.gamePaused;
+    if(sceneIdentity!=runtime.currentScene) {
+        sceneIdentity=runtime.currentScene;
+        if(fs::u8path(sceneIdentity).extension()==".json")std::snprintf(sceneFile,sizeof(sceneFile),"%s",sceneIdentity.c_str());
+    }
     auto save = [&]() {
         try {
             py::module_::import("forge").attr("save_scene")(std::string(sceneFile));
@@ -57,25 +44,17 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         runtime.pendingScene = runtime.currentScene;
-        undo.clear();
-        redo.clear();
     }
     if (ImGui::Checkbox("Play preview", &preview)) {
         runtime.gamePaused = !preview;
         world.contacts.clear();
     }
-    if (ImGui::Button("Undo") && !preview && !undo.empty()) {
-        redo.push_back(before);
-        auto previous = undo.back();
-        undo.pop_back();
-        restore(previous);
+    if (ImGui::Button("Undo") && !preview) {
+        try {session.step(runtime,false);}catch(const std::exception &e){status=e.what();}
     }
     ImGui::SameLine();
-    if (ImGui::Button("Redo") && !preview && !redo.empty()) {
-        undo.push_back(before);
-        auto next = redo.back();
-        redo.pop_back();
-        restore(next);
+    if (ImGui::Button("Redo") && !preview) {
+        try {session.step(runtime,true);}catch(const std::exception &e){status=e.what();}
     }
     if (ImGui::Button("Add sprite")) {
         auto e = world.spawn(Json{{"kind", "sprite"},
@@ -273,6 +252,20 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
             ImGui::TreePop();
         }
     }
+    if(ImGui::CollapsingHeader("Extension commands")) {
+        if(runtime.editorClient) {
+            for(auto item:runtime.editorClient.attr("commands")) {
+                auto name=py::cast<std::string>(item);
+                if(ImGui::Selectable(name.c_str()))std::snprintf(extensionName,sizeof(extensionName),"%s",name.c_str());
+            }
+            ImGui::InputText("Command",extensionName,sizeof(extensionName));
+            ImGui::InputTextMultiline("Arguments JSON",extensionArguments,sizeof(extensionArguments));
+            if(ImGui::Button("Execute extension"))try {
+                auto result=session.command(runtime,Json{{"op","command"},{"name",extensionName},{"arguments",Json::parse(extensionArguments)}});
+                status=result.dump();
+            }catch(const std::exception &e){status=e.what();}
+        }else ImGui::TextUnformatted("SDK unavailable in this development installation");
+    }
     auto assetStats = runtime.assets.stats();
     ImGui::Text("Draw calls: %u; batches: %u", diagnostics.value("draw_calls",0u), diagnostics.value("batches",0u));
     ImGui::Text("GPU: %.1f MiB", diagnostics.value("gpu_bytes",0.0) / (1024 * 1024));
@@ -306,12 +299,7 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
         world.cameraPosition += move;
         world.cameraTarget += move;
     }
-    if (changed && !preview) {
-        undo.push_back(std::move(before));
-        if (undo.size() > 100)
-            undo.erase(undo.begin());
-        redo.clear();
-    }
+    if (changed && !preview) session.record(before,world.serialize());
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

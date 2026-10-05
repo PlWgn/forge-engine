@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "entity.schema.json",
+  "title": "Forge entity / single-object prefab (format 1)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "parent": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "empty",
+        "sprite",
+        "cube",
+        "mesh",
+        "text"
+      ]
+    },
+    "prefab": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "texture": {
+      "type": "string"
+    },
+    "material": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "text_key": {
+      "type": "string"
+    },
+    "animation": {
+      "type": "string"
+    },
+    "position": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "rotation": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "scale": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "velocity": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "angular_velocity": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "collider": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "uv": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "clip": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dynamic": {
+      "type": "boolean"
+    },
+    "trigger": {
+      "type": "boolean"
+    },
+    "visible": {
+      "type": "boolean"
+    },
+    "screen": {
+      "type": "boolean"
+    },
+    "casts_shadow": {
+      "type": "boolean"
+    },
+    "animation_loop": {
+      "type": "boolean"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "text_params": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "rigid_body": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "uniforms": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "animator": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "morph_weights": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "mass": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "font_size": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "animation_speed": {
+      "type": "number"
+    },
+    "layer": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": [
+              "file"
+            ],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        ]
+      }
+    },
+    "material_properties": {
+      "$ref": "material.schema.json"
+    }
+  },
+  "additionalProperties": true
+}

@@ -17,10 +17,13 @@ PACKAGES = {
     'miniaudio': ('https://raw.githubusercontent.com/mackron/miniaudio/0.11.23/miniaudio.h', 'miniaudio.h'),
 }
 def main():
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--without-editor",action="store_true");args=parser.parse_args()
     vendor = ROOT / 'vendor'; vendor.mkdir(exist_ok=True)
     lock_path = vendor / 'dependencies.lock.json'
     lock = json.loads(lock_path.read_text()) if lock_path.exists() else {}
     for name, (url, filename) in PACKAGES.items():
+        if args.without_editor and name=="imgui": continue
         target = vendor / (name if filename == 'archive' else filename)
         if target.exists(): continue
         # The distributable project already contains the exact default font snapshot.

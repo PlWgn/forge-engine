@@ -8,6 +8,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, windows-2022]
+        editor: ['ON', 'OFF']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -15,8 +16,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install cmake==3.31.6
-      - run: python tools/dependencies.py
-      - run: python tools/forge.py compile
+      - name: Bootstrap with optional shell
+        shell: bash
+        run: |
+          if [ "${{ matrix.editor }}" = OFF ]; then python tools/dependencies.py --without-editor; else python tools/dependencies.py; fi
+      - name: Build chosen runtime
+        shell: bash
+        run: |
+          if [ "${{ matrix.editor }}" = OFF ]; then python tools/forge.py compile --without-editor; else python tools/forge.py compile; fi
       - name: All native regressions (including numeric and packager_paths)
         run: ctest --test-dir build -C Release --output-on-failure
       - run: python tools/forge.py build --output dist/Game
@@ -24,7 +31,7 @@ jobs:
         run: python tools/verify_package.py dist/Game
       - uses: actions/upload-artifact@v4
         with:
-          name: Forge-${{ matrix.os }}
+          name: Forge-${{ matrix.os }}-editor-${{ matrix.editor }}
           path: dist/Game
 
   graphics:

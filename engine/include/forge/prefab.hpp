@@ -3,6 +3,7 @@
 namespace pybind11 {class module_;}
 namespace forge {
 struct Config;
+Json prefabCandidate(const Config&,const std::string&,const Json*);
 Json prefabDocument(const Config&,const std::string&);
 Json entityPrefab(const Config&,Json);
 std::map<std::string,std::shared_ptr<Entity>> instantiatePrefab(World&,const std::string&,const std::string&,const Json&,const std::string&,glm::vec3);

@@ -73,6 +73,8 @@ void Runtime::reload(){
     auto previousLocalization=localization;auto previousConfig=config;auto previousPythonPaths=pythonPaths;auto sys=py::module_::import("sys");auto modules=sys.attr("modules").cast<py::dict>();
     auto previousModules=modules.attr("copy")().cast<py::dict>();auto previousPath=sys.attr("path").attr("copy")();
     try{
+        if(editing && !editorSession.runtimeBase.is_null() && world.serialize()!=editorSession.runtimeBase)
+            throw std::runtime_error("Editor has unsaved changes; save, undo or explicitly reload the scene before automatic hot reload. The current world was preserved.");
         auto updated=Config::load(config.file);if(!entryOverride.empty())updated.data["entry_scene"]=entryOverride;updated.validate(false);auto nextPaths=searchPaths(updated);
         std::vector<fs::path> invalidatedRoots;
         for(auto group:{"modules","scripts","scenes"})invalidatedRoots.push_back(config.paths.at(group));

@@ -14,8 +14,8 @@ struct Editor {
     Json animationDraft;
     std::array<char,32768> animationJson{};
     char animationPrefab[512]="animation-prefab.json";
-    std::string selected,status;
-    std::vector<Json> undo,redo;
+    std::string status,sceneIdentity;
+    char extensionName[256]="",extensionArguments[4096]="{}";
     char sceneFile[512]="editor-scene.json";
     void draw(World &,Runtime &,const std::array<bool,GLFW_KEY_LAST+1> &,const std::array<bool,8> &,glm::vec2,const Json &);
 };

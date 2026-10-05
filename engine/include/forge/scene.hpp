@@ -36,6 +36,7 @@ struct Entity {
     float mass = 1, fontSize = 24;
     Json scripts = Json::array();
     Json data = Json::object();
+    Json source = Json::object(); // Preserve shell/extension fields across runtime snapshots.
 };
 glm::mat4 composeTransform(const Entity &);
 struct World {
@@ -76,6 +77,7 @@ struct World {
     void configureSimulation(const Json &);
     std::shared_ptr<Entity> find(const std::string &id);
     void load(const std::string &scenePath);
+    void loadDocument(const Json &);
     std::set<std::pair<std::string, std::string>> contacts;
     void physics(float dt);
     bool activeCollider(const Entity &) const;

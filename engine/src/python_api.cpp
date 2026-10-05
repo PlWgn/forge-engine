@@ -16,7 +16,11 @@ static py::object toPython(const Json& j){return pythonValue(j);}
 PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
     m.attr("api_version")=1;
-    m.def("capabilities",[](){return pythonValue(Json{{"api_version",1},{"features",Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","animation_editor","background_watch","bullet","particles","pbr"})},{"python_runtimes_per_process",1}});});
+    m.def("capabilities",[](){
+        Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells"});
+        if(FORGE_WITH_EDITOR)features.push_back("animation_editor");
+        return pythonValue(Json{{"api_version",1},{"project_api_version",1},{"base_editor",bool(FORGE_WITH_EDITOR)},{"features",features},{"python_runtimes_per_process",1}});
+    });
     m.doc()="Forge native engine modules. Coordinates: 2D pixels; 3D world units.";
     py::class_<LocalizedText>(m,"LocalizedText")
         .def(py::init([](const std::string& key,py::dict params){return LocalizedText{key,fromPython(params)};}),py::arg("key"),py::arg("params")=py::dict())

@@ -21,6 +21,7 @@
 #include <forge/localization.hpp>
 #include <forge/renderer.hpp>
 #include <forge/audio.hpp>
+#include <forge/editor_session.hpp>
 namespace forge {
 namespace py = pybind11;
 struct Model;
@@ -43,6 +44,12 @@ class FileWatch;
 struct Runtime {
     Config config, sceneConfig;
     World world;
+    EditorSession editorSession;
+    bool baseShell = true;
+    std::string shellFile;
+    py::object editorShell, editorClient;
+    fs::path executable;
+    std::vector<std::string> extensionFiles;
     std::unique_ptr<Renderer> renderer;
     Audio audio;
     Localization localization;
@@ -70,7 +77,7 @@ struct Runtime {
     unsigned moduleIndex = 0;
     Runtime(Config config, bool development, bool noWindow);
     ~Runtime();
-    void loadScene(const std::string &, const Localization *teardownLocalization = nullptr);
+    void loadScene(const std::string &, const Localization *teardownLocalization = nullptr, const Json *document = nullptr);
     py::object loadModule(const fs::path &);
     void attach(std::shared_ptr<Entity>);
     void attachPending();

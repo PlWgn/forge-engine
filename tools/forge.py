@@ -32,9 +32,11 @@ def binary():
         if path.exists(): return path
     raise RuntimeError('Engine is not compiled. Run: python tools/forge.py compile')
 
-def configure(settings):
-    if any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in ('glfw','assimp','bullet')) or not (ROOT / 'vendor/imgui/imgui.cpp').exists(): execute([sys.executable, ROOT / 'tools/dependencies.py'])
-    args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}']
+def configure(settings, with_editor=True):
+    missing=any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in ('glfw','assimp','bullet'))
+    if missing or (with_editor and not (ROOT/'vendor/imgui/imgui.cpp').exists()):
+        execute([sys.executable, ROOT/'tools/dependencies.py', *([] if with_editor else ['--without-editor'])])
+    args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}', f'-DFORGE_WITH_EDITOR={"ON" if with_editor else "OFF"}']
     data = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else {}
     native = []
     for path in data.get('native_modules', []):
@@ -53,6 +55,10 @@ def scaffold(destination):
         shutil.copytree(ROOT / directory, destination / directory, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy2(ROOT / 'engine.json', destination / 'engine.json')
     shutil.copy2(ROOT / 'Инструкция.md', destination / 'Инструкция.md')
+    shutil.copytree(ROOT/'schemas',destination/'schemas')
+    (destination/'docs').mkdir()
+    for name in ('PROJECT_API.md','FORGE_2.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
+    shutil.copytree(ROOT/'examples/editor',destination/'examples/editor',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / filename, destination / filename)
     (destination / 'licenses').mkdir()
@@ -61,10 +67,15 @@ def scaffold(destination):
 
 def main():
     parser = argparse.ArgumentParser(description='Forge engine development tools')
-    parser.add_argument('command', choices=['configure', 'compile', 'validate', 'dev', 'run', 'edit', 'build', 'init', 'test', 'sign', 'notarize'])
+    parser.add_argument('command', choices=['configure', 'compile', 'validate', 'dev', 'run', 'edit', 'build', 'init', 'test', 'sign', 'notarize', 'project', 'shell'])
     parser.add_argument('--project', type=Path, default=ROOT / 'engine.json')
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--headless', action='store_true')
+    parser.add_argument('--shell', help='builtin, none, project-shell.py, or an external SDK shell with the shell command')
+    parser.add_argument('--extension', action='append', default=[], type=Path, help='Trusted SDK extension file (shell command)')
+    parser.add_argument('--request', type=Path, help='JSON request file (project command; otherwise stdin)')
+    parser.add_argument('--serve', action='store_true', help='JSON-lines project service')
+    parser.add_argument('--without-editor', action='store_true', help='Compile without the builtin ImGui shell')
+    parser.add_argument('--headless' , action='store_true')
     parser.add_argument('--frames', type=int)
     parser.add_argument('--scene', help='Initial scene override for run/dev/edit')
     parser.add_argument('--no-open-log', action='store_true')
@@ -101,8 +112,25 @@ def main():
         if not args.output: parser.error('init requires --output')
         scaffold(args.output); return
     if args.command in ('configure', 'compile'):
-        configure(settings)
+        configure(settings, not args.without_editor)
         if args.command == 'compile': execute([cmake_path(), '--build', ROOT / 'build', '--config', 'Release', '--parallel', str(min(os.cpu_count() or 2, 4))])
+        return
+    if args.command == 'project':
+        command=[str(binary()), 'project', '--project', str(settings), '--no-open-log']
+        if args.request: command += ['--request', str(args.request.resolve())]
+        if args.serve: command += ['--serve']
+        return subprocess.call(command)
+    if args.command == 'shell':
+        if not args.shell: parser.error('shell requires --shell path/to/shell.py')
+        import importlib.util
+        sys.path.insert(0,str(ROOT/'sdk'))
+        from forge_editor import Client, API_VERSION
+        spec=importlib.util.spec_from_file_location('_forge_shell',Path(args.shell).resolve())
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        if getattr(module,'API_VERSION',None)!=API_VERSION: raise RuntimeError('Shell must declare API_VERSION = 1')
+        with Client(binary(),settings) as client:
+            for path in args.extension: client.extension(path)
+            module.main(client)
         return
     if args.command == 'test':
         execute([sys.executable, ROOT / 'tests/integration.py', binary()])
@@ -110,16 +138,19 @@ def main():
         execute([sys.executable, ROOT / 'tests/simulation.py', binary()])
         execute([sys.executable, ROOT / 'tests/rendering.py', binary()])
         execute([sys.executable, ROOT / 'tests/authoring.py', binary()])
+        execute([sys.executable, ROOT / 'tests/project_api.py', binary()])
         return
     command = [binary(), args.command, '--project', settings]
     if args.output: command += ['--output', args.output.resolve()]
     if args.headless: command += ['--headless']
     if args.frames is not None: command += ['--frames', str(args.frames)]
+    if args.shell: command += ['--shell', args.shell]
+    for file in args.extension: command += ['--extension', file.resolve()]
     if args.scene: command += ['--scene', args.scene]
     if args.no_open_log: command += ['--no-open-log']
     execute(command, record_output=False)
 
 if __name__ == '__main__':
-    try: main()
+    try: sys.exit(main() or 0)
     except (Exception, KeyboardInterrupt) as exc:
         log(str(exc) or 'Interrupted', 'ERROR'); sys.exit(1)

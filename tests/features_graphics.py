@@ -22,10 +22,10 @@ def point(path,x,y):
 class FeatureGraphicsTests(unittest.TestCase):
     setUp,tearDown,write_config=base.GraphicsTests.setUp,base.GraphicsTests.tearDown,base.GraphicsTests.write_config
     wait_log=base.GraphicsTests.wait_log
-    def run_scene(self,source,*,command='run',frames=8):
+    def run_scene(self,source,*,command='run',frames=8,extra=()):
         (self.root/'scenes/gpu.py').write_text(source,encoding='utf-8');self.config['entry_scene']='gpu.py'
         self.config['window'].update(width=640,height=480,vsync=False);self.write_config()
-        result=subprocess.run([str(ENGINE),command,'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log'],capture_output=True,text=True,timeout=60)
+        result=subprocess.run([str(ENGINE),command,'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log',*extra],capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result.stdout+result.stderr
     def test_batching_and_uv_regions(self):
@@ -108,6 +108,35 @@ def on_start():
 ''',command='edit',frames=3)
         self.assertTrue((self.root/'editable.json').exists() or (self.root/'scenes/editable.json').exists())
         self.assertGreater(len(set((self.root/'editor.ppm').read_bytes()[100:])),30)
+    def test_alternative_viewport_shell_without_builtin_interface(self):
+        (self.root/'shell.py').write_text("""import forge,json
+from pathlib import Path
+API_VERSION=1
+frames=0
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==1:
+        assert forge.editor_enabled() and not forge.editor_command({'op':'snapshot'})['preview']
+        forge.editor_command({'op':'patch','patch':[{'op':'add','path':'/entities/-','value':{'id':'custom','kind':'cube','color':[.2,.8,.4,1],'extensions':{'shell':'kept'}}}]})
+        forge.editor_command({'op':'select','id':'custom'})
+    if frames==3:
+        assert forge.editor_command({'op':'snapshot'})['selected']=='custom'
+        forge.editor_command({'op':'save','file':'custom-shell.json'})
+        forge.find('custom').name='Saved twice'
+        forge.editor_command({'op':'save','file':'custom-shell.json'})
+        saved=json.loads(Path(forge.asset_path('scenes','custom-shell.json')).read_text())
+        assert saved['entities'][0]['name']=='Saved twice' and saved['entities'][0]['extensions']=={'shell':'kept'}
+        forge.screenshot('custom-viewport.ppm')
+        forge.log('CUSTOM_VIEWPORT_OK');forge.quit()
+""",encoding='utf-8')
+        output=self.run_scene("def build():return {'mode':'3d','physics_enabled':False}\n",command='edit',frames=8,extra=('--shell','shell.py'))
+        self.assertIn('CUSTOM_VIEWPORT_OK',output)
+        center=point(self.root/'custom-viewport.ppm',320,240)
+        corner=point(self.root/'custom-viewport.ppm',20,20)
+        self.assertNotEqual(center,corner)
+        self.assertGreater(center[1],center[0]+20)
+
     def test_failed_reload_restores_window_preferences(self):
         source='''import forge
 from pathlib import Path

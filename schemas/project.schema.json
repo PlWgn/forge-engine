@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project.schema.json",
+  "title": "Forge project (schema_version 1)",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "entry_scene": {
+      "type": "string",
+      "minLength": 1
+    },
+    "paths": {
+      "type": "object",
+      "required": [
+        "graphics",
+        "modules",
+        "scenes",
+        "scripts",
+        "textures",
+        "materials",
+        "models",
+        "objects",
+        "audio"
+      ],
+      "properties": {
+        "graphics": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modules": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scripts": {
+          "type": "string",
+          "minLength": 1
+        },
+        "textures": {
+          "type": "string",
+          "minLength": 1
+        },
+        "materials": {
+          "type": "string",
+          "minLength": 1
+        },
+        "models": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objects": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audio": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locales": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vsync": {
+          "type": "boolean"
+        },
+        "fullscreen": {
+          "type": "boolean"
+        },
+        "resizable": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "python_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "startup_scripts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "native_modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "editor": {
+      "type": "object",
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "renderer": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "rendering": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "physics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "audio_settings": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "localization": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "development": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "project",
+    "entry_scene",
+    "paths"
+  ],
+  "description": "Editor-neutral UTF-8 JSON. Semantic/resource/arithmetic validation is provided by Forge, independently of the GUI."
+}

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scene.schema.json",
+  "title": "Forge declarative scene (format 1)",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "enum": [
+        "2d",
+        "3d"
+      ]
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "entity.schema.json"
+      }
+    },
+    "script": {
+      "type": "string"
+    },
+    "physics_enabled": {
+      "type": "boolean"
+    },
+    "gravity": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "background": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "target": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "fov": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 179
+        }
+      },
+      "additionalProperties": true
+    },
+    "physics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "rendering": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "emitters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

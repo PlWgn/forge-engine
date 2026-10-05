@@ -18,8 +18,11 @@ static glm::vec4 vec4(const Json& j, glm::vec4 fallback) {
 }
 std::shared_ptr<Entity> World::spawn(Json j) {
     if(!config)throw std::runtime_error("World needs a project configuration before spawn");
+    auto authored=j;
     j=validateEntity(*config,std::move(j));
     auto e=std::make_shared<Entity>();
+    e->source=j;
+    if(authored.contains("prefab"))e->source["prefab"]=authored["prefab"];
     if(j.contains("id"))e->id=j["id"].get<std::string>();else {do {e->id="entity_"+std::to_string(nextId++);}while(find(e->id));}
     if(find(e->id)) throw std::runtime_error("Duplicate entity id: "+e->id);
     e->name=j.value("name",e->id); e->kind=j.value("kind","sprite");
@@ -79,12 +82,21 @@ void World::load(const std::string& scenePath) {
     if(file.extension()==".json") scene=readJson(file);
     else if(file.extension()==".py") scene=Json::object();
     else throw std::runtime_error("Scene must be .json or .py: "+file.u8string());
+    loadDocument(scene);
+}
+void World::loadDocument(const Json &document) {
+    if(!document.is_object())throw std::runtime_error("Scene must be an object");
+    auto mode=document.value("mode","2d");
+    if(mode!="2d" && mode!="3d")throw std::runtime_error("Scene mode must be 2d or 3d");
+    if(document.contains("physics_enabled") && !document["physics_enabled"].is_boolean())throw std::runtime_error("physics_enabled must be boolean");
+    if(!document.value("entities",Json::array()).is_array())throw std::runtime_error("Scene.entities must be array");
+    clearEntities();contacts.clear();physics3d.reset();particles.reset();scene=document;
     is3d=scene.value("mode","2d")=="3d";
     physicsEnabled=scene.value("physics_enabled",true);renderSettings=config->data.value("rendering",Json::object());renderSettings.merge_patch(scene.value("rendering",Json::object()));renderSettings=validateRenderSettings(std::move(renderSettings));
     gravity=vec3(scene.value("gravity",Json()),is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0));
     background=vec4(scene.value("background",Json()),glm::vec4(0.025f,0.04f,0.075f,1));
     auto camera=scene.value("camera",Json::object());
-    cameraPosition=vec3(camera.value("position",Json()),glm::vec3(0,0,5)); cameraTarget=vec3(camera.value("target",Json()),glm::vec3(0)); fov=camera.value("fov",60.0f);
+    cameraPosition=vec3(camera.value("position",Json()),glm::vec3(0,0,5)); cameraTarget=vec3(camera.value("target",Json()),glm::vec3(0)); fov=finiteNumber(camera.value("fov",Json(60)),"camera.fov");
     if(fov<=0 || fov>=179) throw std::runtime_error("Camera fov must be between 0 and 179");
     loadEntities(scene.value("entities",Json::array()));
     configureSimulation(scene);
@@ -198,8 +210,11 @@ Json World::serialize()const{
     auto array3=[](glm::vec3 v){return Json::array({v.x,v.y,v.z});};auto array4=[](glm::vec4 v){return Json::array({v.x,v.y,v.z,v.w});};Json result=scene;
     result["mode"]=is3d?"3d":"2d";result["gravity"]=array3(gravity);result["background"]=array4(background);result["physics_enabled"]=physicsEnabled;result["rendering"]=renderSettings;
     result["physics"]=physicsSettings;result["emitters"]=particles?particles->serialize():Json::array();
-    result["camera"]={{"position",array3(cameraPosition)},{"target",array3(cameraTarget)},{"fov",fov}};result["entities"]=Json::array();
-    for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
+    if(!result.contains("camera"))result["camera"]=Json::object();
+    result["camera"]["position"]=array3(cameraPosition);result["camera"]["target"]=array3(cameraTarget);result["camera"]["fov"]=fov;result["entities"]=Json::array();
+    for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data=e.source;Json known={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
+        data.update(known);
+        for(auto field:{"model","texture","material","text","text_key","text_params","animation","animation_speed","animation_loop","clip","animator","morph_weights","parent","material_properties"})data.erase(field);
         for(auto& field:std::vector<std::pair<std::string,std::string>>{{"model",e.model},{"texture",e.texture},{"material",e.material},{"text",e.text},{"text_key",e.textKey},{"animation",e.animation}})if(!field.second.empty())data[field.first]=field.second;
         if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}if(!e.animatorSettings.empty())data["animator"]=e.animatorSettings;if(!e.morphWeights.empty())data["morph_weights"]=e.morphWeights;result["entities"].push_back(std::move(data));
         if(!e.parent.empty())result["entities"].back()["parent"]=e.parent;

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "material.schema.json",
+  "title": "Forge material (format 1)",
+  "type": "object",
+  "properties": {
+    "texture": {
+      "type": "string"
+    },
+    "albedo_texture": {
+      "type": "string"
+    },
+    "normal_texture": {
+      "type": "string"
+    },
+    "metallic_texture": {
+      "type": "string"
+    },
+    "roughness_texture": {
+      "type": "string"
+    },
+    "metallic_roughness_texture": {
+      "type": "string"
+    },
+    "occlusion_texture": {
+      "type": "string"
+    },
+    "emissive_texture": {
+      "type": "string"
+    },
+    "metallic": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "roughness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "occlusion_strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "alpha_cutoff": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "normal_scale": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "base_color": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "color": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "emissive": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "shading": {
+      "enum": [
+        "legacy",
+        "unlit",
+        "pbr"
+      ]
+    },
+    "alpha_mode": {
+      "enum": [
+        "opaque",
+        "mask",
+        "blend"
+      ]
+    },
+    "double_sided": {
+      "type": "boolean"
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

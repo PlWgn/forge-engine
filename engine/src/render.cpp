@@ -15,9 +15,11 @@
 #include <forge/shaders.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#if FORGE_WITH_EDITOR
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#endif
 #include <tuple>
 #define STBI_WINDOWS_UTF8
 #include <stb_image.h>
@@ -99,14 +101,18 @@ struct Renderer::Impl : WindowInput {
     glm::mat4 shadowMatrix{1};
     bool shadowEnabled = false;
     bool editorEnabled = false, editorContext = false;
+    #if FORGE_WITH_EDITOR
     Editor editorState;
+    #endif
     Runtime* context = nullptr;
     ~Impl() {
+        #if FORGE_WITH_EDITOR
         if (editorContext) {
             ImGui_ImplOpenGL3_Shutdown();
             ImGui_ImplGlfw_Shutdown();
             ImGui::DestroyContext();
         }
+        #endif
         clear();
         if (window) {
             glfwDestroyWindow(window);
@@ -727,7 +733,11 @@ void main(){
         drawFlip = false;
         gl::Disable(gl::SCISSOR_TEST);
     }
-    void edit(World &world){editorState.draw(world,*context,keys,buttons,mouseDelta,stats);}
+    void edit([[maybe_unused]] World &world){
+#if FORGE_WITH_EDITOR
+editorState.draw(world,*context,keys,buttons,mouseDelta,stats);
+#endif
+}
 };
 Renderer::Renderer() : impl(std::make_unique<Impl>()) {}
 Renderer::~Renderer() = default;
@@ -781,7 +791,7 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
     impl->setup();
     gl::Enable(gl::BLEND);
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-    if (impl->context && impl->context->editing)
+    if (impl->context && impl->context->editing && impl->context->baseShell)
         editor(true);
 }
 void Renderer::stage() {
@@ -1068,12 +1078,13 @@ Json Renderer::input() const {return windowInput(*impl);}
 Json Renderer::windowOptions() const {return forge::windowOptions(impl->window,impl->vsync);}
 void Renderer::windowOptions(const Json& options){forge::windowOptions(impl->window,impl->vsync,options);}
 
-void Renderer::select(const std::string& id){if(!impl->editorEnabled)throw std::runtime_error("Scene editor is disabled");impl->editorState.selected=id;}
-bool Renderer::previewing() const { return impl->editorState.preview; }
+void Renderer::select(const std::string& id){if(!impl->context || !impl->context->editing)throw std::runtime_error("Scene editor is disabled");impl->context->editorSession.selected=id;}
+bool Renderer::previewing() const { return impl->context && !impl->context->gamePaused; }
 void Renderer::editor(bool enabled) {
     impl->editorEnabled = enabled;
     if (!enabled)
         return;
+    #if FORGE_WITH_EDITOR
     if (!impl->editorContext) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -1086,5 +1097,8 @@ void Renderer::editor(bool enabled) {
         ImGui_ImplOpenGL3_Init("#version 330 core");
         impl->editorContext = true;
     }
+    #else
+    throw std::runtime_error("Builtin editor shell is not compiled");
+    #endif
 }
 } // namespace forge

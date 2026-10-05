@@ -32,7 +32,7 @@ void Logger::start(const fs::path& root, bool openFile) {
 }
 void Logger::write(const std::string& level, const std::string& message) {
     auto line = "[" + stamp() + "] [" + level + "] " + message;
-    (level == "ERROR" ? std::cerr : std::cout) << line << std::endl;
+    (protocol || level == "ERROR" ? std::cerr : std::cout) << line << std::endl;
     if(file) { file << line << '\n'; file.flush(); }
 }
 void Logger::error(const std::string& message) { write("ERROR", message);if(active)try{write("INFO","Crash report: "+crashReport(message).u8string());}catch(const std::exception& error){write("WARN",error.what());} if(autoOpen && !opened) open(); }

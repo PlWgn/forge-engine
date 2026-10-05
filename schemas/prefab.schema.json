@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prefab.schema.json",
+  "title": "Forge single-object or hierarchy prefab (format 1)",
+  "type": "object",
+  "properties": {
+    "extends": {
+      "type": "string"
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8192,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "entity.schema.json"
+          },
+          {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "description": "Without entities this is an entity document. Native validation resolves extends/prefab and checks hierarchy/cycles."
+}

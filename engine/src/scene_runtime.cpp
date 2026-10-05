@@ -47,11 +47,12 @@ void Runtime::destroyDead(){
     world.pruneIndex();
     if(failure)std::rethrow_exception(failure);
 }
-void Runtime::loadScene(const std::string& name,const Localization* teardownLocalization) {
+void Runtime::loadScene(const std::string& name,const Localization* teardownLocalization,const Json* document) {
     auto previousPersistence=persistence;
     auto assetCheckpoint=assets.checkpoint();auto previousInput=inputFrame;auto previousTime=time;auto previousDt=dt;
     // Keep a usable world until the replacement scene and its Python scripts initialize.
-    World replacement;replacement.config=&config;replacement.prepareEntity=world.prepareEntity;replacement.width=world.width;replacement.height=world.height;replacement.load(name);
+    World replacement;replacement.config=&config;replacement.prepareEntity=world.prepareEntity;replacement.width=world.width;replacement.height=world.height;if(document){replacement.geometry=world.geometry;replacement.loadDocument(*document);}else replacement.load(name);
+    auto oldSelection=editorSession.selected;if(!document)editorSession.selected.clear();
     auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
     auto oldLocalization=localization;
     auto oldPending=pendingScene;bool oldRunning=running,oldPaused=gamePaused;
@@ -65,7 +66,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         if(reloading)audio.configure(config.data.value("audio_settings",Json::object()));
         py::object sceneModule;
         auto sceneFile=config.asset("scenes",name);
-        if(sceneFile.extension()==".py") {
+        if(sceneFile.extension()==".py" && !document) {
             sceneModule=loadModule(sceneFile);
             if(py::hasattr(sceneModule,"build")) {
                 auto result=sceneModule.attr("build")();
@@ -87,6 +88,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
         attachPending();destroyDead();world.syncTransforms();for(auto& e:world.entities)if(e->alive && proceduralName(e->model) && !geometry(world).entries.count(e->model))throw std::runtime_error("Missing procedural mesh: "+e->model);refreshLocalizedEntities();if(rigidPhysics(world))physics3D(world).sync(world);if(renderer)renderer->validateWorld(world);
     } catch(...) {
+        editorSession.selected=oldSelection;
         if(ownRendererStage)renderer->discard();
         assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
         persistence=std::move(previousPersistence);initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
@@ -102,7 +104,10 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     for(auto& script:oldScripts)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& ex){logger.error(ex.what());}
     for(auto& e:world.entities)e->alive=false;
     audio.rollback();localization=std::move(readyLocalization);tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
-    currentScene=name;logger.write("INFO","Scene loaded: "+name);
+    currentScene=name;
+    if(!world.find(editorSession.selected))editorSession.selected.clear();
+    if(!document)editorSession.opened(config.asset("scenes",name),world);
+    logger.write("INFO","Scene loaded: "+name);
     if(!reloading){auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}}
 }
 }

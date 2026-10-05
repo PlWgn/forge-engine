@@ -46,6 +46,13 @@ __pycache__/
 /Проверка.md
 /docs/FORGE_EXPERIENCE.md
 
+# Transient cooperative document locks/writes and SDK build outputs.
+.*.forge-lock/
+.*.forge-tmp
+/sdk/*.egg-info/
+/sdk/build/
+/sdk/dist/
+
 # Personal editor/OS files.
 /AGENTS.md
 /.idea/

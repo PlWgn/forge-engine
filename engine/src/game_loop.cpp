@@ -8,6 +8,7 @@ namespace forge {
 void Runtime::tick(float& physicsAccumulator){
     auto frameStart=std::chrono::steady_clock::now();
     auto elapsed=[](auto before){return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-before).count();};
+    if(editing && editorShell && !editorShell.is_none() && py::hasattr(editorShell,"on_update"))editorShell.attr("on_update")(dt);
     if(!editing || !gamePaused)dispatchFrame();
     profile["callbacks_ms"]=elapsed(frameStart);
     auto audioStart=std::chrono::steady_clock::now();

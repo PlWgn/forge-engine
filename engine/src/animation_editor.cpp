@@ -1,4 +1,5 @@
 #include <forge/engine.hpp>
+#include <forge/documents.hpp>
 #include <forge/animation.hpp>
 #include <forge/editor.hpp>
 #include <imgui.h>
@@ -149,7 +150,7 @@ bool animationEditor(Entity& entity,Runtime& runtime,Editor& editor){
             if(path.extension()!=".json")throw std::runtime_error("Animation prefab needs .json extension");
             if(fs::exists(path))throw std::runtime_error("Export destination exists; choose a new filename");
             Json data={{"kind","mesh"},{"model",entity.model},{"animator",draft},{"morph_weights",entity.morphWeights}};
-            std::ofstream out(path,std::ios::binary);out<<data.dump(2)<<'\n';out.close();if(!out)throw std::runtime_error("Cannot export animation prefab");
+            commitDocument(path,Json(),data,[&](const Json& value){validateEntity(runtime.config,value);});
             editor.animationStatus="Exported "+path.u8string();
         }
     }catch(const std::exception& error){editor.animationStatus=error.what();}

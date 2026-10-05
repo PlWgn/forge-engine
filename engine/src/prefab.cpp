@@ -4,41 +4,42 @@
 #include <algorithm>
 namespace forge {
 namespace {
-Json document(const Config& config,const std::string& name,std::set<fs::path>& ancestors){
+Json document(const Config& config,const std::string& name,std::set<fs::path>& ancestors,const fs::path &overridePath={},const Json *candidate=nullptr){
     auto path=config.asset("objects",name);
     if(ancestors.size()>=64 || !ancestors.insert(path).second)throw std::runtime_error("Prefab inheritance cycle/depth: "+name);
-    auto result=readJson(path);
+    auto result=candidate && path==overridePath?*candidate:readJson(path);
     if(!result.is_object())throw std::runtime_error("Prefab must be an object: "+name);
     if(result.contains("extends")){
-        auto parent=document(config,result.at("extends").get<std::string>(),ancestors);
+        auto parent=document(config,result.at("extends").get<std::string>(),ancestors,overridePath,candidate);
         result.erase("extends");parent.merge_patch(result);result=std::move(parent);
     }
     ancestors.erase(path);return result;
 }
-Json entity(const Config& config,Json value,std::set<fs::path>& ancestors){
+Json entity(const Config& config,Json value,std::set<fs::path>& ancestors,const fs::path &overridePath={},const Json *candidate=nullptr){
     if(!value.is_object())throw std::runtime_error("Entity must be an object");
     if(value.contains("prefab")){
         auto name=value.at("prefab").get<std::string>();auto path=config.asset("objects",name);
         if(ancestors.size()>=64 || !ancestors.insert(path).second)throw std::runtime_error("Entity prefab cycle/depth: "+name);
-        std::set<fs::path> inheritance;auto base=document(config,name,inheritance);
+        std::set<fs::path> inheritance;auto base=document(config,name,inheritance,overridePath,candidate);
         if(base.contains("entities"))throw std::runtime_error("Use instantiate_prefab for a prefab hierarchy: "+name);
-        base=entity(config,std::move(base),ancestors);value.erase("prefab");base.merge_patch(value);value=std::move(base);
+        base=entity(config,std::move(base),ancestors,overridePath,candidate);value.erase("prefab");base.merge_patch(value);value=std::move(base);
         ancestors.erase(path);
     }
     return value;
 }
 }
 Json entityPrefab(const Config& config,Json value){std::set<fs::path> ancestors;return entity(config,std::move(value),ancestors);}
-Json prefabDocument(const Config& config,const std::string& name){
-    std::set<fs::path> ancestors;auto result=document(config,name,ancestors);
+Json prefabCandidate(const Config& config,const std::string& name,const Json* candidate){
+    std::set<fs::path> ancestors;auto result=document(config,name,ancestors,config.asset("objects",name),candidate);
     if(!result.contains("entities")){
-        result=entityPrefab(config,std::move(result));result["id"]=result.value("id","root");
+        std::set<fs::path> chain;result=entity(config,std::move(result),chain,config.asset("objects",name),candidate);result["id"]=result.value("id","root");
         result=Json{{"entities",Json::array({result})}};
     }
     auto& list=result["entities"];
     if(!list.is_array() || list.empty() || list.size()>8192)throw std::runtime_error("Prefab needs 1..8192 entities");
     std::map<std::string,std::string> parents;
     for(auto& item:list){
+        std::set<fs::path> chain;item=entity(config,item,chain,config.asset("objects",name),candidate);
         item=validateEntity(config,item);auto id=item.value("id","");
         if(id.empty() || !parents.emplace(id,item.value("parent","")).second)throw std::runtime_error("Prefab needs distinct nonempty local IDs");
     }
@@ -57,6 +58,7 @@ Json prefabDocument(const Config& config,const std::string& name){
     if(roots!=1)throw std::runtime_error("Prefab hierarchy needs exactly one root");
     return result;
 }
+Json prefabDocument(const Config& config,const std::string& name){return prefabCandidate(config,name,nullptr);}
 std::map<std::string,std::shared_ptr<Entity>> instantiatePrefab(World& world,const std::string& file,const std::string& requested,const Json& overrides,const std::string& parent,glm::vec3 offset){
     if(!world.config)throw std::runtime_error("Prefab needs project configuration");
     if(!parent.empty() && !world.find(parent))throw std::runtime_error("Prefab attachment parent missing");

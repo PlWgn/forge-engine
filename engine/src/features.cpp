@@ -1,4 +1,5 @@
 #include <forge/engine.hpp>
+#include <forge/documents.hpp>
 #include <algorithm>
 #include <forge/model.hpp>
 #include <forge/physics.hpp>
@@ -318,26 +319,15 @@ void bindFeatures(py::module_ &m) {
             callback();
     });
     m.def("scene_data", []() { return python(runtime().world.serialize()); });
-    m.def("save_scene", [](const std::string &file) {
-        auto path = runtime().config.asset("scenes", file);
-        if (path.extension() != ".json")
-            throw std::runtime_error("Editor scenes must be JSON");
-        auto temp = path;
-        temp += ".tmp";
-        fs::create_directories(path.parent_path());
-        {
-            std::ofstream stream(temp);
-            stream << runtime().world.serialize().dump(2);
-            if (!stream)
-                throw std::runtime_error("Cannot write scene");
-        }
-        std::error_code error;
-        fs::rename(temp, path, error);
-        if (error) {
-            fs::remove(path);
-            fs::rename(temp, path);
-        }
+    m.def("save_scene", [](const std::string &file) { runtime().editorSession.save(runtime(),file); });
+    auto projectMutation=[](const Json &request){return request.contains("op") && request["op"].is_string() && (request["op"]=="commit" || request["op"]=="patch");};
+    m.def("project_response",[projectMutation](py::dict input){
+        auto request=fromPython(input);
+        if(runtime().reloading && projectMutation(request))return python(Json{{"api_version",1},{"id",request.value("id",Json())},{"ok",false},{"error",{{"code","invalid_request"},{"message","Document authoring is unavailable during hot reload; save after commit"}}}});
+        return python(projectResponse(runtime().config.file,request));
     });
+    m.def("project_request",[projectMutation](py::dict input){auto request=fromPython(input);if(runtime().reloading && projectMutation(request))throw std::runtime_error("Document authoring is unavailable during hot reload; save after commit");return python(projectRequest(runtime().config.file,request));});
+    m.def("editor_command",[](py::dict request){return python(runtime().editorSession.command(runtime(),fromPython(request)));});
     m.def("editor_select",[](const Entity& e){
         if(runtime().world.find(e.id).get()!=&e || !runtime().renderer)throw std::runtime_error("Editor selection needs a current entity and window");
         runtime().renderer->select(e.id);

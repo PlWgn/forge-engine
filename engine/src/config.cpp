@@ -22,6 +22,7 @@ static bool inside(const fs::path& root, const fs::path& path) {
 fs::path Config::resolve(const std::string& path) const {
     fs::path p = fs::u8path(path);
     if(p.is_absolute()) throw std::runtime_error("Project paths must be relative: " + path);
+    if(fs::is_symlink(fs::symlink_status(root/p)) && !fs::exists(root/p))throw std::runtime_error("Dangling project symlink: "+path);
     auto resolved = fs::weakly_canonical(root / p);
     if(!inside(root, resolved) && resolved != root) throw std::runtime_error("Path escapes project root: " + path);
     return resolved;
@@ -29,7 +30,9 @@ fs::path Config::resolve(const std::string& path) const {
 fs::path Config::asset(const std::string& group, const std::string& name) const {
     if(name.empty()) return {};
     auto found = paths.find(group); if(found == paths.end()) throw std::runtime_error("Unknown path group: " + group);
-    auto result = fs::weakly_canonical(found->second / fs::u8path(name));
+    auto candidate=found->second/fs::u8path(name);
+    if(fs::is_symlink(fs::symlink_status(candidate)) && !fs::exists(candidate))throw std::runtime_error("Dangling asset symlink: "+name);
+    auto result = fs::weakly_canonical(candidate);
     if(!inside(root,result)) throw std::runtime_error("Asset escapes project root: " + name);
     return result;
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.4.0 LANGUAGES C CXX)
+project(Forge VERSION 2.5.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -42,13 +42,18 @@ add_compile_definitions(BT_USE_DOUBLE_PRECISION)
 add_subdirectory(vendor/bullet/src/LinearMath EXCLUDE_FROM_ALL)
 add_subdirectory(vendor/bullet/src/BulletCollision EXCLUDE_FROM_ALL)
 add_subdirectory(vendor/bullet/src/BulletDynamics EXCLUDE_FROM_ALL)
+option(FORGE_WITH_EDITOR "Build the optional builtin ImGui editor shell" ON)
+if(FORGE_WITH_EDITOR)
 add_library(forge_editor_ui STATIC vendor/imgui/imgui.cpp vendor/imgui/imgui_draw.cpp vendor/imgui/imgui_tables.cpp vendor/imgui/imgui_widgets.cpp vendor/imgui/backends/imgui_impl_glfw.cpp vendor/imgui/backends/imgui_impl_opengl3.cpp)
 target_include_directories(forge_editor_ui PUBLIC vendor/imgui vendor/imgui/backends)
 target_link_libraries(forge_editor_ui PRIVATE glfw OpenGL::GL)
+endif()
 add_executable(forge
   engine/src/main.cpp
   engine/src/config.cpp
   engine/src/log.cpp
+  engine/src/documents.cpp
+  engine/src/editor_session.cpp
   engine/src/world.cpp
   engine/src/render.cpp
   engine/src/runtime.cpp
@@ -58,7 +63,6 @@ add_executable(forge
   engine/src/file_watch.cpp
   engine/src/prefab.cpp
   engine/src/animation.cpp
-  engine/src/animation_editor.cpp
   engine/src/animation_api.cpp
   engine/src/morph.cpp
   engine/src/audio.cpp
@@ -72,7 +76,6 @@ add_executable(forge
   engine/src/hierarchy.cpp
   engine/src/material.cpp
   engine/src/geometry.cpp
-  engine/src/editor.cpp
   engine/src/particle_render.cpp
   engine/src/python_bridge.cpp
   engine/src/python_api.cpp
@@ -93,7 +96,12 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle-instance.vert" FORGE_PA
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.frag" FORGE_PARTICLE_FRAGMENT)
 configure_file(engine/resources/shaders.hpp.in generated/forge/shaders.hpp @ONLY)
 target_include_directories(forge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(forge PRIVATE glfw pybind11::embed OpenGL::GL Threads::Threads assimp forge_editor_ui BulletDynamics BulletCollision LinearMath)
+target_link_libraries(forge PRIVATE glfw pybind11::embed OpenGL::GL Threads::Threads assimp BulletDynamics BulletCollision LinearMath)
+if(FORGE_WITH_EDITOR)
+  target_sources(forge PRIVATE engine/src/editor.cpp engine/src/animation_editor.cpp)
+  target_link_libraries(forge PRIVATE forge_editor_ui)
+endif()
+target_compile_definitions(forge PRIVATE FORGE_WITH_EDITOR=$<BOOL:${FORGE_WITH_EDITOR}>)
 target_compile_definitions(forge PRIVATE FORGE_VERSION="${PROJECT_VERSION}" FORGE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}" GL_SILENCE_DEPRECATION)
 if(APPLE)
   target_link_libraries(forge PRIVATE "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
@@ -119,6 +127,7 @@ if(BUILD_TESTING)
   add_test(NAME packager_paths COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/packager_paths.py)
   add_test(NAME integration COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:forge>)
   add_test(NAME features COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/features.py $<TARGET_FILE:forge>)
+  add_test(NAME project_api COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/project_api.py $<TARGET_FILE:forge>)
   add_test(NAME authoring COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/authoring.py $<TARGET_FILE:forge>)
   add_test(NAME rendering COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/rendering.py $<TARGET_FILE:forge>)
   add_test(NAME simulation COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/simulation.py $<TARGET_FILE:forge>)

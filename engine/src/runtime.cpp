@@ -42,8 +42,35 @@ sys.stdout, sys.stderr = _ForgeStream('INFO'), _ForgeStream('ERROR')
     for(auto& item:config.data.value("startup_scripts",Json::array())){auto module=loadModule(config.asset("scripts",item.get<std::string>()));startup.push_back(module);if(py::hasattr(module,"on_start"))module.attr("on_start")();}
     if(dev)restartWatcher();
     loadScene(config.entry());
+    if(editing)gamePaused=true;
+    if(editing) {
+        auto editorOptions=config.data.value("editor",Json::object());
+        if(!editorOptions.is_object())throw std::runtime_error("editor must be an object");
+        for(const auto &path:editorOptions.value("extensions",Json::array()))extensionFiles.push_back(config.resolve(path.get<std::string>()).u8string());
+        auto sdk=fs::path(FORGE_SOURCE_DIR)/"sdk";
+        if(fs::is_regular_file(sdk/"forge_editor/__init__.py")) {
+            auto sys=py::module_::import("sys");sys.attr("path").attr("insert")(0,sdk.u8string());
+            try{editorClient=py::module_::import("forge_editor").attr("RuntimeClient")(executable.u8string(),config.file.u8string());}
+            catch(...){sys.attr("path").attr("remove")(sdk.u8string());throw;}
+            sys.attr("path").attr("remove")(sdk.u8string());
+            for(const auto &file:extensionFiles)editorClient.attr("extension")(file);
+        }else if(!extensionFiles.empty())throw std::runtime_error("Editor extensions require the development SDK directory");
+    }
+    if(editing && !shellFile.empty()) {
+        auto file=config.resolve(shellFile);
+        if(file.extension()!=".py")throw std::runtime_error("Viewport shell must be a project .py file");
+        gamePaused=true;
+        editorShell=loadModule(file);
+        if(!py::hasattr(editorShell,"API_VERSION") || editorShell.attr("API_VERSION").cast<int>()!=1)throw std::runtime_error("Viewport shell must declare API_VERSION = 1");
+        if(py::hasattr(editorShell,"on_start"))editorShell.attr("on_start")();
+    }
 }
 bool Runtime::shutdown(){watcher.reset();bool failed=false;tearingDown=true;
+    if(editorShell && !editorShell.is_none()) {
+        if(py::hasattr(editorShell,"on_destroy"))try{editorShell.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+        editorShell=py::object();
+    }
+    editorClient=py::object();
     auto ending=std::move(scripts);scripts.clear();auto endingStartup=std::move(startup);startup.clear();
     for(auto& script:ending)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
     for(auto& module:endingStartup)if(py::hasattr(module,"on_destroy"))try{module.attr("on_destroy")();}catch(const std::exception& e){logger.error(e.what());failed=true;}
@@ -66,7 +93,6 @@ int Runtime::run(int frames) {
         audio.configure(config.data.value("audio_settings",Json::object()));
         assets.budget(config.data.value("asset_budget_bytes",size_t(256*1024*1024)));
         start();
-        if(editing)gamePaused=true;
         for(int frame=0;running && (frames<0 || frame<frames);++frame){
             auto now=std::chrono::steady_clock::now();
             dt=headless?1.0f/60:std::min(.1f,std::chrono::duration<float>(now-previous).count());

@@ -69,3 +69,16 @@ CI запускает все шесть CTest suites на macOS/Windows и че�
 | Stable extensions/build | api_version/capabilities, light contracts, shader configure dependencies, Threads | compile/CTest; CI verify_package hashes/notices/three private-Python launches |
 
 Семь CTest suites и четыре GPU suites. Retarget не включает IK/anatomy inference/foot locking; morphs используют CPU upload, до 32 targets/part. Визуальный редактор редактирует playback/layers/markers/settings и TRS bone keyframes; node-graph state machine отсутствует. Один активный Python runtime сохраняется; renderer остаётся крупным GPU orchestration модулем. Остальные ранее описанные функциональные границы действуют. Подробные defaults, budgets и миграция legacy playback — раздел 22 инструкции.
+
+
+## Forge 2.5
+
+| Возможность | Реализация | Проверка |
+| --- | --- | --- |
+| Общий формат документов | schemas, documents.cpp, JSON Patch, ID merge, optimistic conflict/atomic replace | project_api: independent/manual/unknown fields, order/deletion/conflict, invalid paths/numbers |
+| Оболочки без builtin GUI | CMake FORGE_WITH_EDITOR, project JSON-lines, sdk/forge_editor, terminal/viewport examples | project_api CLI/native adapters; CI macOS/Windows ON/OFF |
+| Public runtime editing | editor_session.cpp, editor_command, shared selection/history/save, lifecycle candidate | project_api: paused patch/undo/redo, script/numeric rollback |
+| Общие extensions | SDK Client/RuntimeClient registry, builtin Extension commands panel | project_api: same extension in process and external; GUI panel rendering |
+| Сосуществование с ручными правками | authored delta projection, disk three-way merge, unknown source fields | project_api: original camera/entity metadata, defaults, conflicts retain file/draft |
+
+CTest содержит восемь наборов; launcher test — шесть интеграционных. Отдельные четыре GPU suites сохраняются. Открытый format/API не требуют SDK или интерфейса для game run/build. Нет embedding GPU viewport в сторонний toolkit, remote live-game RPC, универсального undo произвольного Python/I/O, widget ABI ImGui или распределённой файловой блокировки. При несохранённых editor changes автоматический hot reload сохраняет мир и сообщает об отказе; явный load/reset управляется пользователем. Контракты и пути перехода — [PROJECT_API.md](PROJECT_API.md) и раздел 23 инструкции.

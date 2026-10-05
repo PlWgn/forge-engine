@@ -6,6 +6,7 @@ namespace forge {
 struct Logger {
     fs::path path;
     std::ofstream file;
+    bool protocol = false;
     bool autoOpen = true, opened = false;
     void start(const fs::path &root, bool open);
     void write(const std::string &level, const std::string &message);

@@ -1,4 +1,4 @@
-# Forge 2.4
+# Forge 2.5
 
 Модульный игровой runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS и Windows.
 
@@ -72,7 +72,7 @@ python tools/benchmark_world.py build/bin/forge
 
 Git хранит C++-исходники, изменяемые Python-модули, инструменты, встроенные примеры с исходными ресурсами, тесты, документацию, лицензии и lock-файл зависимостей. Сборки, окружения, скачанные библиотеки, сохранения, логи, скриншоты и локальные отчёты исключены через [.gitignore](.gitignore). Шрифт, модели `.obj`/glTF, изображения и WAV примеров — необходимые исходные ресурсы и остаются в Git.
 
-После компиляции `python tools/forge.py validate` проверяет ресурсы и синтаксис, `python tools/forge.py test` запускает интеграционные наборы. Полный CTest запускает семь наборов, включая numeric, packager_paths, rendering и authoring-регрессии: `ctest --test-dir build -C Release --output-on-failure`. Workflow macOS/Windows выполняет CTest, отдельный Linux job — четыре графических набора на Mesa/Xvfb. Software OpenGL не подтверждает работу физических GPU или аудиоустройств этих ОС. Команды — [инструкция, раздел 20.6](Инструкция.md).
+После компиляции `python tools/forge.py validate` проверяет ресурсы и синтаксис, `python tools/forge.py test` запускает интеграционные наборы. Полный CTest запускает восемь наборов, включая numeric, packager_paths, rendering, authoring и project API: `ctest --test-dir build -C Release --output-on-failure`. Workflow macOS/Windows собирает варианты с базовым редактором и без него, выполняет CTest, отдельный Linux job — четыре графических набора на Mesa/Xvfb. Software OpenGL не подтверждает работу физических GPU или аудиоустройств этих ОС. Команды — [инструкция, раздел 20.6](Инструкция.md).
 
 ## Лицензия и изменения
 
@@ -83,3 +83,12 @@ Forge распространяется по пользовательской **F
 Лицензия пользовательская и не имеет статуса OSI-approved. Полные условия: [LICENSE](LICENSE).
 
 Forge 2.4 добавляет prefab-иерархии и независимые экземпляры, property clips, layered skeletal animation с переходами/событиями, state machine, retarget по rest pose и morph targets. В сценовом редакторе доступны клипы, bone keys, layers, scrub, marker timeline, morph sliders и retarget JSON. Пример: `python tools/forge.py dev --scene authoring.py`; API/границы — раздел 22 инструкции. Watcher работает в фоне, listener/contact dispatch избегает повторных полных обходов; лёгкие C++ контракты сохраняют совместимый engine.hpp. CI проверяет также запуск самостоятельной поставки через `tools/verify_package.py`.
+
+
+Forge 2.5 отделяет оболочку редактора от открытого формата проекта и API. Базовый ImGui-интерфейс необязателен (`compile --without-editor`); JSON-lines CLI, Python SDK, общие extension commands и runtime editing работают без него. Сохранение учитывает неизвестные поля и внешние правки, обнаруживает конфликты и использует атомарную замену файла. [Руководство по оболочкам, формату и API](docs/PROJECT_API.md) · [JSON Schema](schemas/project.schema.json) · [Пример сторонней оболочки](examples/editor/terminal_shell.py).
+
+```sh
+python tools/forge.py shell --shell examples/editor/terminal_shell.py --extension examples/editor/labels_extension.py
+python tools/forge.py edit --shell examples/editor/viewport_shell.py --scene editor-empty.json
+python tools/forge.py project --serve
+```
