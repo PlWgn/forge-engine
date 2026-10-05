@@ -257,4 +257,123 @@ def on_update(dt):
 ''',encoding='utf-8')
         self.assertIn('EDITOR_API_OK',self.run_engine('edit',extra=('--shell','shell.py')))
 
+    def test_configuration_rejects_lossy_integer_and_boolean_coercion(self):
+        with self.client() as client:
+            doc=client.document('engine.json')
+            before=(self.root/'engine.json').read_bytes()
+            for path,value in (('/schema_version',1.5),('/window/width',4294968576),('/window/height',720.5),('/window/fullscreen',1),('/window/vsync','yes')):
+                with self.subTest(path=path,value=value),self.assertRaises(ProjectError):
+                    doc.patch([{'op':'add','path':path,'value':value}])
+                self.assertEqual((self.root/'engine.json').read_bytes(),before)
+
+    def test_failed_scene_initialization_does_not_write_or_delete_saves(self):
+        self.scene();self.config['entry_scene']='editable.json';self.write_config()
+        (self.root/'scenes/persistence.py').write_text("""import forge
+from saves import SaveManager
+def on_start():
+    store=SaveManager(directory='slots')
+    store.write('existing',{'value':'candidate'})
+    store.delete('removed')
+    forge.save('native',{'value':'candidate'})
+    if not forge.find('a').data.get('accept'):raise RuntimeError('candidate refused')
+""")
+        (self.root/'shell.py').write_text("""import forge
+from saves import SaveManager
+API_VERSION=1
+def on_update(dt):
+    store=SaveManager(directory='slots')
+    store.write('existing',{'value':'original'});store.write('removed',{'value':'original'})
+    forge.save('native',{'value':'original'})
+    changes=[{'op':'add','path':'/script','value':'persistence.py'}]
+    try:forge.editor_command({'op':'patch','patch':changes})
+    except RuntimeError:pass
+    else:raise AssertionError('candidate accepted')
+    assert store.read('existing')=={'value':'original'}
+    assert store.read('removed')=={'value':'original'}
+    assert forge.load('native')=={'value':'original'}
+    changes.append({'op':'add','path':'/entities/0/data/accept','value':True})
+    forge.editor_command({'op':'patch','patch':changes})
+    assert store.read('existing')=={'value':'candidate'} and store.info('removed')['status']=='empty'
+    assert forge.load('native')=={'value':'candidate'}
+    forge.log('PERSISTENCE_TRANSACTION_OK');forge.quit()
+""")
+        self.assertIn('PERSISTENCE_TRANSACTION_OK',self.run_engine('edit',extra=('--shell','shell.py')))
+
+    def test_scene_replacement_during_frame_dispatch_retires_old_callbacks(self):
+        self.scene();self.config['entry_scene']='editable.json';self.write_config()
+        (self.root/'scenes/dispatch.py').write_text("""import forge
+def on_start():
+    if forge.find('a').data.get('new'):
+        forge.on_frame(lambda dt:forge.log('NEW_CALLBACK'))
+    else:
+        forge.on_frame(replace)
+        forge.on_frame(lambda dt:forge.log('RETIRED_CALLBACK'))
+def replace(dt):
+    forge.set_paused(True)
+    forge.editor_command({'op':'patch','patch':[{'op':'add','path':'/entities/0/data/new','value':True}]})
+    forge.set_paused(False)
+""")
+        data=json.loads((self.root/'scenes/editable.json').read_text());data['script']='dispatch.py'
+        (self.root/'scenes/editable.json').write_text(json.dumps(data))
+        (self.root/'shell.py').write_text("""import forge
+API_VERSION=1
+frames=0
+def on_start():forge.set_paused(False)
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==3:forge.quit()
+""")
+        output=self.run_engine('edit',extra=('--shell','shell.py'))
+        self.assertNotIn('RETIRED_CALLBACK',output);self.assertIn('NEW_CALLBACK',output)
+
+    def test_failed_editor_scene_keeps_procedural_geometry(self):
+        self.scene();self.config['entry_scene']='editable.json';self.write_config()
+        (self.root/'scenes/geometry.py').write_text("""import forge
+def on_start():
+    forge.set_mesh('shared',{'positions':[[0,0,0],[2,0,0],[0,2,0]]})
+    if not forge.find('a').data.get('accept'):raise RuntimeError('candidate refused')
+""")
+        (self.root/'shell.py').write_text("""import forge
+API_VERSION=1
+def on_update(dt):
+    forge.set_mesh('shared',{'positions':[[0,0,0],[1,0,0],[0,1,0]]})
+    before=forge.mesh_info('shared');stats=forge.geometry_stats()
+    changes=[{'op':'add','path':'/script','value':'geometry.py'}]
+    try:forge.editor_command({'op':'patch','patch':changes})
+    except RuntimeError:pass
+    else:raise AssertionError('candidate accepted')
+    assert forge.mesh_info('shared')==before and forge.geometry_stats()==stats
+    changes.append({'op':'add','path':'/entities/0/data/accept','value':True})
+    forge.editor_command({'op':'patch','patch':changes})
+    assert forge.mesh_info('shared')['revision']>before['revision']
+    forge.log('GEOMETRY_ROLLBACK_OK');forge.quit()
+""")
+        self.assertIn('GEOMETRY_ROLLBACK_OK',self.run_engine('edit',extra=('--shell','shell.py')))
+
+    def test_custom_shell_keeps_working_after_failed_reload(self):
+        self.scene();self.config['entry_scene']='editable.json';self.config['development']={'watch_interval':.05};self.write_config()
+        path=self.root/'scenes/editable.json';scene=json.loads(path.read_text());scene['script']='recovery.py';path.write_text(json.dumps(scene))
+        (self.root/'scenes/recovery.py').write_text("""import forge
+def on_start():
+    forge.log('SCENE_READY')
+def on_reload_failed(error):
+    import builtins;builtins._forge_recover=True
+""")
+        (self.root/'shell.py').write_text("""import forge
+from pathlib import Path
+API_VERSION=1
+started=False
+restored=False
+def on_update(dt):
+    global started,restored
+    path=Path(forge.asset_path('scenes','recovery.py'))
+    if not started:
+        started=True;path.write_text("def on_start():raise RuntimeError('bad candidate')\\n")
+    elif getattr(__import__('builtins'),'_forge_recover',False) and not restored:
+        restored=True
+        path.write_text("import forge\\ndef on_start():forge.log('SHELL_RECOVERED');forge.quit()\\n")
+""")
+        self.assertIn('SHELL_RECOVERED',self.run_engine('edit',frames=300,extra=('--shell','shell.py')))
+
 if __name__=='__main__':unittest.main()

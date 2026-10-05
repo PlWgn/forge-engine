@@ -1,6 +1,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <forge/engine.hpp>
 #include <forge/physics.hpp>
+#include <forge/prefab.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -28,7 +29,23 @@ struct TransformCache {
     std::unordered_map<std::string,std::vector<Entity*>> children;
 };
 glm::mat4 composeTransform(const Entity& e){auto m=local(e);for(int a=0;a<4;++a)for(int b=0;b<4;++b)checkedFloat(m[a][b],"Entity transform");return glm::mat4(m);}
-void World::loadEntities(const Json& data){assembling=true;try{for(auto& item:data)spawn(item);assembling=false;syncTransforms();}catch(...){assembling=false;throw;}}
+void World::loadEntities(const Json& data){
+    if(!data.is_array())throw std::runtime_error("Scene.entities must be array");
+    std::set<std::string> reserved;
+    for(const auto &item:data){auto checked=validateEntity(*config,item);if(checked.contains("id"))reserved.insert(checked["id"].get<std::string>());}
+    assembling=true;
+    try {
+        for(auto item:data){
+            auto resolved=entityPrefab(*config,item);
+            if(!resolved.contains("id")){
+                std::string id;do{id="entity_"+std::to_string(nextId++);}while(reserved.count(id) || find(id));
+                item["id"]=id;
+            }
+            spawn(std::move(item));
+        }
+        assembling=false;syncTransforms();
+    }catch(...){assembling=false;throw;}
+}
 void World::clearEntities(){for(auto& e:entities)e->alive=false;entities.clear();entityIndex.clear();transformCache.reset();}
 void World::pruneIndex(){for(auto i=entityIndex.begin();i!=entityIndex.end();) {auto e=i->second.lock();if(!e || !e->alive)i=entityIndex.erase(i);else ++i;}}
 void World::syncTransforms(){

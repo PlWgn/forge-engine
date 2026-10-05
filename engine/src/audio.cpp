@@ -1,6 +1,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <forge/engine.hpp>
 #include <miniaudio.h>
 namespace forge {
@@ -20,6 +21,8 @@ float duration(float v) {
 Json voiceOptions(Json value) {
     if (!value.is_object())
         throw std::runtime_error("Sound options must be an object");
+    for(auto name:{"stream","spatial"})if(value.contains(name) && !value[name].is_boolean())
+        throw std::runtime_error(std::string("Sound ")+name+" must be boolean");
     bounded(value.value("pan", Json(0)), "pan", -1, 1);
     bounded(value.value("pitch", Json(1)), "pitch", .01f, 8);
     bounded(value.value("min_distance", Json(1)), "min_distance", .001f, 100000);
@@ -189,6 +192,7 @@ unsigned Audio::play(const fs::path &path, bool loop, float volume, const std::s
     for (auto &[id, v] : impl->voices)
         if (v.channel == channel)
             ++count;
+    unsigned stolenId=0;
     if (impl->voices.size() >= maximum || count >= channelLimit) {
         bool inChannel = count >= channelLimit;
         auto victim = impl->voices.end();
@@ -196,17 +200,16 @@ unsigned Audio::play(const fs::path &path, bool loop, float volume, const std::s
             if (inChannel && it->second.channel != channel)
                 continue;
             if (victim == impl->voices.end() ||
-                it->second.options.value("priority", 0) < victim->second.options.value("priority", 0))
+                it->second.options.value("priority", 0.0) < victim->second.options.value("priority", 0.0))
                 victim = it;
         }
         if (victim == impl->voices.end() || impl->settings.value("overflow", "steal_oldest") == "reject" ||
-            victim->second.options.value("priority", 0) > options.value("priority", 0)) {
+            victim->second.options.value("priority", 0.0) > options.value("priority", 0.0)) {
             ++impl->dropped;
             logger.write("WARN", "Audio voice limit: rejected " + path.u8string());
             return 0;
         }
-        stop(victim->first);
-        ++impl->stolen;
+        stolenId=victim->first;
     }
     auto policy = impl->settings.value("streaming", "auto");
     bool streaming = options.value(
@@ -240,8 +243,11 @@ unsigned Audio::play(const fs::path &path, bool loop, float volume, const std::s
     voice.target = volume;
     voice.start = voice.envelope;
     voice.seconds = seconds;
+    // Prepare decode and DSP before taking an existing voice away.
+    impl->effects(voice);
     unsigned id = ++impl->nextId;
     impl->voices.emplace(id, std::move(voice));
+    if(stolenId){stop(stolenId);++impl->stolen;}
     if (!impl->transaction)
         impl->apply();
     return id;
@@ -322,7 +328,9 @@ void Audio::options(unsigned id, const Json &values) {
     auto next = found->second.options;
     next.merge_patch(values);
     next = voiceOptions(next);
-    found->second.options = std::move(next);
+    auto candidate=found->second;candidate.options=std::move(next);
+    if(!impl->transaction)impl->effects(candidate);
+    found->second=std::move(candidate);
     if (!impl->transaction)
         impl->apply();
 }
@@ -363,25 +371,42 @@ Json Audio::diagnostics() const {
             {"duck_gains", impl->duckGains},
             {"settings", impl->settings}};
 }
-void Audio::configure(const Json &values) {
-    auto next = impl->settings;
-    next.merge_patch(values);
-    bounded(next.value("max_voices", Json(64)), "max_voices", 1, 1024);
+Json validateAudioSettings(Json next) {
+    if(!next.is_object())throw std::runtime_error("audio_settings must be an object");
+    auto integer=[](const Json& value,const std::string& name,double high){
+        if(!value.is_number_integer() || value.get<double>()<1 || value.get<double>()>high)
+            throw std::runtime_error(name+" must be a positive bounded integer");
+    };
+    integer(next.value("max_voices",Json(64)),"max_voices",1024);
+    integer(next.value("stream_threshold_bytes",Json(4*1024*1024)),"stream_threshold_bytes",double(std::numeric_limits<size_t>::max()));
+    if(next.contains("follow_camera") && !next["follow_camera"].is_boolean())throw std::runtime_error("follow_camera must be boolean");
     auto policy = next.value("streaming", "auto");
     if (policy != "auto" && policy != "stream" && policy != "decode")
         throw std::runtime_error("streaming must be auto, stream or decode");
     auto overflow = next.value("overflow", "steal_oldest");
     if (overflow != "steal_oldest" && overflow != "reject")
         throw std::runtime_error("Unknown voice overflow policy");
-    for (auto &limit : next.value("channel_limits", Json::object()))
-        bounded(limit, "channel limit", 1, 1024);
-    for (auto &rule : next.value("ducking", Json::array())) {
+    auto limits=next.value("channel_limits",Json::object());
+    if(!limits.is_object())throw std::runtime_error("channel_limits must be an object");
+    for(auto &limit:limits)integer(limit,"channel limit",1024);
+    auto rules=next.value("ducking",Json::array());
+    if(!rules.is_array())throw std::runtime_error("ducking must be an array");
+    for (auto &rule : rules) {
         rule.at("source").get<std::string>();
         rule.at("target").get<std::string>();
         level(rule.value("gain", .25f));
         duration(rule.value("attack", .05f));
         duration(rule.value("release", .5f));
     }
+    return next;
+}
+void Audio::configure(const Json &values) {
+    if(!values.is_object())throw std::runtime_error("audio_settings must be an object");
+    auto next=impl->settings;next.merge_patch(values);next=validateAudioSettings(std::move(next));
+    std::set<std::string> targets;
+    for(const auto &rule:next.value("ducking",Json::array()))targets.insert(rule.at("target"));
+    for(auto it=impl->duckGains.begin();it!=impl->duckGains.end();)
+        if(!targets.count(it->first))it=impl->duckGains.erase(it);else ++it;
     impl->settings = std::move(next);
 }
 void Audio::listener(glm::vec3 position, glm::vec3 direction) {
@@ -389,10 +414,10 @@ void Audio::listener(glm::vec3 position, glm::vec3 direction) {
         checkedFloat(position[i], "listener position");
         checkedFloat(direction[i], "listener direction");
     }
-    if (glm::length(direction) < 1e-5f)
+    if (glm::length(glm::dvec3(direction)) < 1e-5)
         throw std::runtime_error("Listener direction cannot be zero");
     impl->listenerPosition = position;
-    impl->listenerDirection = glm::normalize(direction);
+    impl->listenerDirection = glm::vec3(glm::normalize(glm::dvec3(direction)));
     if (!impl->transaction)
         impl->apply();
 }
@@ -434,10 +459,10 @@ void Audio::update(float dt) {
         gain += (rule.first - gain) * (rule.second > 0 ? 1 - std::exp(-dt / rule.second) : 1);
     }
     if (impl->settings.value("follow_camera", false) && active) {
-        auto direction = active->world.cameraTarget - active->world.cameraPosition;
+        auto direction = glm::dvec3(active->world.cameraTarget) - glm::dvec3(active->world.cameraPosition);
         if (glm::length(direction) > 1e-5f) {
             impl->listenerPosition = active->world.cameraPosition;
-            impl->listenerDirection = glm::normalize(direction);
+            impl->listenerDirection = glm::vec3(glm::normalize(glm::dvec3(direction)));
         }
     }
     impl->apply();

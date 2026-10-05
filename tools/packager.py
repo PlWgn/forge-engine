@@ -3,8 +3,32 @@ from pathlib import Path
 import hashlib, json, os, platform, plistlib, shutil, subprocess, sys, sysconfig, tempfile
 import forge
 
-def _copy_tree(src, dst):
-    shutil.copytree(src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'site-packages', 'test', 'tests', 'idlelib', 'tkinter', 'turtledemo', '_tkinter*', '_test*', '.DS_Store'))
+def _copy_tree(src, dst, *, stdlib=False):
+    patterns = ['__pycache__', '*.pyc', '.DS_Store', '.git']
+    if stdlib:
+        patterns += ['site-packages', 'test', 'tests', 'idlelib', 'tkinter', 'turtledemo', '_tkinter*', '_test*']
+    shutil.copytree(src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns(*patterns))
+
+def _validate_copy_source(root, source, output, validated):
+    # Traverse aliases as copytree does; reject escape, cycles and output aliases.
+    active = set()
+    stack = [(source, False)]
+    while stack:
+        path, leaving = stack.pop()
+        if leaving:
+            active.remove(path); validated.add(path)
+            continue
+        try: real = path.resolve(strict=True)
+        except (OSError, RuntimeError) as error: raise RuntimeError(f'Invalid source symlink/path: {path}: {error}') from error
+        if not real.is_relative_to(root): raise RuntimeError(f'Copy source escapes project root: {path}')
+        if not real.is_dir(): continue
+        if output.is_relative_to(real): raise RuntimeError('Output cannot be inside an asset directory (including nested aliases)')
+        if real in active: raise RuntimeError(f'Copy source symlink cycle: {path}')
+        if real in validated: continue
+        active.add(real); stack.append((real, True))
+        for child in real.iterdir():
+            if child.name in ('__pycache__', '.git', '.DS_Store') or child.suffix == '.pyc': continue
+            stack.append((child, False))
 
 def _native_libraries(executable, runtime, source_library):
     lib = runtime / 'lib'; lib.mkdir(exist_ok=True)
@@ -74,12 +98,13 @@ def _copy_plan(root, settings, output):
     if output == root or root.is_relative_to(output): raise RuntimeError('Output cannot replace the source project or its parent')
     if output.exists(): raise RuntimeError(f'Output already exists: {output}. Choose a new directory or remove it explicitly.')
     # Canonical project-relative names are used both for copying and game.json.
-    plan = {}
+    plan, validated = {}, set()
     def folder(raw):
         source, relative = _project_path(root, raw)
         if source == root: raise RuntimeError('Asset folders must be separate from the project root for packaging')
         if not source.is_dir(): raise RuntimeError(f'Missing asset directory: {raw}')
         if output.is_relative_to(source): raise RuntimeError('Output cannot be inside an asset directory (paths or python_paths)')
+        _validate_copy_source(root, source, output, validated)
         plan[relative] = source
         return relative
     settings['paths'] = {group: folder(raw) for group, raw in settings['paths'].items()}
@@ -125,10 +150,10 @@ def build_bundle(config_file, engine_file, output):
         version = f'{sys.version_info.major}.{sys.version_info.minor}'
         stdlib = Path(sysconfig.get_path('stdlib'))
         stdlib_target = runtime / ('Lib' if sys.platform == 'win32' else f'lib/python{version}')
-        _copy_tree(stdlib, stdlib_target)
+        _copy_tree(stdlib, stdlib_target, stdlib=True)
         if sys.platform == 'win32':
             dlls = Path(sys.base_prefix) / 'DLLs'
-            if dlls.exists(): _copy_tree(dlls, runtime / 'DLLs')
+            if dlls.exists(): _copy_tree(dlls, runtime / 'DLLs', stdlib=True)
             source_library = None
         else:
             libdir = Path(sysconfig.get_config_var('LIBDIR'))

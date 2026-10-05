@@ -25,7 +25,8 @@ glm::vec3 vector(const Json &value) {
             finiteNumber(value[2], "vector")};
 }
 void range(const Json &value, const std::string &field, double low, double high) {
-    auto number = finiteNumber(value, field);
+    finiteNumber(value, field);
+    auto number = value.get<double>();
     if (number < low || number > high)
         throw std::runtime_error(field + " outside supported range");
 }
@@ -308,16 +309,16 @@ void bindFeatures(py::module_ &m) {
                                          : runtime().config.data.value("window", Json::object()));
     });
     m.def("reload_in_progress", []() { return runtime().reloading; });
-    m.def("defer_persistence", [](py::object callback) {
+    m.def("defer_persistence", [](py::object callback,bool includeInitialization) {
         if (!PyCallable_Check(callback.ptr()))
             throw std::runtime_error("Persistence callback must be callable");
         if (runtime().tearingDown)
             return;
-        if (runtime().reloading || runtime().initializing)
+        if (runtime().reloading || runtime().authoringTransaction || (includeInitialization && runtime().initializing))
             runtime().persistence.push_back(callback);
         else
             callback();
-    });
+    },py::arg("callback"),py::arg("include_initialization")=true);
     m.def("scene_data", []() { return python(runtime().world.serialize()); });
     m.def("save_scene", [](const std::string &file) { runtime().editorSession.save(runtime(),file); });
     auto projectMutation=[](const Json &request){return request.contains("op") && request["op"].is_string() && (request["op"]=="commit" || request["op"]=="patch");};

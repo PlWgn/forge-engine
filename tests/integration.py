@@ -811,4 +811,104 @@ def on_destroy():
             self.assertEqual((target/document).read_bytes(), (ROOT/document).read_bytes())
         self.assertIn('Output already exists',self.run_engine('build',expected=1,extra=('--output',target)))
 
+    def test_scene_ids_reserve_explicit_forward_declarations(self):
+        self.script_scene("""import forge
+def build():return {'entities':[{'kind':'empty','name':'Anonymous'},{'id':'entity_0','kind':'empty','name':'Explicit'}]}
+def on_start():
+    assert len(forge.entities())==2 and forge.find('entity_0').name=='Explicit'
+    assert len({e.id for e in forge.entities()})==2
+    forge.log('FORWARD_IDS_OK');forge.quit()
+""")
+        self.assertIn('FORWARD_IDS_OK',self.run_engine())
+
+    def test_legacy_physics_failure_restores_whole_world(self):
+        self.script_scene("""import forge
+def build():return {'gravity':[3e38,0,0],'physics_enabled':False}
+def on_start():
+    first=forge.spawn({'id':'first','kind':'empty','dynamic':True,'velocity':[1,0,0]})
+    forge.spawn({'id':'child','kind':'empty','parent':'first','position':[2,0,0]})
+    last=forge.spawn({'id':'last','kind':'empty','dynamic':True,'velocity':[3.4e38,0,0]})
+    before=forge.scene_data();matrix=forge.find('child').world_matrix
+    try:forge.physics_step(.1)
+    except RuntimeError:pass
+    else:raise AssertionError('overflow accepted')
+    assert forge.scene_data()==before and forge.find('child').world_matrix==matrix
+    forge.log('PHYSICS_TRANSACTION_OK');forge.quit()
+""")
+        self.assertIn('PHYSICS_TRANSACTION_OK',self.run_engine())
+
+    def test_text_measurement_overflow_and_integer_uniform_limits(self):
+        self.script_scene("""import forge,math
+def on_start():
+    for text in ('WWWWWWWW','W\\nW\\nW'):
+        try:result=forge.measure_text(text,3e38)
+        except RuntimeError:pass
+        else:assert all(math.isfinite(v) for v in result),result
+    for value in (-2147483648,2147483647):forge.set_shader_uniform('valid',value)
+    forge.set_render_target('mask',{'layers':4294967295})
+    forge.log('MEASUREMENT_LIMITS_OK');forge.quit()
+""")
+        self.assertIn('MEASUREMENT_LIMITS_OK',self.run_engine())
+
+    def test_extra_python_paths_are_checked_for_syntax(self):
+        (self.root/'extra').mkdir();(self.root/'extra/broken.py').write_text('def broken(\n')
+        self.config['python_paths']=['extra'];self.write_config()
+        self.assertIn('SyntaxError',self.run_engine('validate',expected=1))
+
+    def test_localization_refresh_skips_unchanged_entities(self):
+        for code in ('en','ru'):
+            path=self.root/'locales'/(code+'.json');messages=json.loads(path.read_text());messages['cache.test']='Hello {name}' if code=='en' else 'Привет {name}'
+            path.write_text(json.dumps(messages,ensure_ascii=False),encoding='utf-8')
+        self.script_scene("""import forge
+frames=0
+def on_start():
+    forge.set_language('en',persist=False)
+    for i in range(1000):forge.spawn({'id':'label'+str(i),'kind':'text','text_key':'cache.test','text_params':{'name':'A'}})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:
+        assert forge.profile()['localization_translations']==0
+        forge.find('label0').text_params={'name':'B'}
+    if frames==3:
+        assert forge.profile()['localization_translations']==1
+        e=forge.find('label0');assert e.text=='Hello B'
+        e.text='Literal';e.text_key='cache.test';e.text_params={'name':'B'}
+    if frames==4:
+        assert forge.profile()['localization_translations']==1
+        forge.set_language('ru',persist=False)
+        assert forge.profile()['localization_translations']==1000
+        assert forge.scene_data()['entities'][0]['text']=='Привет B'
+    if frames==5:
+        assert forge.profile()['localization_translations']==0
+        forge.log('LOCALIZATION_CACHE_OK');forge.quit()
+""")
+        self.assertIn('LOCALIZATION_CACHE_OK',self.run_engine())
+
+    def test_save_symlinks_and_existing_temp_are_rejected(self):
+        with tempfile.TemporaryDirectory(prefix='forge-external-') as folder:
+            outside=Path(folder)/'protected.json';outside.write_text('{"private":true}')
+            (self.root/'saves').mkdir(exist_ok=True);(self.root/'slots').mkdir()
+            try:
+                (self.root/'saves/escape.json').symlink_to(outside)
+                (self.root/'saves/temporary.json.tmp').symlink_to(outside)
+                (self.root/'slots/escape.json.bak').symlink_to(outside)
+            except OSError as error:self.skipTest(f'Symlinks unavailable: {error}')
+            self.script_scene("""import forge
+from saves import SaveManager,SaveError
+def on_start():
+    for operation in (lambda:forge.save('escape',{}),lambda:forge.load('escape'),lambda:forge.save('temporary',{})):
+        try:operation()
+        except RuntimeError:pass
+        else:raise AssertionError('unsafe native save path accepted')
+    store=SaveManager(directory='slots')
+    for operation in (lambda:store.read('escape'),lambda:store.write('escape',{}),lambda:store.delete('escape')):
+        try:operation()
+        except SaveError:pass
+        else:raise AssertionError('unsafe slot backup accepted')
+    forge.log('SAFE_SAVE_PATHS_OK');forge.quit()
+""")
+            self.assertIn('SAFE_SAVE_PATHS_OK',self.run_engine())
+            self.assertEqual(outside.read_text(),'{"private":true}')
+
 if __name__ == '__main__': unittest.main(verbosity=2)

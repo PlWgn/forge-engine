@@ -18,6 +18,7 @@ static fs::path confined(const fs::path &root, const std::string &name) {
     auto input = fs::u8path(name);
     if (input.is_absolute())
         throw std::runtime_error("Storage path must be relative");
+    if(fs::is_symlink(fs::symlink_status(root/input)) && !fs::exists(root/input))throw std::runtime_error("Dangling storage symlink");
     auto result = fs::weakly_canonical(root / input),
          relative = result.lexically_relative(fs::weakly_canonical(root));
     if (relative.empty() || *relative.begin() == "..")

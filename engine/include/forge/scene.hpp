@@ -16,6 +16,9 @@ struct Entity {
     glm::vec3 worldRotation{0};
     Json materialData = Json::object();
     Json textParams = Json::object();
+    std::string localizedKey;
+    Json localizedParams = Json::object();
+    uint64_t localizedRevision = uint64_t(-1); // Derived cache, never serialized.
     glm::vec3 position{0}, rotation{0}, scale{1}, velocity{0}, collider{0};
     glm::vec3 angularVelocity{0}, force{0}, torque{0};
     Json rigidBody = Json::object();

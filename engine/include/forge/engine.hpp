@@ -57,7 +57,7 @@ struct Runtime {
     Json inputFrame = Json::object(), profile = Json::object();
     std::vector<py::object> persistence;
     std::string entryOverride;
-    bool reloading = false, editing = false;
+    bool reloading = false, editing = false, authoringTransaction = false;
     std::vector<Script> scripts;
     std::vector<py::object> startup;
     std::map<fs::path, fs::file_time_type> watched;

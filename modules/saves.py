@@ -62,7 +62,11 @@ class SaveManager:
         slot = str(slot)
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', slot):
             raise SaveError('Slot id must contain 1..80 ASCII letters, digits, underscores or hyphens')
-        return self.root/(slot+'.json')
+        path = self.root/(slot+'.json')
+        for candidate in (path, path.with_suffix('.json.bak')):
+            if (candidate.is_symlink() and not candidate.exists()) or not candidate.resolve().is_relative_to(self.root.resolve()):
+                raise SaveError('Slot path or backup escapes save directory or is a dangling symlink')
+        return path
 
     def _read(self, path):
         try:
@@ -92,13 +96,15 @@ class SaveManager:
                 raise SaveError(f'Invalid game save data: {error}') from error
 
     def write(self, slot, data, *, title='', description='', metadata=None):
-        if forge.reload_in_progress():
-            # Freeze values now; write only after the candidate scene has committed.
-            snapshot = json.loads(json.dumps(data, allow_nan=False))
-            details = json.loads(json.dumps(metadata or {}, allow_nan=False))
-            forge.defer_persistence(lambda: self.write(slot, snapshot, title=title, description=description, metadata=details))
-            return
-        self._validate(data)
+        self._path(slot)
+        snapshot = json.loads(json.dumps(data, allow_nan=False))
+        details = json.loads(json.dumps(metadata or {}, allow_nan=False))
+        self._validate(snapshot)
+        result = []
+        forge.defer_persistence(lambda: result.append(self._write(str(slot), snapshot, str(title), str(description), details)), include_initialization=False)
+        return result[0] if result else None
+
+    def _write(self, slot, data, title, description, metadata):
         path = self._path(slot)
         details = dict(metadata or {})
         details.update(title=str(title), description=str(description),
@@ -172,8 +178,10 @@ class SaveManager:
 
     def delete(self, slot):
         path = self._path(slot)
-        for candidate in (path, path.with_suffix('.json.bak')):
-            candidate.unlink(missing_ok=True)
+        def remove():
+            for candidate in (path, path.with_suffix('.json.bak')):
+                candidate.unlink(missing_ok=True)
+        forge.defer_persistence(remove, include_initialization=False)
 
     def autosave(self, capture, *, interval=60, slot='auto', title='Автосохранение', while_paused=False):
         if not callable(capture) or not isinstance(interval, (float, int)) or not math.isfinite(interval) or interval <= 0:

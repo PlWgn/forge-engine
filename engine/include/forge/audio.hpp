@@ -2,6 +2,7 @@
 // Contract extracted from engine.hpp; licensed core origin.
 #include <forge/types.hpp>
 namespace forge {
+Json validateAudioSettings(Json);
 struct Audio {
     struct Impl;
     std::unique_ptr<Impl> impl;

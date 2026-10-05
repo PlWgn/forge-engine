@@ -325,4 +325,19 @@ def on_update(dt):
             if process.poll() is None:process.kill();process.wait()
 
 
+    def test_bullet_mode_and_gravity_mutations_are_transactional(self):
+        self.script_scene("""import forge
+def build():return {'mode':'3d','physics':{'backend':'bullet'}}
+def on_start():
+    before=forge.scene_data()
+    for mutate in (lambda:forge.set_mode('2d'),lambda:forge.set_gravity((1e8,0,0))):
+        try:mutate()
+        except RuntimeError:pass
+        else:raise AssertionError('incompatible physics mutation accepted')
+        assert forge.scene_data()==before
+    forge.set_gravity((0,-10,0));forge.configure_physics({'backend':'legacy'});forge.set_mode('2d')
+    forge.log('BULLET_MUTATION_GUARDS_OK');forge.quit()
+""")
+        self.assertIn('BULLET_MUTATION_GUARDS_OK',self.run_engine())
+
 if __name__=='__main__':unittest.main(verbosity=2)

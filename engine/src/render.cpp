@@ -38,6 +38,27 @@ std::string textFile(const fs::path &p) {
 
 } // namespace
 namespace {
+glm::mat4 checkedMatrix(const glm::dmat4 &value) {
+    glm::mat4 result;
+    for(int column=0;column<4;++column)for(int row=0;row<4;++row)
+        result[column][row]=checkedFloat(value[column][row],"Camera matrix");
+    return result;
+}
+glm::dmat4 cameraView(glm::dvec3 position,glm::dvec3 target) {
+    auto delta=target-position;auto length=glm::length(delta);
+    if(!std::isfinite(length) || length<1e-6)throw std::runtime_error("Camera position and target must differ");
+    auto up=glm::length(glm::cross(delta/length,glm::dvec3(0,1,0)))<1e-6?glm::dvec3(0,0,1):glm::dvec3(0,1,0);
+    return glm::lookAt(position,target,up);
+}
+glm::mat4 cameraProjection(glm::vec3 position,glm::vec3 target,double fov,double aspect) {
+    return checkedMatrix(glm::perspective(glm::radians(fov),aspect,.05,10000.0)*cameraView(position,target));
+}
+glm::mat4 directionalShadow(const World &world,const Json &light) {
+    auto v=light.value("direction",Json::array({0,-1,0}));
+    auto direction=glm::normalize(glm::dvec3(v[0].get<double>(),v[1].get<double>(),v[2].get<double>()));
+    double extent=light.value("shadow_extent",20.0);auto center=glm::dvec3(world.cameraTarget);
+    return checkedMatrix(glm::ortho(-extent,extent,-extent,extent,.01,extent*4)*cameraView(center-direction*extent*2.0,center));
+}
 glm::mat4 modelMatrix(const Entity &e) {return e.worldMatrix;}
 double textWorldScale(const Entity &e) {
     return std::max(glm::length(glm::dvec3(e.worldMatrix[0])),
@@ -343,7 +364,7 @@ void main(){
                 return glm::vec3(v[0].get<float>(), v[1].get<float>(), v[2].get<float>());
             };
             positions.push_back(vector(light.value("position", Json::array({0, 5, 0}))));
-            directions.push_back(vector(light.value("direction", Json::array({0, -1, 0}))));
+            directions.push_back(glm::vec3(glm::normalize(glm::dvec3(vector(light.value("direction", Json::array({0, -1, 0})))))));
             colors.push_back(vector(light.value("color", Json::array({1, 1, 1}))));
             auto type = light.value("type", "point");
             parameters.emplace_back(type == "directional" ? 1
@@ -834,10 +855,16 @@ void Renderer::validateWorld(const World &world) {
     glfwGetWindowSize(impl->window, &width, &height);
     resources.density = std::max(float(framebufferWidth) / std::max(1, width),
                                  float(framebufferHeight) / std::max(1, height));
+    if(world.is3d)cameraProjection(world.cameraPosition,world.cameraTarget,world.fov,double(std::max(1,world.width))/std::max(1,world.height));
     auto targets = world.renderSettings.value("targets", Json::object());
-    for (auto it = targets.begin(); it != targets.end(); ++it)
-        resources.target("camera:" + it.key(), it.value().value("width", 320),
-                         it.value().value("height", 240));
+    for (auto it = targets.begin(); it != targets.end(); ++it) {
+        const auto &options=it.value();
+        if(options.value("mode","3d")=="3d") {
+            auto p=options.value("position",Json::array({0,0,5})),t=options.value("target",Json::array({0,0,0}));
+            cameraProjection(glm::vec3(p[0],p[1],p[2]),glm::vec3(t[0],t[1],t[2]),options.value("fov",60.0),double(options.value("width",320))/options.value("height",240));
+        }
+        resources.target("camera:" + it.key(), options.value("width", 320),options.value("height", 240));
+    }
     auto post = world.renderSettings.value("postprocess", Json::object());
     if (!post.empty() && post.value("enabled", true) && framebufferWidth > 0 && framebufferHeight > 0)
         resources.target("main", framebufferWidth, framebufferHeight);
@@ -845,6 +872,7 @@ void Renderer::validateWorld(const World &world) {
     if (world.is3d && !lights.empty() && lights[0].value("type", "point") == "directional" &&
         lights[0].value("shadows", false)) {
         int size = world.renderSettings.value("shadow_size", 1024);
+        directionalShadow(world,lights[0]);
         resources.target("shadow", size, size);
     }
     if (world.particles) for (const auto &emitter : world.particles->emitters) resources.image(emitter.settings["texture"]);
@@ -915,16 +943,7 @@ void Renderer::render(World &world) {
         if (size < 64 || size > 4096)
             throw std::runtime_error("shadow_size must be 64..4096");
         auto &target = impl->target("shadow", size, size);
-        auto v = light.value("direction", Json::array({0, -1, 0}));
-        glm::vec3 direction(v[0].get<float>(), v[1].get<float>(), v[2].get<float>());
-        direction = glm::normalize(direction);
-        float range = light.value("shadow_extent", 20.f);
-        if (!std::isfinite(range) || range < .1f || range > 10000)
-            throw std::runtime_error("shadow_extent must be .1..10000");
-        auto center = world.cameraTarget;
-        auto up = std::abs(direction.y) > .99f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
-        impl->shadowMatrix = glm::ortho(-range, range, -range, range, .01f, range * 4) *
-                             glm::lookAt(center - direction * range * 2.f, center, up);
+        impl->shadowMatrix = directionalShadow(world,light);
         gl::BindFramebuffer(gl::FRAMEBUFFER, target.fbo);
         gl::Viewport(0, 0, size, size);
         gl::Disable(gl::SCISSOR_TEST);
@@ -947,13 +966,8 @@ void Renderer::render(World &world) {
              t = options.value("target", Json::array({0, 0, 0}));
         glm::vec3 position(p[0].get<float>(), p[1].get<float>(), p[2].get<float>()),
             destination(t[0].get<float>(), t[1].get<float>(), t[2].get<float>());
-        auto up = glm::length(glm::cross(destination - position, glm::vec3(0, 1, 0))) < 1e-6f
-                      ? glm::vec3(0, 0, 1)
-                      : glm::vec3(0, 1, 0);
         auto view = options.value("mode", "3d") == "3d"
-                        ? glm::perspective(glm::radians(options.value("fov", 60.f)), float(width) / height,
-                                           .05f, 10000.f) *
-                              glm::lookAt(position, destination, up)
+                        ? cameraProjection(position,destination,options.value("fov",60.0),double(width)/height)
                         : glm::ortho(0.f, float(width), float(height), 0.f, -10000.f, 10000.f) *
                               glm::translate(glm::mat4(1), -position);
         bool originalMode = world.is3d;
@@ -982,11 +996,7 @@ void Renderer::render(World &world) {
     gl::ClearColor(background.r, background.g, background.b, background.a);
     gl::Clear(gl::COLOR | gl::DEPTH);
     auto ortho = glm::ortho(0.f, float(world.width), float(world.height), 0.f, -10000.f, 10000.f);
-    auto up = glm::length(glm::cross(world.cameraTarget - world.cameraPosition, glm::vec3(0, 1, 0))) < 1e-6f
-                  ? glm::vec3(0, 0, 1)
-                  : glm::vec3(0, 1, 0);
-    auto view = world.is3d ? glm::perspective(glm::radians(world.fov), float(w) / h, .05f, 10000.f) *
-                                 glm::lookAt(world.cameraPosition, world.cameraTarget, up)
+    auto view = world.is3d ? cameraProjection(world.cameraPosition,world.cameraTarget,world.fov,double(w)/h)
                            : ortho * glm::translate(glm::mat4(1), glm::vec3(-world.cameraPosition.x,
                                                                             -world.cameraPosition.y, 0));
     impl->cameraPosition = world.cameraPosition;

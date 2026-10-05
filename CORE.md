@@ -61,3 +61,5 @@ Forge должен оставаться универсальным и прост
 
 
 В 2.5 независимые `documents.cpp`/`documents.hpp`, `editor_session.cpp`/`editor_session.hpp`, Python SDK, схемы, оболочки и registry расширений не входят в закрытый перечень ядра. Они открыты для замены и адаптации. Изменения main/runtime/game_loop/scene_runtime/config и общих headers добавляют CLI project, optional editor host, candidate scene input и сохранение source metadata; эти затронутые контракты сохраняют происхождение ядра. Обычная игра и пользовательская оболочка используют публичные API без их изменения. CMake-флаг отключения ImGui, изменение plugin/UI, JSON schema annotations и расширений само по себе не является правкой ядра.
+
+В bugfix 2.5.1 правки core-origin config/main/runtime/scene_runtime/python_api/features и общих headers уточняют проверки конфигурации/Python, membership callbacks, границу authoring persistence и кеш переводов. Они исправляют прежние отказы и не расширяют закрытый перечень ядра. Реализации physics/renderer/audio/preloader/SDK остаются заменяемыми согласно прежним границам; новая необязательная настройка defer_persistence документирована в инструкции.

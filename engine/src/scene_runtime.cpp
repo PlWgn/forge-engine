@@ -51,15 +51,16 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     auto previousPersistence=persistence;
     auto assetCheckpoint=assets.checkpoint();auto previousInput=inputFrame;auto previousTime=time;auto previousDt=dt;
     // Keep a usable world until the replacement scene and its Python scripts initialize.
-    World replacement;replacement.config=&config;replacement.prepareEntity=world.prepareEntity;replacement.width=world.width;replacement.height=world.height;if(document){replacement.geometry=world.geometry;replacement.loadDocument(*document);}else replacement.load(name);
+    World replacement;replacement.config=&config;replacement.prepareEntity=world.prepareEntity;replacement.width=world.width;replacement.height=world.height;if(document){if(world.geometry)replacement.geometry=std::make_shared<Geometry>(*world.geometry);replacement.loadDocument(*document);}else replacement.load(name);
     auto oldSelection=editorSession.selected;if(!document)editorSession.selected.clear();
-    auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;
+    auto oldWorld=std::move(world);auto oldScripts=std::move(scripts);auto oldListeners=listeners;auto oldListenerIds=listenerIds;
     auto oldLocalization=localization;
     auto oldPending=pendingScene;bool oldRunning=running,oldPaused=gamePaused;
     world=std::move(replacement);scripts.clear();pendingScene.clear();gamePaused=false;
-    listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[](auto& l){return !l.persistent;}),listeners.end());
+    listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[&](auto& l){return !l.persistent || !listenerIds.count(l.id);}),listeners.end());
+    listenerIds.clear();for(const auto &listener:listeners)listenerIds.insert(listener.id);
     if(renderer)renderer->checkpointInput();
-    audio.begin();initializing=true;
+    audio.begin();initializing=true;auto previousAuthoring=authoringTransaction;authoringTransaction=document!=nullptr;
     bool ownRendererStage=renderer && !reloading;
     try {
         if(ownRendererStage)renderer->stage();
@@ -91,19 +92,22 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         editorSession.selected=oldSelection;
         if(ownRendererStage)renderer->discard();
         assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
-        persistence=std::move(previousPersistence);initializing=false;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
-        listeners=std::move(oldListeners);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
+        persistence=std::move(previousPersistence);initializing=false;authoringTransaction=previousAuthoring;localization=std::move(oldLocalization);audio.rollback();if(renderer)renderer->rollbackInput();for(auto& e:world.entities)e->alive=false;scripts.clear();world=std::move(oldWorld);scripts=std::move(oldScripts);
+        listeners=std::move(oldListeners);listenerIds=std::move(oldListenerIds);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
     }
     if(ownRendererStage)renderer->commit();
-    initializing=false;audio.commit();
+    initializing=false;authoringTransaction=previousAuthoring;audio.commit();
     // Old callbacks see their own world. Their mutations cannot affect the new scene.
+    listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[&](auto& l){return !listenerIds.count(l.id);}),listeners.end());
+    auto readyListenerIds=listenerIds;
     auto readyWorld=std::move(world);auto readyScripts=std::move(scripts);auto readyListeners=listeners;auto readyPending=pendingScene;bool readyRunning=running,readyPaused=gamePaused;
     auto readyLocalization=localization;localization=teardownLocalization?*teardownLocalization:std::move(oldLocalization);
     auto readyConfig=config;config=sceneConfig;sceneConfig=readyConfig;
-    world=std::move(oldWorld);listeners=std::move(oldListeners);scripts.clear();tearingDown=true;audio.begin();
+    world=std::move(oldWorld);listeners=std::move(oldListeners);listenerIds=std::move(oldListenerIds);scripts.clear();tearingDown=true;audio.begin();
     for(auto& script:oldScripts)if(py::hasattr(script.instance,"on_destroy"))try{script.instance.attr("on_destroy")();}catch(const std::exception& ex){logger.error(ex.what());}
     for(auto& e:world.entities)e->alive=false;
     audio.rollback();localization=std::move(readyLocalization);tearingDown=false;config=std::move(readyConfig);world=std::move(readyWorld);scripts=std::move(readyScripts);listeners=std::move(readyListeners);pendingScene=readyPending;running=readyRunning;gamePaused=readyPaused;
+    listenerIds=std::move(readyListenerIds);
     currentScene=name;
     if(!world.find(editorSession.selected))editorSession.selected.clear();
     if(!document)editorSession.opened(config.asset("scenes",name),world);

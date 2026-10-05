@@ -77,8 +77,8 @@ std::array<float, 3> measureText(const Config &config, const std::string &value,
     auto faces = fonts(config);
     int ascent, descent, gap;
     stbtt_GetFontVMetrics(&faces.front()->font, &ascent, &descent, &gap);
-    float lineHeight = (ascent - descent + gap) * stbtt_ScaleForPixelHeight(&faces.front()->font, size),
-          x = 0, width = 0;
+    double lineHeight = double(ascent - descent + gap) * stbtt_ScaleForPixelHeight(&faces.front()->font, size),
+           x = 0, width = 0;
     int previous = 0, lastFace = -1, lines = 1;
     for (auto code : unicode(value)) {
         if (code == '\n') {
@@ -91,7 +91,7 @@ std::array<float, 3> measureText(const Config &config, const std::string &value,
         }
         int face = fontFor(faces, code), advance, bearing;
         auto &font = faces[face]->font;
-        float scale = stbtt_ScaleForPixelHeight(&font, size);
+        double scale = stbtt_ScaleForPixelHeight(&font, size);
         stbtt_GetCodepointHMetrics(&font, code, &advance, &bearing);
         if (previous && lastFace == face)
             x += stbtt_GetCodepointKernAdvance(&font, previous, code) * scale;
@@ -99,6 +99,6 @@ std::array<float, 3> measureText(const Config &config, const std::string &value,
         previous = code;
         lastFace = face;
     }
-    return {std::max(width, x), lines * lineHeight, lineHeight};
+    return {checkedFloat(std::max(width, x),"Text width"),checkedFloat(lines * lineHeight,"Text height"),checkedFloat(lineHeight,"Text line height")};
 }
 }

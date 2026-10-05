@@ -81,13 +81,17 @@ bool Runtime::shutdown(){watcher.reset();bool failed=false;tearingDown=true;
 }
 void Runtime::refreshLocalizedEntities(){
     std::vector<std::pair<std::shared_ptr<Entity>,std::string>> updates;
-    for(auto& e:world.entities)if(e->alive && !e->textKey.empty())updates.push_back({e,localization.translate(e->textKey,e->textParams)});
-    for(auto& [entity,text]:updates)entity->text=std::move(text);
+    for(auto& e:world.entities)if(e->alive && !e->textKey.empty() &&
+        (e->localizedRevision!=localization.revision || e->localizedKey!=e->textKey || e->localizedParams!=e->textParams))
+        updates.push_back({e,localization.translate(e->textKey,e->textParams)});
+    // Commit derived values only after all translations have succeeded.
+    for(auto& [entity,text]:updates){entity->text=std::move(text);entity->localizedKey=entity->textKey;entity->localizedParams=entity->textParams;entity->localizedRevision=localization.revision;}
+    profile["localization_translations"]=updates.size();
 }
 int Runtime::run(int frames) {
     auto previous=std::chrono::steady_clock::now();
     float physicsAccumulator=0;
-    bool paused=false,pausedRenderFailed=false;
+    bool paused=false,pausedRenderFailed=false,pausedShellFailed=false;
     int result=0;
     try {
         audio.configure(config.data.value("audio_settings",Json::object()));
@@ -105,9 +109,18 @@ int Runtime::run(int frames) {
             inputFrame["dt"]=dt;inputFrame["time"]=time;inputFrame["frame"]=frame;
             if(dev && changed()){
                 paused=!tryReload();
-                if(!paused)pausedRenderFailed=false;
+                if(!paused){pausedRenderFailed=false;pausedShellFailed=false;}
             }
             if(paused){
+                if(editing && editorShell && !editorShell.is_none() && !pausedShellFailed && py::hasattr(editorShell,"on_update")){
+                    try{editorShell.attr("on_update")(dt);}
+                    catch(const std::exception& error){logger.error(error.what());pausedShellFailed=true;}
+                }
+                if(editing && !pendingScene.empty()){
+                    auto name=pendingScene;pendingScene.clear();
+                    try{loadScene(name);gamePaused=true;physicsAccumulator=0;paused=false;pausedRenderFailed=false;pausedShellFailed=false;}
+                    catch(const std::exception& error){logger.error(error.what());}
+                }
                 if(renderer && !pausedRenderFailed){
                     try {renderer->render(world);}
                     catch(const std::exception& error){logger.error(error.what());pausedRenderFailed=true;}
@@ -137,18 +150,21 @@ int Runtime::run(int frames) {
 }
 static fs::path savePath(const Runtime& r,const std::string& name) {
     if(name.empty() || fs::u8path(name).filename()!=fs::u8path(name) || name=="." || name=="..")throw std::runtime_error("Save name must be a filename");
-    auto base=r.config.data.value("save_directory","saves");auto folder=storagePath(r.config,base);fs::create_directories(folder);return folder/fs::u8path(name+".json");
+    auto base=r.config.data.value("save_directory","saves");auto folder=storagePath(r.config,base);fs::create_directories(folder);return storagePath(r.config,(fs::u8path(base)/fs::u8path(name+".json")).generic_u8string());
 }
 void Runtime::save(const std::string& name,py::object value) {
     if(tearingDown)return;
-    if(reloading){auto snapshot=fromPython(value);persistence.push_back(py::cpp_function([this,name,snapshot](){save(name,pythonValue(snapshot));}));return;}
+    if(reloading || authoringTransaction){auto snapshot=fromPython(value);persistence.push_back(py::cpp_function([this,name,snapshot](){save(name,pythonValue(snapshot));}));return;}
     auto file=savePath(*this,name),temp=file;temp += ".tmp";auto data=fromPython(value);
-    {std::ofstream out(temp);if(!out)throw std::runtime_error("Cannot write save: "+temp.u8string());out<<data.dump(2);out.flush();if(!out)throw std::runtime_error("Save write failed");}
+    if(fs::exists(temp) || fs::is_symlink(fs::symlink_status(temp)))throw std::runtime_error("Temporary save path already exists: "+temp.u8string());
+    try {
+        {std::ofstream out(temp);if(!out)throw std::runtime_error("Cannot write save: "+temp.u8string());out<<data.dump(2);out.flush();if(!out)throw std::runtime_error("Save write failed");}
 #ifdef _WIN32
-    if(!MoveFileExW(temp.wstring().c_str(),file.wstring().c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot replace save file");
+        if(!MoveFileExW(temp.wstring().c_str(),file.wstring().c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot replace save file");
 #else
-    fs::rename(temp,file);
+        fs::rename(temp,file);
 #endif
+    }catch(...){std::error_code error;fs::remove(temp,error);throw;}
 }
 py::object Runtime::load(const std::string& name,py::object fallback){auto file=savePath(*this,name);return fs::exists(file)?pythonValue(readJson(file)):fallback;}
 }

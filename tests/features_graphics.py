@@ -88,6 +88,13 @@ def on_start():
     forge.spawn({'kind':'sprite','screen':True,'position':[100,100,0],'scale':[100,100,1]})
     forge.set_shader_uniform('custom_tint',[1,0,0,1]);forge.set_window({'vsync':False})
     assert not forge.window_settings()['vsync']
+    before=forge.window_settings()
+    for options in ({'width':4294967616},{'height':480.5},{'width':800,'vsync':'invalid'},{'fullscreen':1}):
+        try:forge.set_window(options)
+        except RuntimeError:pass
+        else:raise AssertionError('invalid window accepted')
+        assert forge.window_settings()==before
+
 def on_update(dt):
     global frames
     frames+=1

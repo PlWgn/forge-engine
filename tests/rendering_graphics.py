@@ -208,4 +208,21 @@ def on_start():
         w,h,pixels=base.ppm(self.root/'animation-editor.ppm')
         self.assertGreater(len(set(pixels)),30)
 
+    def test_large_finite_camera_and_light_directions_keep_correct_pixels(self):
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'3d','physics_enabled':False,'background':[0,0,0,1],'camera':{'position':[0,0,4],'target':[0,0,-1e20]},'rendering':{'ambient':[.1,.1,.1],'lights':[{'type':'directional','direction':[0,-1e20,-1e20],'intensity':2}]}}
+def on_start():
+    forge.spawn({'kind':'cube','scale':[2,2,2],'material_properties':{'shading':'pbr','roughness':.8,'base_color':[.2,.8,.5,1]}})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:forge.screenshot('large.ppm')
+    if frames==3:
+        forge.set_camera((0,0,4),(0,0,0));forge.set_lights([{'type':'directional','direction':[0,-1,-1],'intensity':2}])
+    if frames==4:forge.screenshot('normal.ppm')
+""",frames=6)
+        large=base.point(self.root/'large.ppm',320,240);normal=base.point(self.root/'normal.ppm',320,240)
+        self.assertGreater(normal[1],60);self.assertTrue(all(abs(a-b)<=2 for a,b in zip(large,normal)),(large,normal))
+
 if __name__=='__main__':unittest.main(verbosity=2)

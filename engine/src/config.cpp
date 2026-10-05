@@ -39,7 +39,7 @@ fs::path Config::asset(const std::string& group, const std::string& name) const 
 Config Config::load(const fs::path& filename) {
     Config c; c.file = fs::absolute(filename); c.root = fs::weakly_canonical(c.file.parent_path()); c.data = readJson(c.file);
     if(!c.data.is_object()) throw std::runtime_error("Settings must be a JSON object");
-    if(c.data.value("schema_version", 0) != 1) throw std::runtime_error("Unsupported schema_version (expected 1)");
+    if(!c.data.contains("schema_version") || !c.data["schema_version"].is_number_integer() || c.data["schema_version"] != 1) throw std::runtime_error("Unsupported schema_version (expected 1)");
     if(!c.data.contains("project") || !c.data["project"].is_object() || c.data["project"].value("name", "").empty()) throw std::runtime_error("project.name is required");
     if(!c.data.contains("paths") || !c.data["paths"].is_object()) throw std::runtime_error("paths is required");
     for(auto it=c.data["paths"].begin();it!=c.data["paths"].end();++it) c.paths[it.key()] = c.resolve(it.value().get<std::string>());
@@ -88,14 +88,23 @@ Json validateEntity(const Config& c, Json j) {
     return j;
 }
 void Config::validate(bool media) const {
+    if(!data.is_object() || !data.contains("schema_version") || !data["schema_version"].is_number_integer() || data["schema_version"]!=1)
+        throw std::runtime_error("Unsupported schema_version (expected integer 1)");
     auto geometryBudget=data.value("geometry_budget_bytes",Json(64*1024*1024));if(!geometryBudget.is_number_integer() || geometryBudget<1 || geometryBudget>1024*1024*1024)throw std::runtime_error("geometry_budget_bytes must be 1..1GiB");
     validatePhysics(data.value("physics",Json::object()));
+    validateAudioSettings(data.value("audio_settings",Json::object()));
     validateRenderSettings(data.value("rendering",Json::object()));
     storagePath(*this,data.value("save_directory","saves"));
     for(auto& [key,p]:paths) if(!fs::is_directory(p)) throw std::runtime_error("Missing directory paths."+key+": "+p.u8string());
     requireFile(asset("scenes", entry()));
     auto window = data.value("window", Json::object());
-    if(window.value("width",1280)<1 || window.value("height",720)<1) throw std::runtime_error("Window dimensions must be positive");
+    if(!window.is_object())throw std::runtime_error("window must be an object");
+    for(auto field:{"width","height"}) {
+        auto value=window.value(field,Json(std::string(field)=="width"?1280:720));
+        if(!value.is_number_integer() || value<1 || value>16384)throw std::runtime_error(std::string("window.")+field+" must be an integer in 1..16384");
+    }
+    for(auto field:{"fullscreen","vsync"})if(window.contains(field) && !window[field].is_boolean())
+        throw std::runtime_error(std::string("window.")+field+" must be boolean");
     for(auto& s:data.value("startup_scripts",Json::array())) requireFile(asset("scripts",s.get<std::string>()));
     for(auto& p:data.value("python_paths",Json::array())) if(!fs::is_directory(resolve(p.get<std::string>()))) throw std::runtime_error("Missing python_paths directory");
     auto development=data.value("development",Json::object());

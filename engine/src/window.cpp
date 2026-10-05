@@ -143,13 +143,18 @@ Json windowOptions(GLFWwindow* window,bool vsync) {
 void windowOptions(GLFWwindow* window,bool& vsync,const Json &options) {
     auto current = windowOptions(window,vsync);
     current.merge_patch(options);
-    int width = current.value("width", 1280), height = current.value("height", 720);
-    if (width < 320 || height < 240 || width > 16384 || height > 16384)
-        throw std::runtime_error("Window dimensions must be 320..16384 by 240..16384");
-    bool fullscreen = current.value("fullscreen", false);
+    for(auto field:{"width","height"}) {
+        auto &value=current.at(field);auto minimum=std::string(field)=="width"?320:240;
+        if(!value.is_number_integer() || value<minimum || value>16384)
+            throw std::runtime_error("Window dimensions must be integers in 320..16384 by 240..16384");
+    }
+    for(auto field:{"fullscreen","vsync"})if(!current.at(field).is_boolean())throw std::runtime_error(std::string("Window ")+field+" must be boolean");
+    int width = current.at("width"), height = current.at("height");
+    bool fullscreen = current.at("fullscreen");
     if (fullscreen) {
         auto monitor = glfwGetPrimaryMonitor();
-        auto mode = glfwGetVideoMode(monitor);
+        auto mode = monitor?glfwGetVideoMode(monitor):nullptr;
+        if(!mode)throw std::runtime_error("Primary monitor/video mode unavailable");
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
     } else
         glfwSetWindowMonitor(window, nullptr, 100, 100, width, height, GLFW_DONT_CARE);

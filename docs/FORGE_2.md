@@ -82,3 +82,20 @@ CI запускает все шесть CTest suites на macOS/Windows и че�
 | Сосуществование с ручными правками | authored delta projection, disk three-way merge, unknown source fields | project_api: original camera/entity metadata, defaults, conflicts retain file/draft |
 
 CTest содержит восемь наборов; launcher test — шесть интеграционных. Отдельные четыре GPU suites сохраняются. Открытый format/API не требуют SDK или интерфейса для game run/build. Нет embedding GPU viewport в сторонний toolkit, remote live-game RPC, универсального undo произвольного Python/I/O, widget ABI ImGui или распределённой файловой блокировки. При несохранённых editor changes автоматический hot reload сохраняет мир и сообщает об отказе; явный load/reset управляется пользователем. Контракты и пути перехода — [PROJECT_API.md](PROJECT_API.md) и раздел 23 инструкции.
+
+## Forge 2.5.1
+
+Bugfix сохраняет открытый формат и API 1, необязательный редактор и прежние defaults.
+
+| Исправление | Регрессии |
+| --- | --- |
+| Editor rollback: listeners, procedural geometry, managed save/write/delete; shell после отказа reload | project_api |
+| Целые размеры/версии, атомарные window options, строгие audio settings | project_api, features, features_graphics |
+| Storage symlinks/temp; вложенные copy symlinks/cycles; сохранение игровых tests-папок | integration, packager_paths, standalone package |
+| Проверка Python из python_paths, резервирование явных ID перед autogeneration | integration |
+| Откат legacy physics при переполнении, согласованные Bullet setters | integration, simulation |
+| Переполнение text metrics, int32 uniforms, большие конечные camera/light directions | integration, rendering_graphics |
+| Отказ decode при voice stealing, очистка ducking, prefab/PBR preload | features, прежние audio-device/GPU suites |
+| Кеш text_key/params/revision вместо повторных переводов каждый кадр | integration, прежние localization/UI suites |
+
+Для выпуска на macOS arm64 выполнены все восемь CTest-наборов в сборках с базовым редактором и без него, четыре desktop/OpenGL/audio suites с редактором (29 проверок), validate и проверка самостоятельной поставки. Windows/Linux локально не запускались; они остаются отдельными CI-платформами. Методика изолированного headless benchmark локализации: 4000 объектов, три запуска по 125 кадров, первые пять исключены; медиана frame_ms по запускам 2.01 мс в 2.5 против 0.253 мс в 2.5.1. Это измерение данного сценария, не общей производительности игры.

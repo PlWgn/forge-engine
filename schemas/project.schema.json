@@ -94,11 +94,13 @@
       "properties": {
         "width": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 16384
         },
         "height": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 16384
         },
         "vsync": {
           "type": "boolean"

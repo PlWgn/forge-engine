@@ -39,8 +39,9 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def_property("text",[](Entity& e){return e.textKey.empty()?e.text:rt().localization.translate(e.textKey,e.textParams);},[](Entity& e,py::object value){
             if(py::isinstance<LocalizedText>(value)){auto message=value.cast<LocalizedText>();auto text=rt().localization.translate(message.key,message.params);e.textKey=message.key;e.textParams=message.params;e.text=text;}
             else{e.text=py::str(value);e.textKey.clear();e.textParams=Json::object();}
+            e.localizedRevision=uint64_t(-1);
         })
-        .def_readwrite("text_key",&Entity::textKey)
+        .def_property("text_key",[](Entity& e){return e.textKey;},[](Entity& e,const std::string& key){e.textKey=key;e.localizedRevision=uint64_t(-1);})
         .def_property("text_params",[](Entity& e){return toPython(e.textParams);},[](Entity& e,py::dict params){e.textParams=fromPython(params);})
         .def("set_localized_text",[](Entity& e,const std::string& key,py::dict params){auto data=fromPython(params);auto text=rt().localization.translate(key,data);e.textKey=key;e.textParams=data;e.text=text;},py::arg("key"),py::arg("params")=py::dict())
         .def_property("font_size",[](Entity& e){return e.fontSize;},[](Entity& e,float value){e.fontSize=positive(value,"font_size");})
@@ -98,8 +99,8 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("window_size",[](){return std::array<int,2>{rt().world.width,rt().world.height};});
     m.def("set_camera",[](std::array<float,3> p,std::array<float,3> target){auto position=vector(p,"camera.position"),destination=vector(target,"camera.target");rt().world.cameraPosition=position;rt().world.cameraTarget=destination;},py::arg("position"),py::arg("target")=std::array<float,3>{0,0,0});
     m.def("camera_position",[](){return tuple(rt().world.cameraPosition);});
-    m.def("set_gravity",[](std::array<float,3> v){rt().world.gravity=vector(v);});
-    m.def("set_mode",[](const std::string& mode){if(mode!="2d" && mode!="3d")throw std::runtime_error("Mode must be 2d or 3d");rt().world.is3d=mode=="3d";});
+    m.def("set_gravity",[](std::array<float,3> v){auto next=vector(v);if(rigidPhysics(rt().world))for(int axis=0;axis<3;++axis)if(std::abs(double(next[axis]))>1e6)throw std::runtime_error("physics gravity outside allowed range");rt().world.gravity=next;});
+    m.def("set_mode",[](const std::string& mode){if(mode!="2d" && mode!="3d")throw std::runtime_error("Mode must be 2d or 3d");if(mode=="2d" && rigidPhysics(rt().world))throw std::runtime_error("Bullet backend requires a 3D scene; configure legacy physics first");rt().world.is3d=mode=="3d";});
     m.def("set_background",[](std::array<float,4> v){rt().world.background=color(v,"background");});
     m.def("raycast",[](std::array<float,3> origin,std::array<float,3> direction,float distance){return rt().world.raycast(vector(origin),vector(direction),finiteNumber(distance,"raycast distance"));},py::arg("origin"),py::arg("direction"),py::arg("distance")=1000);
     m.def("raycast_many",[](const std::vector<std::tuple<std::array<float,3>,std::array<float,3>,float>>& rays){

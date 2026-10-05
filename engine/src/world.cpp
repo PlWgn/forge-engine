@@ -118,6 +118,11 @@ static glm::vec3 physicsVector(const glm::dvec3& value,const Entity& e,const std
 }
 void World::physics(float dt) {
     if(rigidPhysics(*this)){try{physics3D(*this).step(*this,dt);}catch(...){physics3d.reset();throw;}return;}
+    struct State {Entity* entity;glm::vec3 position,velocity;};
+    std::vector<State> previous;
+    for(auto& e:entities)if(e->alive && e->dynamic)previous.push_back({e.get(),e->position,e->velocity});
+    auto previousContacts=contacts;auto previousCandidates=physicsCandidates;
+    try {
     contacts.clear();physicsCandidates=0;
     // Fixed substeps reduce tunnelling; this is a translational AABB solver.
     double count=std::ceil(double(dt)/double(1.0f/120));
@@ -162,11 +167,18 @@ void World::physics(float dt) {
                 velocityB=checkedFloat(double(velocityB)+normal*relative*weightB,"Physics entity '"+b.id+"' velocity");
             }
             // Commit a collision only after every result has passed validation.
-            a.position[axis]=positionA; b.position[axis]=positionB;
+            auto nextA=a.position,nextB=b.position;nextA[axis]=positionA;nextB[axis]=positionB;
+            // Updating roots also refreshes static/visual children before the next pair.
+            if(a.dynamic)setLocalTransform(a,nextA,a.rotation,a.scale);
+            if(b.dynamic)setLocalTransform(b,nextB,b.rotation,b.scale);
             a.velocity[axis]=velocityA; b.velocity[axis]=velocityB;
-            if(a.dynamic)a.worldMatrix[3]=glm::vec4(a.position,1);if(b.dynamic)b.worldMatrix[3]=glm::vec4(b.position,1);
         }
         syncTransforms();
+    }
+    }catch(...){
+        for(auto& state:previous){state.entity->position=state.position;state.entity->velocity=state.velocity;}
+        contacts=std::move(previousContacts);physicsCandidates=previousCandidates;
+        syncTransforms();throw;
     }
 }
 std::shared_ptr<Entity> World::raycast(glm::vec3 origin,glm::vec3 direction,float distance,bool synchronize) {

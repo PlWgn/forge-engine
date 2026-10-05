@@ -280,4 +280,59 @@ def on_start():
         self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('APP_STARTED',result.stdout)
         self.assertTrue((self.root/'app-user'/self.config['storage']['application_id']/'saves/app.json').exists())
 
+    def test_audio_rejected_replacement_and_settings_preserve_state(self):
+        (self.root/'audio/broken.wav').write_bytes(b'not a wav')
+        self.script_scene("""import forge
+frames=0
+def on_start():
+    forge.configure_audio({'max_voices':1})
+    old=forge.play_sound('notify.wav',loop=True)
+    before=forge.audio_stats()
+    try:forge.play_sound('broken.wav',loop=True)
+    except RuntimeError:pass
+    else:raise AssertionError('invalid audio decoded')
+    assert forge.channel_sounds('sfx')==[old] and forge.sound_playing(old)
+    assert forge.audio_stats()['stolen']==before['stolen']
+    for settings in ({'max_voices':1.5},{'channel_limits':{'voice':1.5}},{'channel_limits':[]},{'ducking':{}},{'follow_camera':1},{'stream_threshold_bytes':-1}):
+        before=forge.audio_stats()
+        try:forge.configure_audio(settings)
+        except RuntimeError:pass
+        else:raise AssertionError('invalid settings accepted '+str(settings))
+        assert forge.audio_stats()==before
+    for options in ({'stream':1},{'spatial':1}):
+        try:forge.set_sound_options(old,options)
+        except RuntimeError:pass
+        else:raise AssertionError('invalid voice settings accepted')
+        assert forge.channel_sounds('sfx')==[old]
+    forge.stop_sounds();forge.configure_audio({'max_voices':4,'ducking':[{'source':'voice','target':'music','gain':.2,'attack':0,'release':0}]})
+    forge.play_sound('notify.wav',loop=True,channel='music');forge.play_sound('notify.wav',loop=True,channel='voice')
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==1:
+        assert abs(forge.audio_stats()['duck_gains']['music']-.2)<1e-5
+        forge.configure_audio({'ducking':[]})
+    if frames==2:
+        assert forge.audio_stats()['duck_gains'].get('music',1)==1
+        forge.log('AUDIO_FAILURE_PRESERVES_STATE');forge.quit()
+""")
+        self.assertIn('AUDIO_FAILURE_PRESERVES_STATE',self.run_engine())
+
+    def test_scene_preloader_handles_prefabs_procedural_meshes_and_pbr_maps(self):
+        (self.root/'materials/preload.json').write_text(json.dumps({'shading':'pbr','normal_texture':'icon.png','emissive_texture':'particle.png'}))
+        (self.root/'objects/preload-base.json').write_text(json.dumps({'kind':'sprite','material':'preload.json'}))
+        (self.root/'objects/preload-child.json').write_text(json.dumps({'extends':'preload-base.json','name':'Inherited'}))
+        (self.root/'scenes/preload-all.json').write_text(json.dumps({'entities':[{'id':'a','prefab':'preload-child.json'},{'kind':'mesh','model':'@mesh:generated'},{'kind':'sprite','material_properties':{'occlusion_texture':'icon.png'}}]}))
+        self.script_scene("""import forge
+from assets import ScenePreloader
+def on_start():
+    with ScenePreloader.scene('preload-all.json') as loader:
+        loader.wait()
+        assert ('materials','preload.json') in loader.handles
+        assert ('textures','icon.png') in loader.handles and ('textures','particle.png') in loader.handles
+        assert not any(file.startswith('@') for group,file in loader.handles)
+    forge.log('PRELOADER_RESOURCES_OK');forge.quit()
+""")
+        self.assertIn('PRELOADER_RESOURCES_OK',self.run_engine())
+
 if __name__=='__main__':unittest.main(verbosity=2)

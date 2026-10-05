@@ -65,4 +65,26 @@ class CopyPaths(unittest.TestCase):
             packager._stage_path(stage, 'escape/file')
 
 
+    def test_nested_symlinks_are_confined_and_cycles_rejected(self):
+        outside=self.root.parent/'private.txt';outside.write_text('private')
+        link=self.root/'extra/link'
+        try:link.symlink_to(outside)
+        except OSError as error:self.skipTest(f'Symlinks unavailable: {error}')
+        with self.assertRaisesRegex(RuntimeError,'escapes project root'):
+            packager._copy_plan(self.root,copy.deepcopy(self.settings),self.root/'dist/Game')
+        link.unlink();link.symlink_to(self.root/'extra',target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError,'cycle'):
+            packager._copy_plan(self.root,copy.deepcopy(self.settings),self.root/'dist/Game')
+        link.unlink();link.symlink_to(self.root/'textures/icon.png')
+        packager._copy_plan(self.root,copy.deepcopy(self.settings),self.root/'dist/Game')
+
+    def test_game_directories_named_tests_are_preserved(self):
+        source=self.root/'extra'
+        for folder in ('test','tests','tkinter'):
+            (source/folder).mkdir();(source/folder/'content.py').write_text('VALUE=1')
+        target=self.root/'stage'
+        packager._copy_tree(source,target)
+        for folder in ('test','tests','tkinter'):
+            self.assertTrue((target/folder/'content.py').exists(),folder)
+
 if __name__ == '__main__': unittest.main(verbosity=2)

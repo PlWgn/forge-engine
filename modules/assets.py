@@ -1,5 +1,6 @@
 """Pinned native asset handles and scene preloading. GPU uploads stay on the render thread."""
 import json
+from copy import deepcopy
 import time
 from pathlib import Path
 import os
@@ -54,13 +55,24 @@ class ScenePreloader:
         for original in data.get('entities', []):
             entity = dict(original)
             if 'prefab' in entity:
-                prefab = json.loads(Path(forge.asset_path('objects', entity['prefab'])).read_text(encoding='utf-8'))
-                prefab.update(entity); entity = prefab
+                prefab = forge.load_prefab(entity['prefab'])['entities']
+                if len(prefab) != 1: raise AssetError('Entity prefab must contain one object')
+                def overlay(base, patch):
+                    if not isinstance(patch, dict): return deepcopy(patch)
+                    value = deepcopy(base) if isinstance(base, dict) else {}
+                    for key, item in patch.items():
+                        if item is None: value.pop(key, None)
+                        else: value[key] = overlay(value.get(key), item)
+                    return value
+                entity = overlay(prefab[0], entity)
             for field, group in [('texture','textures'),('model','models'),('material','materials')]:
-                if entity.get(field) and not entity[field].startswith('@target:'): result.add(group, entity[field])
+                if entity.get(field) and not entity[field].startswith(('@target:', '@mesh:')): result.add(group, entity[field])
+            materials = [entity.get('material_properties', {})]
             if entity.get('material'):
-                material = json.loads(Path(forge.asset_path('materials',entity['material'])).read_text(encoding='utf-8'))
-                if material.get('texture'): result.add('textures',material['texture'])
+                materials.append(json.loads(Path(forge.asset_path('materials',entity['material'])).read_text(encoding='utf-8')))
+            for material in materials:
+                for field in ('texture','albedo_texture','normal_texture','metallic_texture','roughness_texture','metallic_roughness_texture','occlusion_texture','emissive_texture'):
+                    if material.get(field): result.add('textures', material[field])
         return result
     def _expand(self):
         for key, handle in list(self.handles.items()):
@@ -85,6 +97,6 @@ class ScenePreloader:
         return self
     def close(self):
         for handle in self.handles.values(): handle.close()
-        self.handles.clear()
+        self.handles.clear(); self._dependencies.clear()
     def __enter__(self): return self
     def __exit__(self,*args): self.close()
