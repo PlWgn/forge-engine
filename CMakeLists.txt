@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.7.1 LANGUAGES C CXX)
+project(Forge VERSION 2.8.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -116,6 +116,8 @@ add_executable(forge
   engine/src/editor_session.cpp
   engine/src/world.cpp
   engine/src/render.cpp
+  engine/src/render_optimization.cpp
+  engine/src/render_optimization_data.cpp
   engine/src/runtime.cpp
   engine/src/game_loop.cpp
   engine/src/window.cpp
@@ -207,6 +209,9 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME shader_compiler COMMAND shader_compiler_tests ${CMAKE_CURRENT_SOURCE_DIR}/graphics)
   endif()
+  add_executable(render_optimization_tests tests/render_optimization.cpp engine/src/render_optimization.cpp)
+  target_include_directories(render_optimization_tests PRIVATE engine/include vendor vendor/glm)
+  add_test(NAME render_optimization COMMAND render_optimization_tests)
   add_executable(numeric_tests tests/numeric.cpp)
   target_include_directories(numeric_tests PRIVATE engine/include)
   add_test(NAME numeric COMMAND numeric_tests)

@@ -33,14 +33,18 @@ def verify(folder, graphics_backend=None):
             probe.write_text("import forge\nframes=0\ndef on_start(): forge.on_frame(tick,persistent=True)\ndef tick(dt):\n    global frames\n    frames+=1\n    if frames==3:\n        actual=forge.renderer_stats()['backend']\n        assert actual=="+repr(graphics_backend)+",actual\n        forge.log('VERIFIED_GRAPHICS_BACKEND '+actual)\n",encoding='utf-8')
             config.setdefault('startup_scripts',[]).append(probe.name)
             config_file.write_text(json.dumps(config,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-        for scene in ('welcome.json','simulation.json','authoring.py'):
+        scenes=['welcome.json','simulation.json','authoring.py']
+        package_data=copy/'Contents/Resources' if copy.suffix.lower()=='.app' else copy
+        config=json.loads((package_data/'game.json').read_text(encoding='utf-8'))
+        if (package_data/config['paths']['scenes']/'optimization.py').is_file():scenes.append('optimization.py')
+        for scene in scenes:
             mode=['--silent-audio'] if graphics_backend else ['--headless']
             result=subprocess.run([str(binary),'run','--scene',scene,*mode,'--frames','12','--no-open-log'],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',timeout=90)
             if result.returncode or '[ERROR]' in result.stdout+result.stderr:
                 raise RuntimeError(result.stdout+result.stderr)
             if graphics_backend and 'VERIFIED_GRAPHICS_BACKEND '+graphics_backend not in result.stdout:
                 raise RuntimeError('Standalone scene did not confirm requested graphics backend: '+scene)
-    print(f'Verified Forge {manifest["engine_version"]}: {len(manifest["files"])} manifest files; three standalone scenes'+(' / '+graphics_backend if graphics_backend else ' / headless'))
+    print(f'Verified Forge {manifest["engine_version"]}: {len(manifest["files"])} manifest files; {len(scenes)} standalone scenes'+(' / '+graphics_backend if graphics_backend else ' / headless'))
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('folder')

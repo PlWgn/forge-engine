@@ -2,6 +2,7 @@
 #include <chrono>
 #include <forge/gl.hpp>
 #include <forge/model.hpp>
+#include <forge/render_optimization.hpp>
 #include <forge/particles.hpp>
 #include <forge/particle_render.hpp>
 #include <forge/gpu_resources.hpp>
@@ -104,6 +105,15 @@ struct Renderer::Impl : WindowInput {
     };
     std::map<std::string, Target> targets;
     std::map<std::string, std::shared_ptr<Model>> models;
+    std::unordered_map<std::string,std::string> modelKeys;
+    std::unordered_map<std::string,std::shared_ptr<Model>> frameModels;
+    struct BoundsCache {std::weak_ptr<Model> source; RenderBounds bounds;};
+    std::unordered_map<const Model*,BoundsCache> boundsCache;
+    size_t boundsBuilds = 0;
+    std::shared_ptr<RenderOptimizationPolicy> optimizationPolicy = std::make_shared<NativeRenderOptimizer>();
+    std::shared_ptr<RenderOptimizationPolicy> previousOptimizationPolicy;
+    Json optimizationStats = Json::object();
+    double optimizationMs = 0;
     std::map<std::string,unsigned long long> modelRevisions;
     Json materialOptions=Json::object();
     const Model::Part* materialPart=nullptr;
@@ -190,6 +200,8 @@ struct Renderer::Impl : WindowInput {
         glyphs.swap(other.glyphs);
         targets.swap(other.targets);
         models.swap(other.models);modelRevisions.swap(other.modelRevisions);
+        modelKeys.clear();other.modelKeys.clear();frameModels.clear();other.frameModels.clear();
+        boundsCache.clear();other.boundsCache.clear();
         std::swap(batchAllocated, other.batchAllocated);
         particleRenderer.swap(other.particleRenderer);
         std::swap(particleInstanced,other.particleInstanced);
@@ -633,7 +645,58 @@ void main(){
             previousFace = face;
         }
     }
-    std::string modelKey(const std::string& name){return proceduralName(name)?name:config->asset("models",name).u8string();}
+    std::string modelKey(const std::string& name) {
+        if(proceduralName(name))return name;
+        auto found=modelKeys.find(name);
+        if(found==modelKeys.end())found=modelKeys.emplace(name,config->asset("models",name).u8string()).first;
+        return found->second;
+    }
+    std::shared_ptr<Model> cpuModel(const std::string& name) {
+        auto found=frameModels.find(name);
+        if(found!=frameModels.end())return found->second;
+        std::shared_ptr<Model> source;
+        if(proceduralName(name)) {
+            auto& store=geometry(context->world);auto item=store.entries.find(name);
+            if(item==store.entries.end())throw std::runtime_error("Missing procedural mesh: "+name);
+            source=item->second.model;
+        }else {
+            auto key=modelKey(name);auto loaded=models.find(key);
+            source=loaded==models.end()?context->assets.model(fs::u8path(key)):loaded->second;
+        }
+        frameModels.emplace(name,source);return source;
+    }
+    RenderBounds cachedBounds(const std::string& name) {
+        auto source=cpuModel(name);auto found=boundsCache.find(source.get());
+        if(found==boundsCache.end() || found->second.source.lock()!=source) {
+            found=boundsCache.insert_or_assign(source.get(),BoundsCache{source,staticModelBounds(*source)}).first;
+            ++boundsBuilds;
+        }
+        return found->second.bounds;
+    }
+    bool deforming(const Entity& e) {
+        if(e.kind!="mesh")return false;
+        if(e.animator || !e.animation.empty() || !e.morphWeights.empty())return true;
+        auto source=cpuModel(e.model);
+        if(!source->clips.empty())return true;
+        for(auto& part:source->parts)if(!part.bones.empty() || !part.morphs.empty())return true;
+        return false;
+    }
+    RenderBounds entityBounds(const Entity& e,bool animated) {
+        if(e.optimization && e.optimization->bounds.valid)
+            return transformRenderBounds(e.optimization->bounds,e.worldMatrix);
+        if(animated)return {};
+        RenderBounds local;
+        if(e.kind=="mesh") {
+            local=cachedBounds(e.model);
+            if(e.optimization)for(auto& level:e.optimization->levels)if(!level.model.empty()) {
+                auto box=cachedBounds(level.model);
+                if(!box.valid)return {}; // An uncertain alternative must not shrink the bound.
+                if(!local.valid)local=box;
+                else {local.min=glm::min(local.min,box.min);local.max=glm::max(local.max,box.max);}
+            }
+        }else if(e.kind=="cube" || e.kind=="sprite")local={{-.5,-.5,e.kind=="cube"?-.5:0},{.5,.5,e.kind=="cube"?.5:0},true};
+        return transformRenderBounds(local,e.worldMatrix);
+    }
     void dropModel(const std::string& key){auto found=models.find(key);if(found==models.end())return;for(size_t i=0;i<found->second->parts.size();++i){auto id="model:"+key+":"+std::to_string(i);auto mesh=meshes.find(id);if(mesh!=meshes.end()){gl::DeleteBuffers(1,&mesh->second.vbo);gl::DeleteVertexArrays(1,&mesh->second.vao);gpuBytes-=found->second->parts[i].vertices.size()*sizeof(Vertex);meshes.erase(mesh);}}models.erase(found);modelRevisions.erase(key);}
     Model &prepareModel(const std::string &name) {
         auto key=modelKey(name);std::shared_ptr<Model> source;unsigned long long revision=0;
@@ -670,9 +733,9 @@ void main(){
         }
         return part.texture.empty() ? 0 : imagePath(part.texture);
     }
-    void model(const Entity &e, const glm::mat4 &view, bool lit) {
-        auto key = modelKey(e.model);
-        auto &asset = prepareModel(e.model);
+    void model(const Entity &e, const glm::mat4 &view, bool lit, const std::string& modelName, const std::string& textureName) {
+        auto key = modelKey(modelName);
+        auto &asset = prepareModel(modelName);
         auto pose = e.animator?e.animator->pose:asset.pose(e.animation, e.animationTime, e.animationLoop);
         auto base = modelMatrix(e);
         for (size_t i = 0; i < asset.parts.size(); ++i) {
@@ -687,7 +750,7 @@ void main(){
             auto saved=materialOptions;materialPart=&part;if(e.materialData.empty())materialOptions=part.material;
             unsigned tex = 0;
             if (!shadowPass || materialOptions.value("alpha_mode","blend")=="mask")
-                tex = !e.texture.empty() ? image(e.texture) : !materialOptions.value("albedo_texture","").empty()?image(materialOptions["albedo_texture"]):modelTexture(part, key, i);
+                tex = !textureName.empty() ? image(textureName) : !materialOptions.value("albedo_texture","").empty()?image(materialOptions["albedo_texture"]):modelTexture(part, key, i);
             if(!part.morphs.empty()){
                 auto weights=e.animator?e.animator->morphs.at(i):asset.morphPose(i,e.animation,e.animationTime,e.animationLoop);
                 for(size_t target=0;target<weights.size();++target)if(e.morphWeights.contains(part.morphs[target].name))weights[target]=e.morphWeights.at(part.morphs[target].name).get<double>();
@@ -708,27 +771,90 @@ void main(){
     void scene(World &world, const glm::mat4 &view, int width, int height, int logicalWidth,
                int logicalHeight, bool includeUI, unsigned layers, const std::string &currentTarget = "") {
         auto ortho = glm::ortho(0.f, float(logicalWidth), float(logicalHeight), 0.f, -10000.f, 10000.f);
-        auto entities = world.entities;
+        auto started=std::chrono::steady_clock::now();
+        auto settings=renderOptimizationSettings(world.renderSettings.value("optimization",Json::object()));
+        struct DrawChoice {bool blend=false;std::string model,texture;};
+        std::unordered_map<const Entity*,DrawChoice> choices;
+        std::vector<std::shared_ptr<Entity>> entities;
+        std::vector<RenderOptimizationItem> items;
+        auto blended=[&](const Entity& e){
+            if(!world.is3d || e.screen)return false;
+            if(e.materialData.contains("alpha_mode"))return e.materialData["alpha_mode"]=="blend";
+            if(e.color.a<.999f)return true;
+            if(e.kind=="mesh")for(auto& part:cpuModel(e.model)->parts)
+                if(part.material.value("alpha_mode","opaque")=="blend")return true;
+            return false;
+        };
+        for(auto& pointer:world.entities) {
+            auto& e=*pointer;
+            if(!e.alive || !e.visible || e.kind=="empty" || (!includeUI && e.screen) || !(e.layer&layers) ||
+                (shadowPass && (e.screen || !e.castsShadow || e.kind=="text")) ||
+                (!currentTarget.empty() && e.texture=="@target:"+currentTarget))continue;
+            bool blend=blended(e);
+            if(shadowPass && blend)continue;
+            entities.push_back(pointer);choices.emplace(&e,DrawChoice{blend,e.model,e.texture});
+            if(settings.enabled && !e.screen && e.kind!="text") {
+                RenderOptimizationItem item;item.entity=pointer;item.deforming=deforming(e);
+                item.bounds=entityBounds(e,item.deforming);
+                item.opaque=!blend && e.color.a>=1 && e.materialData.value("alpha_mode","opaque")=="opaque";
+                if(item.opaque && e.kind=="mesh" && e.materialData.empty())for(auto& part:cpuModel(e.model)->parts)
+                    if(part.color.a<1 || part.material.value("alpha_mode","opaque")!="opaque")item.opaque=false;
+                // A proxy must remain solid even when an alternate representation is selected.
+                if(item.opaque && e.optimization)for(auto& level:e.optimization->levels)if(!level.model.empty())
+                    for(auto& part:cpuModel(level.model)->parts)
+                        if(part.color.a<1 || part.material.value("alpha_mode","opaque")!="opaque")item.opaque=false;
+                item.hasOccluder=!item.deforming && item.opaque && e.optimization && e.optimization->occluder.valid;
+                if(item.hasOccluder)item.occluder=renderBoundsCorners(e.optimization->occluder,e.worldMatrix);
+                items.push_back(std::move(item));
+            }
+        }
+        if(settings.enabled) {
+            RenderOptimizationView camera;
+            camera.id=shadowPass?"shadow":currentTarget.empty()?"main":"camera:"+currentTarget;
+            camera.clipFromWorld=view;camera.position=shadowPass?glm::dvec3(world.cameraPosition):glm::dvec3(cameraPosition);
+            camera.is3d=world.is3d;camera.shadow=shadowPass;
+            auto plan=optimizationPolicy->evaluate(camera,items,settings);
+            if(plan.decisions.size()!=items.size() || !plan.diagnostics.is_object())
+                throw std::runtime_error("Render optimization policy returned an invalid plan");
+            for(size_t i=0;i<items.size();++i) {
+                auto& item=items[i];auto& e=*item.entity;auto& decision=plan.decisions[i];
+                auto options=e.optimization;
+                if(decision.lod>(options?options->levels.size():0))throw std::runtime_error("Render optimization policy returned an invalid LOD");
+                if(!decision.visible){choices.erase(&e);continue;}
+                if(decision.lod>0) {
+                    auto& level=options->levels[decision.lod-1];auto& choice=choices.at(&e);
+                    if(!level.model.empty() && !item.deforming)choice.model=level.model;
+                    if(!level.texture.empty())choice.texture=level.texture;
+                    // Alternative materials may have a different transparency classification.
+                    if(choice.model!=e.model && e.materialData.empty()) {
+                        choice.blend=e.color.a<.999f;
+                        for(auto& part:cpuModel(choice.model)->parts)if(part.material.value("alpha_mode","opaque")=="blend")choice.blend=true;
+                    }
+                    if((shadowPass && choice.blend) || (!currentTarget.empty() && choice.texture=="@target:"+currentTarget))choices.erase(&e);
+                }
+            }
+            entities.erase(std::remove_if(entities.begin(),entities.end(),[&](auto& e){return !choices.count(e.get());}),entities.end());
+            optimizationStats["passes"][camera.id]=std::move(plan.diagnostics);
+        }
+        optimizationMs+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         bool stateSet = false, previousClip = false, previousDepth = false, particlesDrawn = false;
         glm::vec4 previousRect{0};
-        auto blended=[&](const Entity& e){if(!e.alive || !e.visible || !world.is3d || e.screen)return false;if(e.materialData.contains("alpha_mode"))return e.materialData["alpha_mode"]=="blend";if(e.color.a<.999f)return true;if(e.kind=="mesh"){auto& model=prepareModel(e.model);for(auto& p:model.parts)if(p.material.value("alpha_mode","opaque")=="blend")return true;}return false;};
         std::stable_sort(entities.begin(), entities.end(), [&](auto &a, auto &b) {
-            if (a->screen != b->screen)
-                return !a->screen;
-            if(!a->screen && world.is3d){bool aa=blended(*a),bb=blended(*b);if(aa!=bb)return !aa;if(aa){auto p=view*glm::vec4(world.worldPosition(*a),1),q=view*glm::vec4(world.worldPosition(*b),1);return p.z/std::max(std::abs(p.w),1e-8f)>q.z/std::max(std::abs(q.w),1e-8f);}}
+            if(a->screen!=b->screen)return !a->screen;
+            if(!a->screen && world.is3d) {
+                bool aa=choices.at(a.get()).blend,bb=choices.at(b.get()).blend;
+                if(aa!=bb)return !aa;
+                if(aa){auto p=view*glm::vec4(world.worldPosition(*a),1),q=view*glm::vec4(world.worldPosition(*b),1);return p.z/std::max(std::abs(p.w),1e-8f)>q.z/std::max(std::abs(q.w),1e-8f);}
+            }
             return (a->screen || !world.is3d) && a->position.z < b->position.z;
         });
         for (auto &pointer : entities) {
             auto &e = *pointer;
-            if (!e.alive || !e.visible || e.kind == "empty" || (!includeUI && e.screen) ||
-                !(e.layer & layers) || (shadowPass && (e.screen || !e.castsShadow || e.kind == "text")) ||
-                (shadowPass && blended(e)) ||
-                (!currentTarget.empty() && e.texture == "@target:" + currentTarget))
-                continue;
+            auto& choice=choices.at(&e);
             if (e.screen && !particlesDrawn && !shadowPass) {
                 flush();particles(world,view,ortho,layers,false);particlesDrawn=true;stateSet=false;
             }
-            bool blend=!shadowPass && blended(e);
+            bool blend=!shadowPass && choice.blend;
             if(materialOptions!=e.materialData){flush();materialOptions=e.materialData;}
             gl::DepthMask(blend?0:1);
             // Scissor/depth/uniform changes terminate an adjacent compatible batch.
@@ -760,7 +886,7 @@ void main(){
                 stateSet = true;
             }
             drawUV = e.uv;
-            drawFlip = e.texture.rfind("@target:", 0) == 0;
+            drawFlip = choice.texture.rfind("@target:", 0) == 0;
             auto projection = e.screen ? ortho : view;
             if (e.kind == "text") {
                 text(e, projection);
@@ -770,13 +896,13 @@ void main(){
                 throw std::runtime_error("Drawable scale cannot be zero: " + e.id);
             if (e.kind == "mesh") {
                 flush();
-                model(e, projection, world.is3d && !e.screen);
+                model(e, projection, world.is3d && !e.screen, choice.model, choice.texture);
                 continue;
             }
             auto matrix = modelMatrix(e);
-            auto tex = shadowPass && materialOptions.value("alpha_mode","blend")!="mask" ? 0 : image(!e.texture.empty()?e.texture:materialOptions.value("albedo_texture",""));
+            auto tex = shadowPass && materialOptions.value("alpha_mode","blend")!="mask" ? 0 : image(!choice.texture.empty()?choice.texture:materialOptions.value("albedo_texture",""));
             if (!shadowPass && e.materialData.empty() && e.kind == "sprite" && (!world.is3d || e.screen))
-                quad(matrix, projection, e.color, tex, e.uv, e.texture.rfind("@target:", 0) == 0);
+                quad(matrix, projection, e.color, tex, e.uv, choice.texture.rfind("@target:", 0) == 0);
             else {
                 flush();
                 draw(meshes.at(e.kind), matrix, projection, e.color, tex, world.is3d && !e.screen);
@@ -885,6 +1011,7 @@ void Renderer::stage() {
     }
 }
 void Renderer::commit() {
+    impl->previousOptimizationPolicy.reset();
     if (staged) {
         impl->swapResources(*staged);
         staged.reset();
@@ -895,12 +1022,18 @@ void Renderer::invalidate() {
     stage();
     commit();
 }
+void Renderer::setOptimizationPolicy(std::shared_ptr<RenderOptimizationPolicy> policy) {
+    impl->optimizationPolicy=policy?std::move(policy):std::make_shared<NativeRenderOptimizer>();
+}
 void Renderer::checkpointInput() {
+    impl->previousOptimizationPolicy=impl->optimizationPolicy;
     impl->previousWindow = windowOptions();
     impl->previousCaptured = impl->captured;
     impl->previousScreenshot = impl->screenshotPath;
 }
 void Renderer::rollbackInput() {
+    if(impl->previousOptimizationPolicy)impl->optimizationPolicy=impl->previousOptimizationPolicy;
+    impl->previousOptimizationPolicy.reset();
     if (!impl->previousWindow.is_null())
         windowOptions(impl->previousWindow);
     capture(impl->previousCaptured);
@@ -908,6 +1041,7 @@ void Renderer::rollbackInput() {
 }
 void Renderer::validateWorld(const World &world) {
     auto &resources = staged ? *staged : *impl;
+    resources.frameModels.clear();
     int framebufferWidth, framebufferHeight, width, height;
     glfwGetFramebufferSize(impl->window, &framebufferWidth, &framebufferHeight);
     glfwGetWindowSize(impl->window, &width, &height);
@@ -950,6 +1084,13 @@ void Renderer::validateWorld(const World &world) {
         }
         if (e.scale.x == 0 || e.scale.y == 0 || e.scale.z == 0)
             throw std::runtime_error("Drawable scale cannot be zero: " + e.id);
+        if(e.optimization)for(auto& level:e.optimization->levels) {
+            if(!level.texture.empty())resources.image(level.texture);
+            if(!level.model.empty()) {
+                auto asset=resources.cpuModel(level.model);
+                for(auto& part:asset->parts)for(auto& [field,file]:part.maps)resources.imagePath(file);
+            }
+        }
         resources.image(e.texture);for(auto& file:materialTextures(e.materialData))resources.image(file);
         if (e.kind == "mesh") {
             auto &asset = resources.prepareModel(e.model);
@@ -976,6 +1117,10 @@ void Renderer::render(World &world) {
         return;
     impl->device->beginFrame(w, h);
     ++impl->frame;
+    impl->frameModels.clear();impl->boundsBuilds=0;
+    for(auto it=impl->boundsCache.begin();it!=impl->boundsCache.end();)if(it->second.source.expired())it=impl->boundsCache.erase(it);else ++it;
+    impl->optimizationPolicy->beginFrame();impl->optimizationMs=0;
+    impl->optimizationStats={{"enabled",renderOptimizationSettings(world.renderSettings.value("optimization",Json::object())).enabled},{"passes",Json::object()}};
     impl->frameImages.clear();impl->imageResolutions=0;impl->particleUpload=0;impl->particleSortMs=0;
     impl->particleSnapshot=world.particles?world.particles->draw(world):std::vector<ParticleDraw>{};
     impl->drawCalls = impl->batchCalls = impl->triangles = impl->particleCalls = impl->particleQuads = 0;
@@ -1099,7 +1244,12 @@ void Renderer::render(World &world) {
         impl->screenshotPath.clear();
         logger.write("INFO", "Screenshot saved: " + path.u8string());
     }
+    impl->optimizationPolicy->endFrame();
+    impl->optimizationStats["cpu_ms"]=impl->optimizationMs;
+    impl->optimizationStats["bounds_builds"]=impl->boundsBuilds;
+    impl->optimizationStats["bounds_cache_entries"]=impl->boundsCache.size();
     impl->stats = {
+        {"optimization",impl->optimizationStats},
         {"draw_calls", impl->drawCalls},
         {"particle_draw_calls",impl->particleCalls},
         {"particle_quads",impl->particleQuads},

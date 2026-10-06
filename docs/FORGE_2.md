@@ -1,5 +1,9 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.8
+
+Native optional rendering optimization provides static model/texture distance LOD with per-camera hysteresis, frustum/distance culling, cached transformed bounds, and bounded conservative solid-proxy occlusion. Gameplay/physics remain active; screen UI/text/particles retain existing paths. The independent `RenderOptimizationPolicy` is replaceable through the public renderer API; `optimization.py` and `render_optimization_example.cpp` demonstrate configuration and native composition. See [settings and limitations](RENDER_OPTIMIZATION.md). Native `render_optimization`, rendering API, and shared rendering GPU tests cover geometry, validation, pixels, counters, cameras, and 2D texture LOD. The base CTest set now has nine suites; optional shader compiler makes ten. Existing launcher test selection remains six integration suites.
+
 ## Forge 2.7.1
 
 The stability update covers retired-child world-position setters, draw-scoped custom uniforms, CPU asset/model dependency generations, save-directory redirection/deferred deletion/JSON recovery/size limits, event cleanup, timer compaction/overflow, legacy animation validation, and CLI frame limits. `integration.py`, `rendering.py`, `features.py`, and `rendering_graphics.py` exercise these through native APIs and actual frames, including glTF buffer hot reload. Project/save/API formats stay unchanged; shader and module implementations remain adaptable. See [bugfix details and verification limits](BUGFIX_2_7_1.md).

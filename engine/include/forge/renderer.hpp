@@ -4,6 +4,7 @@
 namespace forge {struct Config;}
 namespace forge {
 struct Runtime;
+class RenderOptimizationPolicy;
 struct Renderer {
     struct Impl;
     std::unique_ptr<Impl> impl, staged;
@@ -12,6 +13,7 @@ struct Renderer {
     void init(const Config &, World &);
     void init(const Config &, World &, Runtime &);
     void render(World &);
+    void setOptimizationPolicy(std::shared_ptr<RenderOptimizationPolicy>); // nullptr restores native policy
     void validateWorld(const World &);
     void invalidate();
     void stage();

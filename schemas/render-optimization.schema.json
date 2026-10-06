@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "render-optimization.schema.json",
+  "title": "Forge optional native rendering optimization (format 1)",
+  "$defs": {
+    "bounds": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "max": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": true
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "frustum": {
+          "type": "boolean"
+        },
+        "distance": {
+          "type": "boolean"
+        },
+        "lod": {
+          "type": "boolean"
+        },
+        "occlusion": {
+          "type": "boolean"
+        },
+        "grid_width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "grid_height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_occluders": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        }
+      },
+      "additionalProperties": true
+    },
+    "entity": {
+      "type": "object",
+      "properties": {
+        "culling": {
+          "type": "boolean"
+        },
+        "lod": {
+          "type": "boolean"
+        },
+        "max_distance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1e+30
+        },
+        "hysteresis": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.49
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "occluder": {
+          "$ref": "#/$defs/bounds"
+        },
+        "levels": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "required": [
+              "distance"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "model"
+                ]
+              },
+              {
+                "required": [
+                  "texture"
+                ]
+              }
+            ],
+            "properties": {
+              "distance": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1e+30
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "texture": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -49,6 +49,124 @@ def on_update(dt):
             self.assertGreater(base.point(self.root/'buffer-after.ppm',528,240)[1],30)
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def test_native_frustum_distance_and_occlusion_preserve_pixels(self):
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'3d','background':[0,0,0,1],'physics_enabled':False,'camera':{'position':[0,0,0],'target':[0,0,-1]}}
+def on_start():
+    global wall,hidden
+    wall=forge.spawn({'id':'wall','kind':'cube','position':[0,0,-4],'scale':[5,5,.4],'color':[1,0,0,1],'material_properties':{'alpha_mode':'opaque'},'optimization':{'occluder':{'min':[-.5,-.5,-.5],'max':[.5,.5,.5]}}})
+    hidden=forge.spawn({'id':'hidden','kind':'cube','position':[0,0,-8],'scale':[.5,.5,.5],'color':[0,1,0,1]})
+    for i in range(100):forge.spawn({'kind':'cube','position':[0,0,-8-i*.01],'scale':[.5,.5,.5]})
+    forge.spawn({'kind':'cube','position':[100,0,-8]})
+    forge.spawn({'kind':'cube','position':[0,0,-200],'optimization':{'max_distance':50}})
+    forge.spawn({'kind':'sprite','screen':True,'position':[30,30,0],'scale':[20,20,1],'color':[0,0,1,1],'optimization':{'max_distance':1}})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:forge.screenshot('all.ppm')
+    if frames==3:forge.set_render_optimization({'enabled':True,'occlusion':True})
+    if frames==5:
+        stats=forge.renderer_stats();p=stats['optimization']['passes']['main']
+        assert p['occlusion_culled']==101 and p['frustum_culled']==1 and p['distance_culled']==1,p
+        assert stats['draw_calls']<=3,stats
+        assert hidden.alive and hidden.visible and len(forge.entities())==105
+        forge.screenshot('culled.ppm')
+    if frames==6:wall.position=(8,0,-4)
+    if frames==8:
+        assert forge.renderer_stats()['optimization']['passes']['main']['occlusion_culled']==0
+        forge.screenshot('revealed.ppm')
+""",frames=10)
+        self.assertEqual(base.ppm(self.root/'all.ppm'),base.ppm(self.root/'culled.ppm'))
+        self.assertGreater(base.point(self.root/'revealed.ppm',320,240)[1],30)
+        self.assertEqual(base.point(self.root/'culled.ppm',30,30),(0,0,255))
+
+    def test_lod_reload_rejects_bad_settings_and_replaces_bounds(self):
+        source="""import forge
+frames=0
+changed=False
+def build():return {'mode':'3d','background':[0,0,0,1],'physics_enabled':False,'camera':{'position':[0,0,0],'target':[0,0,-1]},'rendering':{'optimization':{'enabled':True}}}
+def on_start():
+    high=forge.set_mesh('high',{'positions':[[-1,-1,0],[1,-1,0],[0,1,0]]})
+    low=forge.set_mesh('low',{'positions':[[-1,-1,0],[1,-1,0],[0,1,0]],'colors':[[0,1,0,1]]*3})
+    forge.spawn({'kind':'mesh','model':high,'position':[0,0,-8],'optimization':{'levels':[{'distance':5,'model':low}]}})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==3:forge.screenshot('lod-after.ppm' if changed else 'lod-before.ppm')
+    if frames==5 and changed:forge.quit()
+"""
+        scene=self.root/'scenes/lod-reload.py';scene.write_text(source,encoding='utf-8')
+        self.config['entry_scene']='lod-reload.py';self.config['window'].update(width=640,height=480,vsync=False);self.write_config()
+        process=subprocess.Popen([*base.engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            self.wait_log('lod-before.ppm',process)
+            scene.write_text(source.replace('def on_start():',"def on_start():\n    forge.set_render_optimization({'grid_width':0})"),encoding='utf-8')
+            self.wait_log('optimization.grid_width outside supported range',process)
+            self.assertIsNone(process.poll())
+            scene.write_text(source.replace('changed=False','changed=True').replace('[[0,1,0,1]]','[[0,0,1,1]]'),encoding='utf-8')
+            self.wait_log('lod-after.ppm',process);self.assertEqual(process.wait(timeout=15),0)
+            self.assertGreater(base.point(self.root/'lod-before.ppm',320,240)[1],30)
+            self.assertGreater(base.point(self.root/'lod-after.ppm',320,240)[2],30)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+
+    def test_mesh_lod_hysteresis_bounds_and_per_camera_selection(self):
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'3d','background':[0,0,0,1],'physics_enabled':False,'camera':{'position':[0,0,0],'target':[0,0,-1]},'rendering':{'optimization':{'enabled':True},'targets':{'near':{'width':64,'height':64,'position':[0,0,-5],'target':[0,0,-8]}}}}
+def on_start():
+    global mesh
+    high=forge.set_mesh('high',{'positions':[[-1,-1,0],[1,-1,0],[1,1,0],[-1,-1,0],[1,1,0],[-1,1,0]],'colors':[[1,0,0,1]]*6})
+    low=forge.set_mesh('low',{'positions':[[-1,-1,0],[1,-1,0],[0,1,0]],'colors':[[0,1,0,1]]*3})
+    mesh=forge.spawn({'kind':'mesh','model':high,'position':[0,0,-8],'optimization':{'levels':[{'distance':6,'model':low}]}})
+    forge.spawn({'screen':True,'texture':'@target:near','position':[60,60,0],'scale':[80,80,1]})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:
+        stats=forge.renderer_stats()
+        assert stats['triangles']==5,stats
+        assert stats['optimization']['passes']['main']['lod_selected']==1
+        assert stats['optimization']['passes']['camera:near']['lod_selected']==0
+        forge.screenshot('lod.ppm')
+    if frames==3:mesh.position=(0,0,-5.6)
+    if frames==4:forge.screenshot('hysteresis.ppm')
+    if frames==5:mesh.position=(0,0,-5.3)
+    if frames==6:forge.screenshot('high.ppm')
+    if frames==7:
+        stats=forge.renderer_stats()['optimization']
+        assert forge.renderer_stats()['triangles']==6
+        assert stats['bounds_builds']==0 and stats['bounds_cache_entries']==2,stats
+        assert mesh.model=='@mesh:high' and mesh.optimization['levels'][0]['model']=='@mesh:low'
+""",frames=9)
+        self.assertGreater(base.point(self.root/'lod.ppm',320,240)[1],30)
+        self.assertGreater(base.point(self.root/'lod.ppm',60,60)[0],30)
+        self.assertGreater(base.point(self.root/'hysteresis.ppm',320,240)[1],30)
+        self.assertGreater(base.point(self.root/'high.ppm',320,240)[0],30)
+
+    def test_sprite_texture_lod_and_2d_parent_bounds(self):
+        png(self.root/'textures/lod-red.png',(255,0,0,255));png(self.root/'textures/lod-green.png',(0,255,0,255))
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'2d','background':[0,0,0,1],'physics_enabled':False,'camera':{'position':[0,0,0]},'rendering':{'optimization':{'enabled':True}}}
+def on_start():
+    global root,e
+    root=forge.spawn({'id':'parent','kind':'empty','position':[200,150,0],'rotation':[0,0,30],'scale':[-1,1,1]})
+    e=forge.spawn({'parent':'parent','texture':'lod-red.png','scale':[60,60,1],'optimization':{'levels':[{'distance':100,'texture':'lod-green.png'}]}})
+    forge.spawn({'position':[10000,0,0]})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==3:
+        assert forge.renderer_stats()['optimization']['passes']['main']['frustum_culled']==1
+        forge.screenshot('texture-lod.ppm')
+    if frames==4:e.optimization={'culling':False,'lod':False,'max_distance':1}
+    if frames==6:forge.screenshot('texture-high.ppm')
+""",frames=8)
+        self.assertEqual(base.point(self.root/'texture-lod.ppm',200,150),(0,255,0))
+        self.assertEqual(base.point(self.root/'texture-high.ppm',200,150),(255,0,0))
+
     def test_removed_custom_uniforms_do_not_leak_between_entities_or_frames(self):
         (self.root/'graphics/scoped.frag').write_text('#version 330 core\nuniform vec4 bias;out vec4 color;\nvoid main(){color=vec4(0,1,0,1)+bias;}\n',encoding='utf-8')
         self.config['renderer']['fragment_shader']='scoped.frag';self.write_config()

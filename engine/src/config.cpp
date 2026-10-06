@@ -1,4 +1,5 @@
 #include <forge/engine.hpp>
+#include <forge/render_optimization.hpp>
 #include <forge/graphics_settings.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
@@ -84,6 +85,7 @@ Json validateEntity(const Config& c, Json j) {
         std::string folder = std::string(group)=="texture"?"textures":std::string(group)=="model"?"models":"materials";
         if(!(std::string(group)=="model" && proceduralName(j[group])) && (std::string(group)!="texture" || j[group].get<std::string>().rfind("@target:",0)!=0))requireFile(c.asset(folder,j[group]));
     }
+    entityOptimization(c,j.value("optimization",Json::object()),kind);
     if(kind=="mesh" && j.value("model", "").empty()) throw std::runtime_error("mesh needs model");
     if(j.contains("scripts")) { if(!j["scripts"].is_array()) throw std::runtime_error("scripts must be an array"); for(auto& s:j["scripts"]) requireFile(c.asset("scripts",s.is_string()?s.get<std::string>():s.at("file").get<std::string>())); }
     return j;

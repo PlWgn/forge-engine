@@ -5,6 +5,38 @@ ROOT,ENGINE=base.ROOT,base.ENGINE
 class RenderingTests(unittest.TestCase):
     setUp,tearDown=base.EngineTests.setUp,base.EngineTests.tearDown
     write_config,script_scene,run_engine=base.EngineTests.write_config,base.EngineTests.script_scene,base.EngineTests.run_engine
+    def test_render_optimization_configuration_and_entity_roundtrip(self):
+        self.script_scene("""import forge
+from engine_api import require_api
+def on_start():
+    require_api(1,'lod','occlusion_culling')
+    initial=forge.render_settings()
+    for bad in ({'enabled':1},{'occlusion':'yes'},{'grid_width':0},{'grid_height':257},{'max_occluders':1.5}):
+        try:forge.set_render_optimization(bad)
+        except RuntimeError:pass
+        else:raise AssertionError('Invalid optimization accepted')
+        assert forge.render_settings()==initial
+    definition={'max_distance':50,'bounds':{'min':[-1,-1,-1],'max':[1,1,1]},'vendor':{'quality':'adaptive'}}
+    e=forge.spawn({'id':'optimized','kind':'cube','optimization':definition})
+    snapshot=e.optimization;snapshot['vendor']['quality']='mutated'
+    assert e.optimization==definition
+    for bad in ({'max_distance':-1},{'bounds':{'min':[1,0,0],'max':[0,1,1]}},{'occluder':{'min':[0,0,0],'max':[1,1,0]}},{'levels':[{'distance':5,'texture':'missing.png'}]},{'levels':[{'distance':5,'model':'cube.obj'}]}):
+        try:e.optimization=bad
+        except RuntimeError:pass
+        else:raise AssertionError('Invalid entity optimization accepted')
+        assert e.optimization==definition
+    forge.set_render_optimization({'enabled':True,'occlusion':True,'vendor':{'tag':1}})
+    data=forge.scene_data()
+    assert next(x for x in data['entities'] if x['id']=='optimized')['optimization']==definition
+    assert data['rendering']['optimization']['vendor']=={'tag':1}
+    e.optimization={};assert 'optimization' not in next(x for x in forge.scene_data()['entities'] if x['id']=='optimized')
+    forge.log('OPTIMIZATION_API_OK');forge.quit()
+""")
+        self.assertIn('OPTIMIZATION_API_OK',self.run_engine())
+        for bad in ({'bounds':{'min':[0,0],'max':[1,1,1]}},{'levels':[{'distance':0,'texture':'icon.png'}]}):
+            (self.root/'objects/invalid-optimization.json').write_text(json.dumps({'optimization':bad}),encoding='utf-8')
+            self.assertIn('optimization',self.run_engine('validate',expected=1).lower())
+        (self.root/'objects/invalid-optimization.json').unlink()
     def test_world_position_rejects_destroyed_children(self):
         self.script_scene("""import forge
 def on_start():

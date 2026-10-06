@@ -71,7 +71,12 @@
     },
     "rendering": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "optimization": {
+          "$ref": "render-optimization.schema.json#/$defs/system"
+        }
+      }
     },
     "emitters": {
       "type": "array",

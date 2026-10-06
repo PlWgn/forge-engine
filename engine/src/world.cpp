@@ -2,6 +2,7 @@
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/material.hpp>
+#include <forge/render_optimization.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
@@ -22,6 +23,7 @@ std::shared_ptr<Entity> World::spawn(Json j) {
     j=validateEntity(*config,std::move(j));
     auto e=std::make_shared<Entity>();
     e->source=j;
+    e->optimization=entityOptimization(*config,j.value("optimization",Json::object()),j.value("kind","sprite"));
     if(authored.contains("prefab"))e->source["prefab"]=authored["prefab"];
     if(j.contains("id"))e->id=j["id"].get<std::string>();else {do {e->id="entity_"+std::to_string(nextId++);}while(find(e->id));}
     if(find(e->id)) throw std::runtime_error("Duplicate entity id: "+e->id);
@@ -226,6 +228,7 @@ Json World::serialize()const{
     result["camera"]["position"]=array3(cameraPosition);result["camera"]["target"]=array3(cameraTarget);result["camera"]["fov"]=fov;result["entities"]=Json::array();
     for(auto& pointer:entities){auto& e=*pointer;if(!e.alive)continue;Json data=e.source;Json known={{"id",e.id},{"name",e.name},{"kind",e.kind},{"position",array3(e.position)},{"rotation",array3(e.rotation)},{"scale",array3(e.scale)},{"velocity",array3(e.velocity)},{"collider",array3(e.collider)},{"color",array4(e.color)},{"uv",array4(e.uv)},{"layer",e.layer},{"casts_shadow",e.castsShadow},{"uniforms",e.uniforms},{"dynamic",e.dynamic},{"trigger",e.trigger},{"visible",e.visible},{"screen",e.screen},{"mass",e.mass},{"font_size",e.fontSize},{"scripts",e.scripts},{"data",e.data}};
         data.update(known);
+        if(e.optimization && !e.optimization->definition.empty())data["optimization"]=e.optimization->definition;else data.erase("optimization");
         for(auto field:{"model","texture","material","text","text_key","text_params","animation","animation_speed","animation_loop","clip","animator","morph_weights","parent","material_properties"})data.erase(field);
         for(auto& field:std::vector<std::pair<std::string,std::string>>{{"model",e.model},{"texture",e.texture},{"material",e.material},{"text",e.text},{"text_key",e.textKey},{"animation",e.animation}})if(!field.second.empty())data[field.first]=field.second;
         if(!e.textKey.empty())data["text_params"]=e.textParams;if(e.clipped)data["clip"]=array4(e.clip);if(!e.animation.empty()){data["animation_speed"]=e.animationSpeed;data["animation_loop"]=e.animationLoop;}if(!e.animatorSettings.empty())data["animator"]=e.animatorSettings;if(!e.morphWeights.empty())data["morph_weights"]=e.morphWeights;result["entities"].push_back(std::move(data));

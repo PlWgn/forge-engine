@@ -2,6 +2,7 @@
 #include <forge/engine.hpp>
 #include <forge/physics.hpp>
 #include <forge/material.hpp>
+#include <forge/render_optimization.hpp>
 #include <forge/graphics_device.hpp>
 #include <pybind11/stl.h>
 #include <algorithm>
@@ -18,7 +19,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
     m.attr("api_version")=1;
     m.def("capabilities",[](){
-        Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells"});
+        Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells","render_optimization","lod","frustum_culling","occlusion_culling"});
         if(FORGE_WITH_EDITOR)features.push_back("animation_editor");
         features.push_back("renderer_backends");
         if(FORGE_WITH_METAL)features.push_back("metal");
@@ -76,6 +77,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         .def("set_parent",[](Entity& e,py::object parent,bool keep){std::string id;if(!parent.is_none())id=py::isinstance<py::str>(parent)?parent.cast<std::string>():parent.cast<Entity&>().id;rt().world.reparent(e,id,keep);},py::arg("parent")=py::none(),py::arg("keep_world")=false)
         .def("children",[](Entity& e,bool recursive){return rt().world.children(e,recursive);},py::arg("recursive")=false)
         .def_property("color",[](Entity& e){return std::array<float,4>{e.color.r,e.color.g,e.color.b,e.color.a};},[](Entity& e,std::array<float,4> v){e.color=color(v);})
+        .def_property("optimization",[](Entity& e){return toPython(e.optimization?e.optimization->definition:Json::object());},[](Entity& e,py::dict options){e.optimization=entityOptimization(rt().config,fromPython(options),e.kind);})
         .def_property("data",[](Entity& e){return toPython(e.data);},[](Entity& e,py::object v){e.data=fromPython(v);})
         .def_property("clip",[](Entity& e)->py::object{if(!e.clipped)return py::none();return py::cast(std::array<float,4>{e.clip.x,e.clip.y,e.clip.z,e.clip.w});},[](Entity& e,py::object v){if(v.is_none()){e.clipped=false;return;}auto next=color(v.cast<std::array<float,4>>(),"clip");e.clip=next;e.clipped=true;})
         .def("destroy",[](Entity& e,bool children){rt().world.destroy(e,children);},py::arg("children")=true)

@@ -1533,7 +1533,7 @@ python tools/forge.py build --output dist/ReviewGame
 python tools/verify_package.py dist/ReviewGame
 ```
 
-Current CTest has eight base suites plus optional shader_compiler and launcher test has six integration suites; numeric/packager_paths are CTest-only. macOS/Windows CI runs CTest, builds a package, and checks hashes/licenses/three standalone scenes from another cwd with invalid PYTHONHOME/PYTHONPATH. Linux runs four GPU suites; rendering_graphics includes morph/retarget/editor checks. CMake links Threads explicitly and tracks embedded GLSL sources for reconfiguration. Each platform/environment validates itself; success on one does not establish another.
+Current CTest has nine base suites plus optional shader_compiler and launcher test has six integration suites; numeric/packager_paths are CTest-only. macOS/Windows CI runs CTest, builds a package, and checks hashes/licenses/three standalone scenes from another cwd with invalid PYTHONHOME/PYTHONPATH. Linux runs four GPU suites; rendering_graphics includes morph/retarget/editor checks. CMake links Threads explicitly and tracks embedded GLSL sources for reconfiguration. Each platform/environment validates itself; success on one does not establish another.
 
 ### 22.8. Authored Skeletal Clips
 
@@ -1571,7 +1571,7 @@ The open format, API, and shell-development instructions are in [docs/PROJECT_AP
 
 Save As does not overwrite an existing unopened file. A new export becomes the current edit document and subsequent saves use its baseline. Saving original JSON does not expand unchanged defaults/prefab values. Document API base:null creates a file. Conflicts retain disk and draft; ProjectError.paths reports conflict paths. Automatic reload does not erase editor drafts: save/undo or explicitly reload and retry a watched edit. Undo apply may re-run callbacks; it does not restore arbitrary Python state/external actions.
 
-project_api.py <binary> belongs to the eight base CTest suites and six-suite launcher checks. CI builds native ON/OFF on macOS/Windows; GPU suites run separately with builtin UI. Structural schemas do not replace native validate, media/GPU checks, or Python execution. API 1 offers an external document service and in-process paused editor API, without Qt/GTK viewport embedding, remote live-game editing, arbitrary ImGui widgets, or a network service.
+project_api.py <binary> belongs to the nine base CTest suites and six-suite launcher checks. CI builds native ON/OFF on macOS/Windows; GPU suites run separately with builtin UI. Structural schemas do not replace native validate, media/GPU checks, or Python execution. API 1 offers an external document service and in-process paused editor API, without Qt/GTK viewport embedding, remote live-game editing, arbitrary ImGui widgets, or a network service.
 
 ## 24. Forge 2.5.1: Fixes and Compatibility
 
@@ -1594,3 +1594,19 @@ See [docs/DIRECT3D11.md](docs/DIRECT3D11.md) for backend defaults, optional depe
 OpenGL remains default; macOS builds now include optional Metal alongside it. renderer.backend accepts metal/opengl/direct3d11/auto. Auto prefers Metal on macOS when compiled; explicit opengl retains the previous path. GLSL remains portable/editable, with native MSL stage pairs and configurable entry points available per pipeline. Game/shell API remains version 1. Backend changes require restart; shaders retain transactional reload.
 
 See [docs/METAL.md](docs/METAL.md) for build switches, shader examples/contracts, coordinates, bounded uniform uploads, command synchronization, and actual verification limits. --without-metal excludes the backend; --without-editor is independent. The same project can preserve GLSL/HLSL/MSL settings and unknown fields across shells.
+
+## 28. Native LOD and Visibility Optimization (2.8)
+
+Enable optional native rendering optimization in `rendering.optimization` or call `forge.set_render_optimization({'enabled': True, 'occlusion': True})`. Defaults preserve existing projects. Each entity's JSON/Python `optimization` supports static model/texture `levels` at increasing distances, hysteresis, a maximum drawing distance, conservative local bounds, and explicit solid-box occluders. Culling affects draws only, leaving scripts, physics, audio, and animation clocks active. Screen UI/text remain outside these tests.
+
+```python
+forge.set_render_optimization({'enabled': True})
+prop.optimization = {'levels': [{'distance': 40, 'model': 'low-detail.obj'}],
+                     'hysteresis': .1, 'max_distance': 200}
+# Opt an entity out, or disable the whole system:
+prop.optimization = {'culling': False, 'lod': False}
+```
+
+Static mesh bounds enclose all model levels and inherit parent transforms. Skeletal/morph bounds require an explicit envelope for every pose; model LOD does not replace a skeleton. Occlusion needs authored boxes wholly inside opaque solid geometry for every LOD. Custom shader displacement needs enclosing bounds; cutouts must never be covered by a solid proxy. The conservative CPU grid runs independently per color camera, with no GPU readback. Distance/occlusion do not remove shadow casters. These systems provide no automatic mesh decimation/GPU Hi-Z/gameplay streaming.
+
+Run `python tools/forge.py dev --scene optimization.py` for a visible example. Inspect `forge.renderer_stats()['optimization']` for per-pass culling/LOD/cache/CPU counters. `RenderOptimizationPolicy` and `Renderer::setOptimizationPolicy` are public C++ contracts; `modules/render_optimization_example.cpp` demonstrates replacement/composition. All shader/backend and editor-shell customization remains available. [Complete settings, contracts, schema, examples, and tests](docs/RENDER_OPTIMIZATION.md).

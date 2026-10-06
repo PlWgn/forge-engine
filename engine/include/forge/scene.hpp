@@ -9,6 +9,7 @@ struct Particles;
 struct Geometry;
 struct TransformCache;
 struct AnimatorState;
+struct EntityOptimization;
 struct Entity {
     std::string id, name, kind = "sprite", model, texture, material, text, textKey;
     std::string parent;
@@ -39,6 +40,7 @@ struct Entity {
     float mass = 1, fontSize = 24;
     Json scripts = Json::array();
     Json data = Json::object();
+    std::shared_ptr<const EntityOptimization> optimization;
     Json source = Json::object(); // Preserve shell/extension fields across runtime snapshots.
 };
 glm::mat4 composeTransform(const Entity &);

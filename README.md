@@ -1,6 +1,8 @@
-# Forge 2.7.1
+# Forge 2.8.0
 
 Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows.
+
+Forge 2.8 adds optional native LOD, frustum/distance culling, and conservative occlusion with editable solid proxies. One backend-independent policy serves OpenGL, Metal, and Direct3D; a public C++ interface allows replacement without modifying the Core. Existing projects keep optimization disabled by default. [Setup, examples, customization, and limits](docs/RENDER_OPTIMIZATION.md).
 
 Bugfix 2.7.1 fixes a retired-entity crash, shader values leaking between draws, stale asset generations, save-path/recovery checks, and timer/animation arithmetic. Canceled timers use bounded retained queues; event cleanup releases callbacks. Project and shell APIs remain version 1. [Fixes, compatibility, and validation](docs/BUGFIX_2_7_1.md).
 

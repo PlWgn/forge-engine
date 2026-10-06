@@ -6,6 +6,7 @@
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/geometry.hpp>
+#include <forge/render_optimization.hpp>
 #include <forge/prefab.hpp>
 #include <forge/animation.hpp>
 #include <pybind11/stl.h>
@@ -100,6 +101,7 @@ void inputValues(const Json &frame) {
 Json validateRenderSettings(Json data) {
     if (!data.is_object())
         throw std::runtime_error("rendering must be an object");
+    renderOptimizationSettings(data.value("optimization",Json::object()));
     uniformValues(data.value("uniforms", Json::object()));
     auto targets = data.value("targets", Json::object());
     if (!targets.is_object())
@@ -252,6 +254,11 @@ void bindFeatures(py::module_ &m) {
             data["targets"].erase(name);
     });
     m.def("render_settings", []() { return python(runtime().world.renderSettings); });
+    m.def("set_render_optimization", [](py::dict options) {
+        auto data = runtime().world.renderSettings;
+        data["optimization"] = fromPython(options);
+        runtime().world.renderSettings = validateRenderSettings(std::move(data));
+    });
     m.def("set_postprocess", [](py::dict options) {
         auto data = runtime().world.renderSettings;
         data["postprocess"] = fromPython(options);

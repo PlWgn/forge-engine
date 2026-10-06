@@ -212,6 +212,9 @@
     },
     "material_properties": {
       "$ref": "material.schema.json"
+    },
+    "optimization": {
+      "$ref": "render-optimization.schema.json#/$defs/entity"
     }
   },
   "additionalProperties": true
