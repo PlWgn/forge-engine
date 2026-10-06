@@ -1,12 +1,12 @@
 # Forge 2.5 Shells and Open Project Format
 
-The developer owns the project. Builtin ImGui, third-party GUIs, terminal tools, and manual edits share configuration/resources without a hidden editor database. run/dev/validate/build require neither UI nor SDK. The game runtime still uses C++/CPython and GLFW/OpenGL.
+The developer owns the project. Builtin ImGui, third-party GUIs, terminal tools, and manual edits share configuration/resources without a hidden editor database. run/dev/validate/build require neither UI nor SDK. The game runtime uses C++/CPython and GLFW with OpenGL or a compiled optional Metal/Direct3D backend.
 
 ## Format and Compatibility
 
 engine.json is UTF-8 JSON with schema_version:1; rename it and select it through --project. paths defines resource groups relative to the configuration root; resolved symlinks must remain inside the project. python_paths adds import directories. Python scenes/scripts remain source files. JSON scenes contain mode/entities/camera/physics/rendering/emitters and optional script. Entities store local TRS, parent, assets, scripts/data, animator/morph settings. parent references IDs rather than row indices. Scene scripts resolve under scenes; Behaviors under scripts. Materials are JSON; images/models/audio/shaders keep standard formats. @mesh: refers to a runtime registry whose geometry is not automatically stored in documents.
 
-Engine version, schema_version, project API, and game API are independent. A shell must not bump format versions for its own UI. schemas/{project,scene,entity,prefab,material}.schema.json defines basic structure and allows additionalProperties. The native engine checks references, numerical arithmetic, hierarchy, physics, and resources. Schema does not replace validate, media checks, or Python execution. GUIDE.md describes defaults/extended contracts. Optional $schema is preserved as ordinary data.
+Engine version, schema_version, project API, and game API are independent. A shell must not bump format versions for its own UI. schemas/{project,scene,entity,prefab,material}.schema.json defines basic structure and allows additionalProperties. The native engine checks references, numerical arithmetic, hierarchy, physics, and resources. Schema does not replace validate, media checks, or Python execution. The [Forge wiki](../GUIDE.md) describes defaults and extended contracts. Optional $schema is preserved as ordinary data.
 
 Use stable nonempty entity/emitter IDs. Arrays of entities/emitters with unique string IDs merge by ID so reordered rows do not mix objects. Without such IDs, the entire array is atomic. Vectors/scripts/keyframes/other arrays are also atomic. Unknown fields at every level are preserved. extensions["org.example.shell"] is a useful naming convention, not a restriction. Panel state/private caches/undo history are optional and not needed to run the game.
 

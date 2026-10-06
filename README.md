@@ -51,7 +51,7 @@ Forge 1.2 supplies Canvas, Row/Column, buttons, sliders, scrolling, and text wra
 
 Version 1.2.2 strengthened packaging/numeric checks, exposed backup recovery in menus, unified disabled-collider handling for raycast/collisions, and fixed initial Shift+Tab navigation. The guide details limits/save statuses.
 
-C++ localization supports JSON catalogs, parameters/plurals, fallback languages, saved selection, and language switching in the menu. forge.message() binds UI/entities; forge.tr() returns a string. Starter scenes include English/Russian. See guide section 10.5; complex scripts/RTL require a text backend extension.
+C++ localization supports JSON catalogs, parameters/plurals, fallback languages, saved selection, and language switching in the menu. forge.message() binds UI/entities; forge.tr() returns a string. Starter scenes include English/Russian. See [localization](docs/wiki/localization.md); complex scripts/RTL require a text backend extension.
 
 Built-in examples are source-distribution content: [2D](scenes/welcome.json), [3D](scenes/world3d.py), [localized UI/menus](scenes/interface.py), [advanced 3D](scenes/advanced.json), [empty editor scene](scenes/editor-empty.json), [physics/particles](scenes/simulation.json), and [PBR/hierarchy/procedural meshes](scenes/materials.json). They use bundled models, textures, font, and audio; no separate game is needed. Launch with dev --scene interface.py, dev --scene world3d.py, or dev --scene advanced.json.
 
@@ -59,7 +59,7 @@ Forge 2.0 adds render-target cameras, UV/sprite sheets, batching/glyph atlases, 
 
 The 3D set includes a swept AABB controller, point/directional/spot lights, PCF shadows, OBJ/glTF/GLB/FBX/DAE import, and GPU skeletal animation. edit opens hierarchy, inspector, asset browser, undo/redo, preview, and JSON saving. --scene selects an initial scene without editing configuration.
 
-Forge 2.1 adds native particles and optional Bullet 3D physics: rotating box/sphere/capsule bodies, friction, restitution, forces/torques, CCD, collision masks, and sloped capsule control. Particles support continuous/burst emission, textures, lifetime color/size, following, billboards, and batching. AABB remains the default; choose "physics":{"backend":"bullet"} in a 3D scene. Implementations/shaders are editable; see section 19.
+Forge 2.1 adds native particles and optional Bullet 3D physics: rotating box/sphere/capsule bodies, friction, restitution, forces/torques, CCD, collision masks, and sloped capsule control. Particles support continuous/burst emission, textures, lifetime color/size, following, billboards, and batching. AABB remains the default; choose "physics":{"backend":"bullet"} in a 3D scene. Implementations/shaders are editable; see [physics](docs/wiki/physics.md) and [particles](docs/wiki/particles.md).
 
 ```sh
 python tools/forge.py dev --scene simulation.json
@@ -67,9 +67,9 @@ python tools/forge.py dev --scene simulation.json
 
 WASD moves the capsule, Space jumps, E emits sparks, R resets the sphere.
 
-Forge 2.3 speeds up particles with cached texture paths, one snapshot per frame, and OpenGL 3.3 instancing instead of six CPU vertices per particle. Existing custom vertex shaders retain a compatible path. Transform setters update affected subtrees; set_positions/raycast_many batch world updates/queries. Bullet synchronizes changed bodies only; Python bridge transfers ordinary data without intermediate JSON strings. Lifecycle, Python API, reload, fonts, media, GPU resources, and particle rendering have separate implementations. Contracts/diagnostics/benchmarks are in section 21. One active Python runtime, CPU particle simulation/alpha sorting, and other boundaries remain.
+Forge 2.3 speeds up particles with cached texture paths, one snapshot per frame, and OpenGL 3.3 instancing instead of six CPU vertices per particle. Existing custom vertex shaders retain a compatible path. Transform setters update affected subtrees; set_positions/raycast_many batch world updates/queries. Bullet synchronizes changed bodies only; Python bridge transfers ordinary data without intermediate JSON strings. Lifecycle, Python API, reload, fonts, media, GPU resources, and particle rendering have separate implementations. [Contracts](docs/wiki/extensions.md), [diagnostics and benchmarks](docs/wiki/development.md) document these paths. One active Python runtime, CPU particle simulation/alpha sorting, and other boundaries remain.
 
-Forge 2.2 adds metallic/roughness PBR with albedo/normal/ORM/AO/emissive maps, transparency, local/world hierarchies, editable procedural meshes/vertex colors, filtering/mipmaps, and user captures. find uses an index; legacy physics filters pairs along X rather than testing every pair. Editor is separate. Deferred nested save metadata is copied independently. Defaults remain; see section 20.
+Forge 2.2 adds metallic/roughness PBR with albedo/normal/ORM/AO/emissive maps, transparency, local/world hierarchies, editable procedural meshes/vertex colors, filtering/mipmaps, and user captures. find uses an index; legacy physics filters pairs along X rather than testing every pair. Editor is separate. Deferred nested save metadata is copied independently. Defaults remain; see [materials](docs/wiki/materials.md), [hierarchy](docs/wiki/entities.md), and [geometry](docs/wiki/assets.md).
 
 ```sh
 python tools/forge.py dev --scene materials.json
@@ -82,7 +82,7 @@ macOS build --output dist/MyGame.app creates an app with private Python, icon, a
 
 Git contains C++ source, adaptable Python modules, tools, built-in examples/assets, tests, documentation, licenses, and dependency lock. Builds, environments, downloads, saves, logs, screenshots, and local reports are ignored through [.gitignore](.gitignore). Fonts, OBJ/glTF models, images, and example WAVs are required source assets and remain tracked.
 
-After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eight base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [guide section 20.6](GUIDE.md).
+After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs nine base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [validation and test suites](docs/wiki/development.md#validation-and-test-suites).
 
 ## License and Modifications
 
@@ -92,7 +92,7 @@ Everything outside the [Core list](CORE.md) may be adapted unless separately lic
 
 This custom license is not OSI-approved. Full terms: [LICENSE](LICENSE).
 
-Forge 2.4 adds prefab hierarchies/independent instances, property clips, layered skeletal animation/transitions/events, state machines, rest-pose retargeting, and morph targets. Editor tools cover clips/bone keys/layers/scrubbing/markers/morph sliders/retarget JSON. Example: python tools/forge.py dev --scene authoring.py; see section 22. The background watcher and indexed listener/contact dispatch avoid repeated full traversals; lightweight C++ contracts retain engine.hpp compatibility. CI also verifies standalone packages with tools/verify_package.py.
+Forge 2.4 adds prefab hierarchies/independent instances, property clips, layered skeletal animation/transitions/events, state machines, rest-pose retargeting, and morph targets. Editor tools cover clips/bone keys/layers/scrubbing/markers/morph sliders/retarget JSON. Example: python tools/forge.py dev --scene authoring.py; see [animation and prefabs](docs/wiki/animation.md). The background watcher and indexed listener/contact dispatch avoid repeated full traversals; lightweight C++ contracts retain engine.hpp compatibility. CI also verifies standalone packages with tools/verify_package.py.
 
 
 Forge 2.5 separates editor shells from the open project format/API. Builtin ImGui is optional (compile --without-editor); JSON-lines CLI, Python SDK, shared extension commands, and runtime editing work without it. Saves preserve unknown fields/external changes, detect conflicts, and replace files atomically. [Shell, format, and API guide](docs/PROJECT_API.md) · [JSON Schema](schemas/project.schema.json) · [Alternative shell example](examples/editor/terminal_shell.py).

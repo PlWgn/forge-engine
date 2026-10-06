@@ -60,11 +60,11 @@ def scaffold(destination):
     for directory in ('graphics', 'modules', 'scenes', 'scripts', 'textures', 'materials', 'models', 'objects', 'audio', 'locales'):
         shutil.copytree(ROOT / directory, destination / directory, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy2(ROOT / 'engine.json', destination / 'engine.json')
-    for filename in ('GUIDE.md', 'Инструкция.md'):
-        shutil.copy2(ROOT / filename, destination / filename)
+    shutil.copy2(ROOT / 'GUIDE.md', destination / 'GUIDE.md')
     shutil.copytree(ROOT/'schemas',destination/'schemas')
     (destination/'docs').mkdir()
     for name in ('PROJECT_API.md','FORGE_2.md','DIRECT3D11.md','METAL.md','BUGFIX_2_7_1.md','RENDER_OPTIMIZATION.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
+    shutil.copytree(ROOT/'docs/wiki',destination/'docs/wiki')
     shutil.copytree(ROOT/'examples/editor',destination/'examples/editor',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / filename, destination / filename)

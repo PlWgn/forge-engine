@@ -770,11 +770,14 @@ def on_destroy():
             self.assertEqual(json.loads((self.root/'saves/preferences/language.json').read_text())['language'],'ru')
         finally:
             if process.poll() is None:process.kill();process.wait()
-    def test_starter_project_includes_localization(self):
+    def test_starter_project_includes_docs_and_localization(self):
         target=self.root/'new-project'
         result=subprocess.run([sys.executable,str(ROOT/'tools/forge.py'),'init','--output',str(target)],capture_output=True,text=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((target/'locales/en.json').exists())
+        self.assertFalse((target/'Инструкция.md').exists())
+        for relative in [Path('GUIDE.md'), *(file.relative_to(ROOT) for file in (ROOT/'docs/wiki').glob('*.md'))]:
+            self.assertEqual((target/relative).read_bytes(), (ROOT/relative).read_bytes())
         self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
         output=self.run_engine('validate',extra=('--project',target/'engine.json'))
         self.assertIn('validated',output)

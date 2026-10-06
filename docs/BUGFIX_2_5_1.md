@@ -23,7 +23,7 @@ On macOS arm64, an isolated headless benchmark with 4000 localized entities and 
 
 Supported projects remain compatible. Strict validation intentionally rejects inputs previously truncated or allowed to corrupt state. Config window dimensions: integer 1..16384; set_window: width 320..16384, height 240..16384. fullscreen/vsync/stream/spatial/follow_camera require bool; voice limits are integers 1..1024.
 
-Ordinary startup retains immediate save/write/delete. Reload/JSON authoring defer until commit. defer_persistence(callable,include_initialization=True) retains its default; False excludes ordinary initialization only. Arbitrary Python I/O is not rolled back; callback queues are not multi-file atomic transactions. See [guide sections 18.8 and 24](../GUIDE.md) and [PROJECT_API.md](PROJECT_API.md).
+Ordinary startup retains immediate save/write/delete. Reload/JSON authoring defer until commit. defer_persistence(callable,include_initialization=True) retains its default; False excludes ordinary initialization only. Arbitrary Python I/O is not rolled back; callback queues are not multi-file atomic transactions. See [storage and persistence transactions](wiki/persistence.md#storage-locations-and-persistence-transactions) and [PROJECT_API.md](PROJECT_API.md).
 
 ## Release Validation
 
