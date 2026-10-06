@@ -88,5 +88,10 @@
   },
   "development": {
     "watch_interval": 0.3
+  },
+  "steam": {
+    "enabled": false,
+    "app_id": 480,
+    "relay": false
   }
 }

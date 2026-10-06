@@ -52,6 +52,9 @@ The launcher enables the builtin ImGui editor and the platform-native backend by
 | `compile --without-editor` | Excludes ImGui; document/runtime editor APIs, run/dev/build remain available |
 | `compile --without-metal` | Excludes macOS Metal/Objective-C++/framework dependencies |
 | `compile --without-directx` | Produces an OpenGL-only Windows runtime |
+| `compile --without-networking` | Excludes independent ENet LAN |
+| `compile --sockets` | Adds Valve IP sockets; requires Protobuf/crypto dependencies |
+| `compile --steamworks-sdk <root>` | Adds official Steamworks platform/P2P; SDK supplied by developer |
 | `compile --shader-tools` | Enables translator/compiler tests even without a native graphics backend |
 
 These switches also apply to `configure` and dependency setup where relevant. Repeat the chosen flags when reconfiguring/compiling; an ordinary compile restores the default components. To build without the builtin shell:
@@ -62,6 +65,8 @@ python tools/forge.py compile --without-editor
 ```
 
 Direct CMake builds use `FORGE_WITH_EDITOR`, `FORGE_WITH_METAL`, `FORGE_WITH_DIRECT3D11`, `FORGE_WITH_SHADER_TRANSLATOR`, and `FORGE_MODULE_SOURCES`. See [Metal](../METAL.md) and [Direct3D](../DIRECT3D11.md) for complete flags and shader contracts. CMake requires the dependencies to be present first. A generated content project shares the engine executable; compile a custom runtime with `compile --project path/to/game/engine.json` to include that game's `native_modules`.
+
+Networking is independent of graphics/editor flags. See [Networking and Steam](networking.md) for pinned private dependency setup and optional SDK configuration. No Steam account/SDK is required for ordinary LAN.
 
 ## Confirm the installation
 

@@ -41,9 +41,13 @@ struct Script {
     std::shared_ptr<Entity> entity;
 };
 class FileWatch;
+class NetworkService;
+class SteamClient;
 struct Runtime {
     Config config, sceneConfig;
     World world;
+    std::unique_ptr<NetworkService> network;
+    std::unique_ptr<SteamClient> steam;
     EditorSession editorSession;
     bool baseShell = true;
     std::string shellFile;

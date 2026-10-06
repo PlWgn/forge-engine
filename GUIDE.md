@@ -1,6 +1,6 @@
 # Forge Engine Wiki
 
-The current manual for **Forge 2.8.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately.
+The current manual for **Forge 2.9.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately.
 
 ## Start here
 
@@ -31,6 +31,7 @@ The current manual for **Forge 2.8.0**: a modular C++17 runtime with Python scen
 | --- | --- |
 | Install, compile, or select optional graphics/editor components | [Installation](docs/wiki/installation.md) |
 | Create a game, rename content folders, or edit settings | [Projects and configuration](docs/wiki/projects.md) |
+| Add LAN, Valve sockets, or optional Steam services | [Networking and Steam](docs/wiki/networking.md) |
 | Create scenes, attach scripts, or understand callback order | [Scenes and lifecycle](docs/wiki/scenes.md) |
 | Find an entity, read input, or call everyday engine functions | [Python API](docs/wiki/api.md) |
 | Reuse objects or work with parent/local/world transforms | [Entities, hierarchies, and prefabs](docs/wiki/entities.md) |

@@ -19,6 +19,10 @@ The engine uses these pinned dependencies. Run `python tools/dependencies.py` to
 | miniaudio | 0.11.23 | MIT/public domain, license embedded in header |
 | Noto Sans | Checksum-pinned Google Fonts snapshot | SIL Open Font License 1.1, graphics/FONT-LICENSE.txt |
 | Unicode CLDR cardinal rules | 48.0.0 | Unicode License v3, engine/resources/Unicode-LICENSE.txt |
+| ENet | 1.3.18 | MIT, engine/resources/network-licenses/ENet.txt |
+| Optional Valve GameNetworkingSockets | 1.4.1 | BSD 3-Clause, engine/resources/network-licenses/GameNetworkingSockets.txt |
+| Optional private Protobuf | 3.21.12 | BSD 3-Clause, engine/resources/network-licenses/Protobuf.txt |
+| Optional private OpenSSL | 3.5.9 | Apache 2.0, engine/resources/network-licenses/OpenSSL.txt |
 | CPython | The version used to compile the engine | Python Software Foundation license, copied to runtime/LICENSE.txt |
 
 Game builds include dependency notices under `licenses`, the font license alongside the font, and the CPython license. Additional Python packages and custom modules are the game developer's responsibility. OpenSSL or other libraries from the build Python may be copied with its extension modules; their accompanying notices are copied when available and are listed in the build manifest.
@@ -33,3 +37,5 @@ The optional Direct3D 11 backend uses Windows system D3D11/DXGI/D3DCompiler APIs
 
 
 Forge 2.7 also compiles the pinned SPIRV-Cross MSL backend (no version/checksum change) for Metal. Original Brenwill Workshop copyright/Apache-or-MIT notices are preserved in Shader-NOTICE.txt. Metal/Cocoa/QuartzCore are macOS system frameworks; no Apple SDK component is redistributed. Native MSL examples are original adaptable Forge source.
+
+The official Steamworks SDK is supplied separately by the developer under Valve terms; Forge does not include/download its headers or claim an open-source license for Valve redistributables. SDK-enabled packages require the platform Steam API redistributable and applicable Valve redistribution terms. Ordinary builds and open-source Valve IP LAN do not require this SDK. Networking notices are included under licenses/network in packages; separately selected dependency versions must carry their own notices.

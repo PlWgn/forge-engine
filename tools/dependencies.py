@@ -3,6 +3,10 @@ from pathlib import Path
 import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time, sys
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
+    'openssl': ('https://codeload.github.com/openssl/openssl/tar.gz/refs/tags/openssl-3.5.9', 'archive'),
+    'protobuf': ('https://codeload.github.com/protocolbuffers/protobuf/tar.gz/refs/tags/v21.12', 'archive'),
+    'enet': ('https://codeload.github.com/lsalzman/enet/tar.gz/refs/tags/v1.3.18', 'archive'),
+    'gns': ('https://codeload.github.com/ValveSoftware/GameNetworkingSockets/tar.gz/refs/tags/v1.4.1', 'archive'),
     'glslang': ('https://codeload.github.com/KhronosGroup/glslang/tar.gz/refs/tags/15.1.0', 'archive'),
     'spirv_cross': ('https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/refs/tags/vulkan-sdk-1.4.309.0', 'archive'),
     'bullet': ('https://codeload.github.com/bulletphysics/bullet3/tar.gz/refs/tags/3.25', 'archive'),
@@ -25,11 +29,18 @@ def main():
     parser.add_argument("--without-directx",action="store_true",help="Skip optional Windows shader compiler dependencies")
     parser.add_argument("--without-metal",action="store_true",help="Skip optional macOS shader compiler dependencies")
     parser.add_argument("--shader-tools",action="store_true",help="Fetch shader compiler dependencies on any platform")
+    parser.add_argument("--without-networking",action="store_true")
+    parser.add_argument("--sockets",action="store_true",help="Fetch optional Valve open-source sockets")
+    parser.add_argument("--sockets-deps",action="store_true",help="Fetch pinned private sockets dependencies (OpenSSL/Protobuf)")
     args=parser.parse_args()
     vendor = ROOT / 'vendor'; vendor.mkdir(exist_ok=True)
     lock_path = vendor / 'dependencies.lock.json'
     lock = json.loads(lock_path.read_text()) if lock_path.exists() else {}
     for name, (url, filename) in PACKAGES.items():
+        if name=="enet" and args.without_networking: continue
+        if name=="gns" and not (args.sockets or args.sockets_deps): continue
+        if name in ("openssl","protobuf") and not args.sockets_deps: continue
+        if name=="openssl" and sys.platform=="win32": continue
         if args.without_editor and name=="imgui": continue
         if name in ('glslang', 'spirv_cross') and not args.shader_tools and not ((sys.platform == 'win32' and not args.without_directx) or (sys.platform == 'darwin' and not args.without_metal)): continue
         target = vendor / (name if filename == 'archive' else filename)

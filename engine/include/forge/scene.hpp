@@ -44,7 +44,9 @@ struct Entity {
     Json source = Json::object(); // Preserve shell/extension fields across runtime snapshots.
 };
 glm::mat4 composeTransform(const Entity &);
+struct NetworkScope;
 struct World {
+    std::shared_ptr<NetworkScope> networkScope;
     // Optional host preparation; independent Worlds need no Python runtime.
     std::function<void(Entity&)> prepareEntity;
     Config *config = nullptr;

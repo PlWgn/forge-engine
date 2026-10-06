@@ -30,14 +30,14 @@ def _validate_copy_source(root, source, output, validated):
             if child.name in ('__pycache__', '.git', '.DS_Store') or child.suffix == '.pyc': continue
             stack.append((child, False))
 
-def _native_libraries(executable, runtime, source_library):
+def _native_libraries(executable, runtime, source_library, engine_source=None):
     lib = runtime / 'lib'; lib.mkdir(exist_ok=True)
     if sys.platform == 'darwin':
         version = f'{sys.version_info.major}.{sys.version_info.minor}'
         target = lib / f'libpython{version}.dylib'
         shutil.copy2(source_library, target)
         binaries = [executable, target, *runtime.rglob('*.so'), *runtime.rglob('*.dylib')]
-        processed, sources = set(), {target: source_library}
+        processed, sources = set(), {target: source_library, **({executable: engine_source} if engine_source else {})}
         search = [source_library.parent, Path(sysconfig.get_config_var('LIBDIR'))]
         def dependencies(path):
             result = subprocess.run(['otool', '-L', str(path)], check=True, text=True, encoding='utf-8', capture_output=True).stdout
@@ -159,7 +159,11 @@ def build_bundle(config_file, engine_file, output):
             libdir = Path(sysconfig.get_config_var('LIBDIR'))
             source_library = (libdir / f'libpython{version}.dylib').resolve()
             if not source_library.exists(): raise RuntimeError(f'Python shared library missing: {source_library}')
-        _native_libraries(binary, runtime, source_library)
+        if sys.platform == "win32" and forge.capabilities()["steamworks"]:
+            steam_runtime=engine_file.parent / "steam_api64.dll"
+            if not steam_runtime.is_file(): raise RuntimeError("SDK runtime missing beside engine: steam_api64.dll")
+            shutil.copy2(steam_runtime, binary.parent / steam_runtime.name)
+        _native_libraries(binary, runtime, source_library, engine_file)
         license_candidates = [stdlib / 'LICENSE.txt', Path(sys.base_prefix) / 'LICENSE.txt', Path(sys.base_prefix) / 'LICENSE', Path(sys.base_prefix) / 'Resources/English.lproj/Documentation/_sources/license.rst.txt']
         license_file = next((p for p in license_candidates if p.exists()), None)
         if license_file is None: raise RuntimeError('Python distribution license is missing; supply it in the build Python prefix')
@@ -183,6 +187,8 @@ def build_bundle(config_file, engine_file, output):
                 target = licenses / 'assimp-contrib' / license_file.relative_to(vendor / 'assimp' / 'contrib')
                 target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(license_file, target)
         (stage / 'START.txt').write_text('Open the .app, run Game.exe (Windows), or ./Game (macOS directory).\nStorage is controlled by game.json storage.mode; .app uses Application Support and Library/Logs.\nKeep all files together.\n', encoding='utf-8')
+        network_licenses=source_root/'engine/resources/network-licenses'
+        if network_licenses.is_dir(): shutil.copytree(network_licenses,licenses/'network')
         shutil.copy2(source_root / 'engine/resources/Unicode-LICENSE.txt', licenses / 'Unicode.txt')
         if app:
             project = settings['project']
@@ -203,7 +209,7 @@ def build_bundle(config_file, engine_file, output):
                 info['CFBundleIconFile'] = 'Game.icns'
             (container / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps(info))
             (container / 'Contents' / 'PkgInfo').write_bytes(b'APPL????')
-        manifest = {'engine_version': forge.__version__, 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
+        manifest = {'engine_version': forge.__version__, 'network_backends': forge.network_backends(), 'steamworks': forge.capabilities()['steamworks'], 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
         if app: manifest['signature_managed_files'] = ['Contents/MacOS/Game', 'Contents/_CodeSignature/CodeResources']
         for file in sorted(container.rglob('*')):
             if file.is_file() and not (app and file == binary): manifest['files'][file.relative_to(container).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()

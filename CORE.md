@@ -74,3 +74,7 @@ Bugfix 2.7.1 changes `main.cpp` only to validate the complete `--frames` integer
 ## Forge 2.8 Rendering Optimization
 
 The independent `render_optimization.hpp`, `render_optimization.cpp`, and `render_optimization_data.cpp` policy/settings/bounds algorithms, renderer integration, editable schemas, and examples remain adaptable outside the exhaustive Core list. Core-origin `scene.hpp`/`renderer.hpp` contracts add immutable entity optimization options and a public policy setter; `config.cpp` validates optional entity settings; `python_api.cpp` exposes their checked property and capabilities. These additive contracts preserve existing defaults/API version 1 and allow independent policies without edits to startup, lifecycle, or packaging. They do not expand the licensed Core boundary.
+
+## Forge 2.9 networking boundary
+
+`network.hpp`, `network.cpp`, transport adapters, `network_port.cpp`, `network_api.cpp`, `steam.hpp`/`steam.cpp`, facades and dependency helper are independent adaptable implementations. They are not added to the exhaustive Core list. Core-origin changes add optional configuration validation, capability reporting, runtime/scene ownership and rejected-candidate cleanup, restart checks, and Steam redistributable packaging. Runtime closes sockets before Steam shutdown; already transmitted network effects are not a rollback contract. Public transport factories permit replacement without editing Core.

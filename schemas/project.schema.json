@@ -482,6 +482,26 @@
     "build": {
       "type": "object",
       "additionalProperties": true
+    },
+    "steam": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "app_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295,
+          "default": 480
+        },
+        "relay": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true,

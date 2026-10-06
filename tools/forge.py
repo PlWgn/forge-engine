@@ -32,17 +32,20 @@ def binary():
         if path.exists(): return path
     raise RuntimeError('Engine is not compiled. Run: python tools/forge.py compile')
 
-def configure(settings, with_editor=True, with_directx=True, shader_tools=False, with_metal=True):
+def configure(settings, with_editor=True, with_directx=True, shader_tools=False, with_metal=True, with_networking=True, sockets=False, steamworks_sdk=None):
     directx = sys.platform == 'win32' and with_directx
     metal = sys.platform == 'darwin' and with_metal
     translator = directx or metal or shader_tools
-    required = ['glfw', 'assimp', 'bullet'] + (['glslang', 'spirv_cross'] if translator else [])
+    required = ['glfw', 'assimp', 'bullet'] + (['enet'] if with_networking else []) + (['gns'] if sockets else []) + (['glslang', 'spirv_cross'] if translator else [])
     missing=any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in required)
     if missing or (with_editor and not (ROOT/'vendor/imgui/imgui.cpp').exists()):
         execute([sys.executable, ROOT/'tools/dependencies.py', *([] if with_editor else ['--without-editor']),
-                 *([] if with_directx else ['--without-directx']), *([] if with_metal else ['--without-metal']), *(['--shader-tools'] if translator else [])])
+                 *([] if with_directx else ['--without-directx']), *([] if with_metal else ['--without-metal']), *(['--shader-tools'] if translator else []), *([] if with_networking else ['--without-networking']), *(['--sockets'] if sockets else [])])
     args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}', f'-DFORGE_WITH_EDITOR={"ON" if with_editor else "OFF"}']
     args += [f'-DFORGE_WITH_METAL={"ON" if metal else "OFF"}', f'-DFORGE_WITH_DIRECT3D11={"ON" if directx else "OFF"}', f'-DFORGE_WITH_SHADER_TRANSLATOR={"ON" if translator else "OFF"}']
+    args += [f'-DFORGE_WITH_NETWORKING={"ON" if with_networking else "OFF"}', f'-DFORGE_WITH_GNS={"ON" if sockets else "OFF"}', f'-DFORGE_WITH_STEAMWORKS={"ON" if steamworks_sdk else "OFF"}', "-DFORGE_STEAMWORKS_SDK=" + (str(steamworks_sdk.resolve()) if steamworks_sdk else "")]
+    if sockets and (ROOT/".tools/network").is_dir():
+        args += ["-DCMAKE_PREFIX_PATH="+str(ROOT/".tools/network"), "-DOPENSSL_ROOT_DIR="+str(ROOT/".tools/network"), "-DOPENSSL_USE_STATIC_LIBS=TRUE", "-DProtobuf_USE_STATIC_LIBS=ON"]
     data = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else {}
     native = []
     for path in data.get('native_modules', []):
@@ -70,6 +73,7 @@ def scaffold(destination):
         shutil.copy2(ROOT / filename, destination / filename)
     (destination / 'licenses').mkdir()
     shutil.copy2(ROOT / 'engine/resources/Unicode-LICENSE.txt', destination / 'licenses/Unicode.txt')
+    shutil.copytree(ROOT/'engine/resources/network-licenses',destination/'licenses/network')
     log(f'Project created: {destination}')
 
 def main():
@@ -85,6 +89,9 @@ def main():
     parser.add_argument('--without-metal', action='store_true', help='Build without the optional macOS Metal backend')
     parser.add_argument('--without-directx', action='store_true', help='Compile Windows with OpenGL only')
     parser.add_argument('--shader-tools', action='store_true', help='Compile cross-platform GLSL/HLSL/MSL translator tests')
+    parser.add_argument('--without-networking', action='store_true', help='Exclude ENet LAN transport')
+    parser.add_argument('--sockets', action='store_true', help='Build optional Valve IP sockets; requires Protobuf/OpenSSL')
+    parser.add_argument('--steamworks-sdk', type=Path, help='Official Steamworks SDK root; enable platform/P2P services')
     parser.add_argument('--headless' , action='store_true')
     parser.add_argument('--silent-audio', action='store_true', help='Use PCM audio without opening a hardware device')
     parser.add_argument('--frames', type=int)
@@ -123,7 +130,7 @@ def main():
         if not args.output: parser.error('init requires --output')
         scaffold(args.output); return
     if args.command in ('configure', 'compile'):
-        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools, not args.without_metal)
+        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools, not args.without_metal, not args.without_networking, args.sockets, args.steamworks_sdk)
         if args.command == 'compile': execute([cmake_path(), '--build', ROOT / 'build', '--config', 'Release', '--parallel', str(min(os.cpu_count() or 2, 4))])
         return
     if args.command == 'project':
@@ -150,6 +157,7 @@ def main():
         execute([sys.executable, ROOT / 'tests/rendering.py', binary()])
         execute([sys.executable, ROOT / 'tests/authoring.py', binary()])
         execute([sys.executable, ROOT / 'tests/project_api.py', binary()])
+        execute([sys.executable, ROOT / 'tests/networking.py', binary()])
         return
     command = [binary(), args.command, '--project', settings]
     if args.output: command += ['--output', args.output.resolve()]

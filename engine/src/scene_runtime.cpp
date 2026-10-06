@@ -1,5 +1,6 @@
 // Lifecycle and scene transactions extracted from runtime.cpp (licensed core origin).
 #include <forge/engine.hpp>
+#include <forge/network.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/geometry.hpp>
@@ -60,7 +61,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
     listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[&](auto& l){return !l.persistent || !listenerIds.count(l.id);}),listeners.end());
     listenerIds.clear();for(const auto &listener:listeners)listenerIds.insert(listener.id);
     if(renderer)renderer->checkpointInput();
-    audio.begin();initializing=true;auto previousAuthoring=authoringTransaction;authoringTransaction=document!=nullptr;
+    network->checkpoint();audio.begin();initializing=true;auto previousAuthoring=authoringTransaction;authoringTransaction=document!=nullptr;
     bool ownRendererStage=renderer && !reloading;
     try {
         if(ownRendererStage)renderer->stage();
@@ -89,6 +90,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         if(sceneModule && !sceneModule.is_none()) {scripts.push_back({sceneModule,sceneModule,{}});if(py::hasattr(sceneModule,"on_start"))sceneModule.attr("on_start")();}
         attachPending();destroyDead();world.syncTransforms();for(auto& e:world.entities)if(e->alive && proceduralName(e->model) && !geometry(world).entries.count(e->model))throw std::runtime_error("Missing procedural mesh: "+e->model);refreshLocalizedEntities();if(rigidPhysics(world))physics3D(world).sync(world);if(renderer)renderer->validateWorld(world);
     } catch(...) {
+        network->rollback();
         editorSession.selected=oldSelection;
         if(ownRendererStage)renderer->discard();
         assets.rollback(assetCheckpoint);inputFrame=std::move(previousInput);time=previousTime;dt=previousDt;
@@ -96,7 +98,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
         listeners=std::move(oldListeners);listenerIds=std::move(oldListenerIds);pendingScene=oldPending;running=oldRunning;gamePaused=oldPaused;throw;
     }
     if(ownRendererStage)renderer->commit();
-    initializing=false;authoringTransaction=previousAuthoring;audio.commit();
+    initializing=false;authoringTransaction=previousAuthoring;audio.commit();network->commit();
     // Old callbacks see their own world. Their mutations cannot affect the new scene.
     listeners.erase(std::remove_if(listeners.begin(),listeners.end(),[&](auto& l){return !listenerIds.count(l.id);}),listeners.end());
     auto readyListenerIds=listenerIds;

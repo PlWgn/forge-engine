@@ -126,3 +126,21 @@ jobs:
       - run: python tools/dependencies.py --without-metal --without-directx --without-editor
       - run: python tools/forge.py compile --without-metal --without-directx --without-editor
       - run: ctest --test-dir build -C Release --output-on-failure
+
+  valve-sockets:
+    # Independent IP transport: no Steam credentials, SDK, client, or relay access.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==3.31.6
+      - run: python tools/dependencies.py --without-editor --without-metal --without-directx --sockets-deps
+      - run: python tools/network_dependencies.py
+      - run: python tools/forge.py compile --without-editor --without-metal --without-directx --sockets
+      - run: ctest --test-dir build -C Release --output-on-failure -R "^(network_native|networking)$"

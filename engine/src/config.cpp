@@ -1,4 +1,5 @@
 #include <forge/engine.hpp>
+#include <forge/steam.hpp>
 #include <forge/render_optimization.hpp>
 #include <forge/graphics_settings.hpp>
 #include <forge/physics.hpp>
@@ -94,6 +95,9 @@ void Config::validate(bool media) const {
     if(!data.is_object() || !data.contains("schema_version") || !data["schema_version"].is_number_integer() || data["schema_version"]!=1)
         throw std::runtime_error("Unsupported schema_version (expected integer 1)");
     auto geometryBudget=data.value("geometry_budget_bytes",Json(64*1024*1024));if(!geometryBudget.is_number_integer() || geometryBudget<1 || geometryBudget>1024*1024*1024)throw std::runtime_error("geometry_budget_bytes must be 1..1GiB");
+    validateSteamSettings(data.value("steam",Json::object()));
+    if(data.value("steam",Json::object()).value("enabled",false) && !steamCompiled())
+        throw std::runtime_error("Steam is enabled but this runtime has no Steamworks SDK support; compile with --steamworks-sdk or set steam.enabled=false");
     validatePhysics(data.value("physics",Json::object()));
     validateAudioSettings(data.value("audio_settings",Json::object()));
     validateRenderSettings(data.value("rendering",Json::object()));

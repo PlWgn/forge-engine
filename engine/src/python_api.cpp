@@ -1,5 +1,7 @@
 // Python API extracted from runtime.cpp; this code retains its licensed core status.
 #include <forge/engine.hpp>
+#include <forge/network.hpp>
+#include <forge/steam.hpp>
 #include <forge/physics.hpp>
 #include <forge/material.hpp>
 #include <forge/render_optimization.hpp>
@@ -20,11 +22,13 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("api_version")=1;
     m.def("capabilities",[](){
         Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells","render_optimization","lod","frustum_culling","occlusion_culling"});
+        if(!networkBackends().empty())features.push_back("networking");
+        if(steamCompiled())features.push_back("steamworks");
         if(FORGE_WITH_EDITOR)features.push_back("animation_editor");
         features.push_back("renderer_backends");
         if(FORGE_WITH_METAL)features.push_back("metal");
         if(FORGE_WITH_DIRECT3D11)features.push_back("direct3d11");
-        return pythonValue(Json{{"api_version",1},{"project_api_version",1},{"base_editor",bool(FORGE_WITH_EDITOR)},{"features",features},{"graphics_backends",GraphicsDevice::backends()},{"python_runtimes_per_process",1}});
+        return pythonValue(Json{{"api_version",1},{"project_api_version",1},{"base_editor",bool(FORGE_WITH_EDITOR)},{"features",features},{"graphics_backends",GraphicsDevice::backends()},{"network_backends",networkBackends()},{"steamworks",steamCompiled()},{"python_runtimes_per_process",1}});
     });
     m.doc()="Forge native engine modules. Coordinates: 2D pixels; 3D world units.";
     py::class_<LocalizedText>(m,"LocalizedText")

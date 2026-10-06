@@ -1,4 +1,6 @@
 #include <forge/engine.hpp>
+#include <forge/network.hpp>
+#include <forge/steam.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/material.hpp>
@@ -15,9 +17,10 @@
 namespace forge {
 Runtime* active=nullptr;
 std::vector<ModuleInit>& nativeModules(){static std::vector<ModuleInit> list;return list;}
-Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),assets(config),dev(development),headless(noWindow){if(active)throw std::runtime_error("Only one Python runtime can be active in this process");world.config=&config;world.prepareEntity=[this](Entity& entity){prepareAnimation(*this,entity);if(!entity.textKey.empty())entity.text=localization.translate(entity.textKey,entity.textParams);};audio.silent=headless;localization.load(config,"",true);active=this;}
-Runtime::~Runtime(){listeners.clear();scripts.clear();startup.clear();if(active==this)active=nullptr;}
+Runtime::Runtime(Config c,bool development,bool noWindow):config(std::move(c)),sceneConfig(config),assets(config),dev(development),headless(noWindow){if(active)throw std::runtime_error("Only one Python runtime can be active in this process");network=std::make_unique<NetworkService>();world.config=&config;world.prepareEntity=[this](Entity& entity){prepareAnimation(*this,entity);if(!entity.textKey.empty())entity.text=localization.translate(entity.textKey,entity.textParams);};audio.silent=headless;localization.load(config,"",true);active=this;}
+Runtime::~Runtime(){if(network)network->close();steam.reset();listeners.clear();scripts.clear();startup.clear();if(active==this)active=nullptr;}
 void Runtime::start() {
+    steam=std::make_unique<SteamClient>(config.data.value("steam",Json::object()));
     auto sys=py::module_::import("sys");sys.attr("dont_write_bytecode")=true;
     refreshPythonPaths();
     // print() and stderr join the same timestamped log as the native engine.
@@ -77,6 +80,7 @@ bool Runtime::shutdown(){watcher.reset();bool failed=false;tearingDown=true;
     for(auto& e:world.entities)e->alive=false;
     for(auto name:{"stdout","stderr"})try{py::module_::import("sys").attr(name).attr("flush")();}catch(...){}
     try{localization.flush();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+    network->close();steam.reset();
     listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
 }
 void Runtime::refreshLocalizedEntities(){
@@ -111,6 +115,7 @@ int Runtime::run(int frames) {
                 paused=!tryReload();
                 if(!paused){pausedRenderFailed=false;pausedShellFailed=false;}
             }
+            network->pump();if(steam)steam->pump();
             if(paused){
                 if(editing && editorShell && !editorShell.is_none() && !pausedShellFailed && py::hasattr(editorShell,"on_update")){
                     try{editorShell.attr("on_update")(dt);}

@@ -75,7 +75,7 @@ void Runtime::reload(){
     try{
         if(editing && !editorSession.runtimeBase.is_null() && world.serialize()!=editorSession.runtimeBase)
             throw std::runtime_error("Editor has unsaved changes; save, undo or explicitly reload the scene before automatic hot reload. The current world was preserved.");
-        auto updated=Config::load(config.file);if(!entryOverride.empty())updated.data["entry_scene"]=entryOverride;updated.validate(false);auto nextPaths=searchPaths(updated);
+        auto updated=Config::load(config.file);if(!entryOverride.empty())updated.data["entry_scene"]=entryOverride;updated.validate(false);if(updated.data.value("steam",Json::object())!=config.data.value("steam",Json::object()))throw std::runtime_error("Steam settings changes require restarting the runtime");auto nextPaths=searchPaths(updated);
         std::vector<fs::path> invalidatedRoots;
         for(auto group:{"modules","scripts","scenes"})invalidatedRoots.push_back(config.paths.at(group));
         // Preserve unchanged extension packages; remove retired paths and changed files.

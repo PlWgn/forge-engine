@@ -12,6 +12,14 @@ def verify(folder, graphics_backend=None):
             raise RuntimeError(f'Package manifest mismatch: {relative}')
     for notice in ('LICENSE','NOTICE','THIRD_PARTY.md','ATTRIBUTION.md'):
         if not (data/notice).is_file():raise RuntimeError(f'Missing package notice: {notice}')
+    if 'lan' in manifest.get('network_backends',[]):
+        if not (data/'licenses/network/ENet.txt').is_file():raise RuntimeError('ENet notice missing')
+    if 'sockets' in manifest.get('network_backends',[]):
+        for name in ('GameNetworkingSockets.txt','Protobuf.txt','OpenSSL.txt','Donna.txt'):
+            if not (data/'licenses/network'/name).is_file():raise RuntimeError('Socket dependency notice missing: '+name)
+    if manifest.get('steamworks'):
+        runtime_file=data/'runtime/lib/libsteam_api.dylib' if os.name!='nt' else data/'steam_api64.dll'
+        if not runtime_file.is_file():raise RuntimeError('Steam SDK runtime missing')
     runtime=data/'runtime'
     if not runtime.is_dir():raise RuntimeError('Private Python missing')
     binary=folder/'Contents/MacOS/Game' if folder.suffix.lower()=='.app' else folder/('Game.exe' if os.name=='nt' else 'Game')
@@ -37,6 +45,7 @@ def verify(folder, graphics_backend=None):
         package_data=copy/'Contents/Resources' if copy.suffix.lower()=='.app' else copy
         config=json.loads((package_data/'game.json').read_text(encoding='utf-8'))
         if (package_data/config['paths']['scenes']/'optimization.py').is_file():scenes.append('optimization.py')
+        if not graphics_backend and 'lan' in manifest.get('network_backends',[]) and (package_data/config['paths']['scenes']/'networking.py').is_file():scenes.append('networking.py')
         for scene in scenes:
             mode=['--silent-audio'] if graphics_backend else ['--headless']
             result=subprocess.run([str(binary),'run','--scene',scene,*mode,'--frames','12','--no-open-log'],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',timeout=90)

@@ -135,3 +135,16 @@ At the 2.6 release there were eight base CTest suites and one additional shader_
 | Platform/shell independence | OpenGL default; macOS Metal/Windows Direct3D selectable; editor-free builds | Configuration/native suites, custom shell, standalone verifier |
 
 Auto selects compiled Metal on macOS in 2.7; explicit OpenGL retains previous behavior. Format/shell API stays 1. Uniform snapshots have a separate bounded arena; presentation is synchronized, without async-throughput/performance claims. No compute/HDR/IBL/device-recovery/multi-runtime feature is implied. [Metal contracts and limitations](METAL.md).
+
+
+## Forge 2.9
+
+| Capability | Implementation | Verification |
+| --- | --- | --- |
+| Independent native LAN | ENet reliable/unreliable binary messages, channels, frame servicing, bounded queues/stats | Real localhost native and embedded Python exchanges, empty/binary/fragmented packets |
+| Optional Valve IP LAN | GameNetworkingSockets adapter, IPv4/IPv6, same host contract | Compiled pinned open-source backend and real localhost exchange on macOS arm64 |
+| Managed sessions | Scene scope and named application hosts, rejected candidate cleanup and guarded wire effects | Native ownership checks and successful/rejected reload regression |
+| Optional Steamworks | SDK-configured platform service, Steam IP/P2P, stats/achievements, friends/presence/overlay and lobbies | Disabled/unavailable SDK paths verified; official SDK/client branch requires target-platform compilation and live-client tests |
+| Modular delivery | Public transport factory, replaceable Python facades, private dependency builder/notices, editable project App ID | Default/optional build contracts, source fixtures and standalone private-Python packaging |
+
+Project/schema/API versions remain 1. Steam defaults off; App ID 480 is for development testing and can be replaced without C++ recompilation. No automatic game replication, discovery, remote execution, mandatory editor/account/service, Cloud/Workshop/game-server/inventory feature is implied. Valve standalone IP tests do not establish Steam-client behavior. [Networking wiki and current limitations](wiki/networking.md).

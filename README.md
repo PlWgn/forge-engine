@@ -1,6 +1,8 @@
-# Forge 2.8.0
+# Forge 2.9.0
 
 Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows.
+
+Forge 2.9 adds independent native ENet LAN, optional open-source Valve IP sockets, and an optional Steamworks SDK adapter for Steam IP/P2P, identity, friends, presence, overlay, achievements/stats and lobbies. Steam is disabled by default; the testing App ID 480 is editable in each project. Bounded messages use bytes directly, and named sessions survive scene/reload changes. [Setup, API, ownership and verification limits](docs/wiki/networking.md). Steam-client integration needs your official SDK and target-platform verification; it is not established by the open-source LAN tests.
 
 Forge 2.8 adds optional native LOD, frustum/distance culling, and conservative occlusion with editable solid proxies. One backend-independent policy serves OpenGL, Metal, and Direct3D; a public C++ interface allows replacement without modifying the Core. Existing projects keep optimization disabled by default. [Setup, examples, customization, and limits](docs/RENDER_OPTIMIZATION.md).
 
@@ -82,7 +84,7 @@ macOS build --output dist/MyGame.app creates an app with private Python, icon, a
 
 Git contains C++ source, adaptable Python modules, tools, built-in examples/assets, tests, documentation, licenses, and dependency lock. Builds, environments, downloads, saves, logs, screenshots, and local reports are ignored through [.gitignore](.gitignore). Fonts, OBJ/glTF models, images, and example WAVs are required source assets and remain tracked.
 
-After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs nine base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [validation and test suites](docs/wiki/development.md#validation-and-test-suites).
+After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eleven base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [validation and test suites](docs/wiki/development.md#validation-and-test-suites).
 
 ## License and Modifications
 

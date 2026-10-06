@@ -104,3 +104,7 @@ The complete bundled example is [engine.json](../../engine.json). JSON Schemas i
 Keep engine settings separate from scene overrides. `physics` settings can be overridden in scenes; scene `rendering` supports lights/ambient/optimization, and scene `rendering.postprocess` configures that scene's effects. `renderer` selects the graphics device and resource/shader configuration for the runtime. Changing backend/device options requires restart, even in dev.
 
 Configuration integers/booleans are checked strictly: fractional dimensions, numeric values in boolean fields, NaN/Infinity, and out-of-range fields are errors. Optional fields receive defaults; remove a setting only when its default is appropriate. Custom content-group keys can be added without renaming the standard contract keys.
+
+## Steam project settings
+
+Optional `steam.enabled` defaults to false, `steam.app_id` to 480 (Spacewar testing), and `steam.relay` to false (no relay prewarm). Change App ID per project, then restart; it never requires recompiling. Enabling Steam requires an SDK-enabled runtime and a running client. Host transport/options belong to game code, so configuration alone opens no LAN listener. See [Networking and Steam](networking.md).

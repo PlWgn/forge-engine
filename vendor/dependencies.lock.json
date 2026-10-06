@@ -54,5 +54,21 @@
   "spirv_cross": {
     "url": "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/refs/tags/vulkan-sdk-1.4.309.0",
     "sha256": "cf4f12a767d63f63024e61750e372ffdc95567513b99ed9be6f21f474b328ddd"
+  },
+  "enet": {
+    "url": "https://codeload.github.com/lsalzman/enet/tar.gz/refs/tags/v1.3.18",
+    "sha256": "28603c895f9ed24a846478180ee72c7376b39b4bb1287b73877e5eae7d96b0dd"
+  },
+  "gns": {
+    "url": "https://codeload.github.com/ValveSoftware/GameNetworkingSockets/tar.gz/refs/tags/v1.4.1",
+    "sha256": "1cfb2bf79c51a08ae4e8b7ff5e9c1266b43cfff6f53ecd3e7bc5e3fcb2a22503"
+  },
+  "openssl": {
+    "url": "https://codeload.github.com/openssl/openssl/tar.gz/refs/tags/openssl-3.5.9",
+    "sha256": "796831ec533bf41998eaaee9d632d921b8a69f57394fa4086ff01a941113d26d"
+  },
+  "protobuf": {
+    "url": "https://codeload.github.com/protocolbuffers/protobuf/tar.gz/refs/tags/v21.12",
+    "sha256": "22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de"
   }
 }

@@ -87,7 +87,7 @@ python tools/forge.py validate --no-open-log
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The base CTest set has **nine** suites. Enabling the shader translator registers a tenth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs six integration suites, omitting `numeric`, `packager_paths`, and `render_optimization`.
+The base CTest set has **eleven** suites. Enabling the shader translator registers a twelfth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs seven integration suites, omitting `numeric`, `packager_paths`, and `render_optimization`.
 
 | Check | Command | Requires |
 | --- | --- | --- |
@@ -98,6 +98,7 @@ The base CTest set has **nine** suites. Enabling the shader translator registers
 | Open documents and shell coexistence | `python tests/project_api.py build/bin/forge` | Native runtime |
 | PBR, hierarchy, procedural meshes, LOD/culling APIs | `python tests/rendering.py build/bin/forge` | Native runtime |
 | Bullet, particles, forces/queries, rejected reload | `python tests/simulation.py build/bin/forge` | Native runtime |
+| Native ENet/Valve sockets, bytes, scene/reload lifetime | `ctest --test-dir build -C Release --output-on-failure -R "^(network_native\|networking)$"` | Localhost UDP allowed; `sockets` covered when compiled |
 | Optional GLSL/HLSL/MSL translator | `ctest --test-dir build -C Release --output-on-failure -R '^shader_compiler$'` | Translator compiled; no device required |
 | UI/text/shader reload/audio hardware | `python tests/graphics.py build/bin/forge` | Desktop, graphics device, audio device unless silent |
 | Cameras/UV/batching/shadows/skinning/editor | `python tests/features_graphics.py build/bin/forge` | Desktop/graphics; editor checks require builtin shell |
@@ -133,3 +134,5 @@ The optional particle benchmark opens a real graphics window. It measures scalar
 | Logs or saves cannot be written in an installed game | Select user storage with a stable application_id; avoid writing into a signed bundle |
 
 Detailed limitations belong to each subsystem page. Forge currently lacks IBL/HDR, cascaded shadows, mesh colliders/joints/navmesh, full bidi/shaping, and fully independent concurrent Python runtimes. Terrain, chunks, voxel water, and genre rules remain game modules.
+
+Networking suites use real loopback traffic, independent native hosts and the embedded Python bridge. They do not verify multiple machines, firewall/NAT conditions, Steam accounts, authenticated P2P/relay, overlay, stats, or matchmaking. The Steam SDK/client branch requires separate target-platform compilation and live-client validation.
