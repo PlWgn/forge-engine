@@ -720,7 +720,7 @@ Text decodes from UTF-8; stb_truetype rasterizes requested glyphs and caches the
 
 ## 16. Validation and Implementation Boundaries
 
-python tools/forge.py test runs six native integration suites: integration, features, authoring, project_api, rendering, and simulation. They cover JSON/syntax, configurable structure, Python API, contacts/lifecycle, saves/transitions, tracebacks/reload, packaging, nested Behavior creation/destruction, teardown isolation, rollback, pause/listeners/UI, migrations/backup/autosave, audio settings/dialogue, and localization/fallback/preferences. CTest adds numeric and packager_paths for eight suites total: ctest --test-dir build -C Release --output-on-failure. Regressions cover backup-only menu slots, reverse focus, collider consistency, small masses, physics/raster overflow, path normalization, and standalone execution. Coverage details are in section 20.6 and docs/FORGE_2.md.
+python tools/forge.py test runs six native integration suites: integration, features, authoring, project_api, rendering, and simulation. They cover JSON/syntax, configurable structure, Python API, contacts/lifecycle, saves/transitions, tracebacks/reload, packaging, nested Behavior creation/destruction, teardown isolation, rollback, pause/listeners/UI, migrations/backup/autosave, audio settings/dialogue, and localization/fallback/preferences. CTest adds numeric and packager_paths for eight base suites, plus shader_compiler when the optional translator is enabled: ctest --test-dir build -C Release --output-on-failure. Regressions cover backup-only menu slots, reverse focus, collider consistency, small masses, physics/raster overflow, path normalization, and standalone execution. Coverage details are in section 20.6 and docs/FORGE_2.md.
 
 Additional checks cover windows, 2D/3D rendering, audio, UI at 640×480/1280×720/1920×1080, GLSL recovery, and preserving old shaders after a rejected scene: python tests/graphics.py build/bin/forge (Windows: use the actual forge.exe path). These require a desktop, graphics driver, and audio device.
 
@@ -1371,7 +1371,7 @@ python tools/benchmark_hotpaths.py build/bin/forge --entities 50 --backend legac
 
 On Windows, select an existing forge.exe. The benchmark creates a temporary project and measures 1000 scalar setters, 100 individual raycasts, and 100 nested Python/Json roundtrips. --particles opens an actual window and averages CPU render_ms after warm-up. --entities sets count; backend is legacy/bullet/both. This measures your machine without timing gates/FPS promises. Compare identical parameters/scenes/window dimensions and workload.
 
-rendering checks incremental counters, parent/child bulk commit/rejection, copies/Unicode/legacy coercion. simulation checks cache/batch in both backends and body updates. simulation_graphics checks instanced bytes, cached texture paths, UV/color/depth, legacy custom shaders/explicit fallback, and shader rollback. Current CI includes eight CTest and four GPU suites; local reports/screenshots stay out of the source distribution.
+rendering checks incremental counters, parent/child bulk commit/rejection, copies/Unicode/legacy coercion. simulation checks cache/batch in both backends and body updates. simulation_graphics checks instanced bytes, cached texture paths, UV/color/depth, legacy custom shaders/explicit fallback, and shader rollback. Current CI includes eight base CTest suites, the optional shader_compiler suite, and four shared GPU suites; local reports/screenshots stay out of the source distribution.
 
 ## 22. Forge 2.4: Reusable Objects and Animation
 
@@ -1525,7 +1525,7 @@ python tools/forge.py build --output dist/ReviewGame
 python tools/verify_package.py dist/ReviewGame
 ```
 
-Current CTest has eight suites and launcher test has six integration suites; numeric/packager_paths are CTest-only. macOS/Windows CI runs CTest, builds a package, and checks hashes/licenses/three standalone scenes from another cwd with invalid PYTHONHOME/PYTHONPATH. Linux runs four GPU suites; rendering_graphics includes morph/retarget/editor checks. CMake links Threads explicitly and tracks embedded GLSL sources for reconfiguration. Each platform/environment validates itself; success on one does not establish another.
+Current CTest has eight base suites plus optional shader_compiler and launcher test has six integration suites; numeric/packager_paths are CTest-only. macOS/Windows CI runs CTest, builds a package, and checks hashes/licenses/three standalone scenes from another cwd with invalid PYTHONHOME/PYTHONPATH. Linux runs four GPU suites; rendering_graphics includes morph/retarget/editor checks. CMake links Threads explicitly and tracks embedded GLSL sources for reconfiguration. Each platform/environment validates itself; success on one does not establish another.
 
 ### 22.8. Authored Skeletal Clips
 
@@ -1563,7 +1563,7 @@ The open format, API, and shell-development instructions are in [docs/PROJECT_AP
 
 Save As does not overwrite an existing unopened file. A new export becomes the current edit document and subsequent saves use its baseline. Saving original JSON does not expand unchanged defaults/prefab values. Document API base:null creates a file. Conflicts retain disk and draft; ProjectError.paths reports conflict paths. Automatic reload does not erase editor drafts: save/undo or explicitly reload and retry a watched edit. Undo apply may re-run callbacks; it does not restore arbitrary Python state/external actions.
 
-project_api.py <binary> belongs to eight-suite CTest and six-suite launcher checks. CI builds native ON/OFF on macOS/Windows; GPU suites run separately with builtin UI. Structural schemas do not replace native validate, media/GPU checks, or Python execution. API 1 offers an external document service and in-process paused editor API, without Qt/GTK viewport embedding, remote live-game editing, arbitrary ImGui widgets, or a network service.
+project_api.py <binary> belongs to the eight base CTest suites and six-suite launcher checks. CI builds native ON/OFF on macOS/Windows; GPU suites run separately with builtin UI. Structural schemas do not replace native validate, media/GPU checks, or Python execution. API 1 offers an external document service and in-process paused editor API, without Qt/GTK viewport embedding, remote live-game editing, arbitrary ImGui widgets, or a network service.
 
 ## 24. Forge 2.5.1: Fixes and Compatibility
 
@@ -1572,3 +1572,10 @@ Schema/project API/save-envelope versions are unchanged. Strict checks reject fr
 Legacy arithmetic failure restores positions/velocities/contacts for the whole step; collision corrections update child transforms. Bullet rejects 2D switching/out-of-range gravity before mutation. Text-metric overflow raises instead of returning Infinity. Large finite camera/light/listener directions use double-precision intermediates; unrepresentable matrices are rejected. Failed audio replacement preserves the old voice at capacity; removing a ducking rule releases its gain.
 
 Editor candidates isolate procedural registries/listener membership; remaining retired-scene callbacks do not run after synchronous on_frame apply. Custom viewport shells continue on_update after rejected reload and may fix files or request editor load. If the shell itself fails in this mode, repeated updates are suppressed until successful loading/restart.
+
+
+## 25. Forge 2.6: Direct3D 11 and OpenGL
+
+OpenGL remains the default. Windows builds additionally include optional Direct3D 11; renderer.backend selects opengl/direct3d11/auto. Existing GLSL shaders keep their file/uniform API and are compiled through glslang/SPIRV-Cross on Direct3D. Native HLSL stage-pair overrides are optional; the two backends can share one project without platform rules in scenes.
+
+See [docs/DIRECT3D11.md](docs/DIRECT3D11.md) for backend defaults, optional dependencies/build switches, all editable shader pipelines, native HLSL coordinates/semantics, budgets, and Windows verification limits. Backend/driver/debug changes require restart; rejected development changes retain the current device. forge.graphics_backends() and project capabilities expose compiled support; renderer_stats() exposes the actual backend after rendering. --silent-audio is independent of graphics and headless mode. Project/shell API stays version 1.

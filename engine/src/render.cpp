@@ -5,6 +5,7 @@
 #include <forge/particles.hpp>
 #include <forge/particle_render.hpp>
 #include <forge/gpu_resources.hpp>
+#include <forge/graphics_device.hpp>
 #include <forge/text.hpp>
 #include <unordered_map>
 #include <forge/editor.hpp>
@@ -17,8 +18,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #if FORGE_WITH_EDITOR
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #endif
 #include <tuple>
 #define STBI_WINDOWS_UTF8
@@ -67,6 +66,8 @@ double textWorldScale(const Entity &e) {
 } // namespace
 struct Renderer::Impl : WindowInput {
     GLFWwindow *window = nullptr;
+    std::unique_ptr<GraphicsDevice> device;
+    Json deviceOptions = Json::object();
     const Config *config = nullptr;
     fs::path screenshotPath, previousScreenshot;
     bool captured = false, previousCaptured = false, vsync = true;
@@ -129,12 +130,12 @@ struct Renderer::Impl : WindowInput {
     ~Impl() {
         #if FORGE_WITH_EDITOR
         if (editorContext) {
-            ImGui_ImplOpenGL3_Shutdown();
-            ImGui_ImplGlfw_Shutdown();
+            device->shutdownEditor();
             ImGui::DestroyContext();
         }
         #endif
         clear();
+        device.reset();
         if (window) {
             glfwDestroyWindow(window);
             glfwTerminate();
@@ -216,6 +217,20 @@ struct Renderer::Impl : WindowInput {
     }
     void setup() {
         auto options = config->data.value("renderer", Json::object());
+        auto shaderProgram = [&](const std::string& kind, const std::string& vertex,
+                                 const std::string& fragment, const std::string& label) {
+            if (GraphicsDevice::current().backend() == "direct3d11") {
+                auto shaders = options.value("direct3d11", Json::object()).value("shaders", Json::object());
+                if (shaders.contains(kind)) {
+                    auto pair = shaders.at(kind);
+                    auto vs = config->asset("graphics", pair.at("vertex").get<std::string>());
+                    auto ps = config->asset("graphics", pair.at("fragment").get<std::string>());
+                    return GraphicsDevice::current().hlslProgram(textFile(vs), textFile(ps),
+                        label + " (" + vs.u8string() + ", " + ps.u8string() + ")");
+                }
+            }
+            return linkProgram(vertex, fragment, label);
+        };
         batching = options.value("batching", true);
         gpuLimit = options.value("gpu_budget_bytes", size_t(128 * 1024 * 1024));
         auto vertex = options.contains("vertex_shader")
@@ -224,13 +239,16 @@ struct Renderer::Impl : WindowInput {
         auto fragment = options.contains("fragment_shader")
                             ? textFile(config->asset("graphics", options["fragment_shader"]))
                             : fragmentDefault;
-        program = linkProgram(vertex, fragment, "Scene shader");
-        postProgram = linkProgram(vertexDefault,
+        program = shaderProgram("scene", vertex, fragment, "Scene shader");
+        postProgram = shaderProgram("post", vertexDefault,
                                   options.contains("post_shader")
                                       ? textFile(config->asset("graphics", options["post_shader"]))
                                       : postDefault,
                                   "Post shader");
-        shadowProgram = linkProgram(vertexDefault, R"(#version 330 core
+        auto shadowVertex = options.contains("shadow_vertex_shader")
+            ? textFile(config->asset("graphics", options["shadow_vertex_shader"])) : std::string(vertexDefault);
+        auto shadowFragment = options.contains("shadow_fragment_shader")
+            ? textFile(config->asset("graphics", options["shadow_fragment_shader"])) : std::string(R"(#version 330 core
 in vec2 v_uv;
 in vec4 v_vertex_color;
 uniform sampler2D u_texture;
@@ -242,7 +260,8 @@ void main(){
     if(u_textured==1) alpha*=texture(u_texture,v_uv).a;
     if(u_alpha_mode==1 && alpha<u_alpha_cutoff) discard;
 }
-)", "Shadow shader");
+)");
+        shadowProgram = shaderProgram("shadow", shadowVertex, shadowFragment, "Shadow shader");
         auto particleShader = [&](const char* field, const char* file, const char* fallback) {
             auto path = config->asset("graphics", options.value(field, std::string(file)));
             return options.contains(field) || fs::is_regular_file(path) ? textFile(path) : std::string(fallback);
@@ -255,7 +274,7 @@ void main(){
         };
         particleInstanced=options.value("particle_instancing",true) && newlineNormalized(particleVertex)==newlineNormalized(particleVertexDefault);
         if(particleInstanced)particleVertex=particleShader("particle_instance_shader","particle-instance.vert",particleInstanceDefault);
-        particleProgram=linkProgram(particleVertex,particleShader("particle_fragment_shader","particle.frag",particleFragmentDefault),"Particle shader");
+        particleProgram=shaderProgram(particleInstanced ? "particles_instanced" : "particles",particleVertex,particleShader("particle_fragment_shader","particle.frag",particleFragmentDefault),"Particle shader");
         particleRenderer=std::make_unique<ParticleRenderer>(particleInstanced);
         meshes["sprite"] = upload({{{-.5f, -.5f, 0}, {0, 0}, {0, 0, 1}},
                                    {{.5f, -.5f, 0}, {1, 0}, {0, 0, 1}},
@@ -766,15 +785,20 @@ void Renderer::init(const Config &c, World &world){if(!active)throw std::runtime
 void Renderer::init(const Config &c, World &world, Runtime &context) {
     impl->context=&context;
     impl->config = &c;
+    auto rendererOptions = c.data.value("renderer", Json::object());
+    auto backend = GraphicsDevice::select(rendererOptions);
     glfwSetErrorCallback([](int code, const char *message) {
         logger.write("ERROR", "GLFW " + std::to_string(code) + ": " + message);
     });
     if (!glfwInit())
         throw std::runtime_error("GLFW initialization failed");
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    glfwDefaultWindowHints();
+    if (backend == "opengl") {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    } else glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     auto options = c.data.value("window", Json::object());
     world.width = options.value("width", 1280);
     world.height = options.value("height", 720);
@@ -784,7 +808,7 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
                          options.value("fullscreen", false) ? glfwGetPrimaryMonitor() : nullptr, nullptr);
     if (!impl->window) {
         glfwTerminate();
-        throw std::runtime_error("Cannot create OpenGL 3.3 window");
+        throw std::runtime_error("Cannot create " + backend + " window");
     }
     glfwSetWindowUserPointer(impl->window, impl.get());
     glfwSetScrollCallback(impl->window, [](GLFWwindow *window, double x, double y) {
@@ -793,10 +817,10 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
     glfwSetCharCallback(impl->window, [](GLFWwindow *window, unsigned code) {
         static_cast<Impl *>(glfwGetWindowUserPointer(window))->characters.push_back(code);
     });
-    glfwMakeContextCurrent(impl->window);
-    gl::load();
+    impl->device = std::make_unique<GraphicsDevice>(impl->window, rendererOptions);
+    impl->deviceOptions = rendererOptions.value("direct3d11", Json::object());
     impl->vsync = options.value("vsync", true);
-    glfwSwapInterval(impl->vsync ? 1 : 0);
+    if (backend == "opengl") glfwSwapInterval(impl->vsync ? 1 : 0);
 #ifndef __APPLE__
     if (c.data["project"].contains("icon")) {
         auto iconPath = c.resolve(c.data["project"]["icon"]).u8string();
@@ -816,6 +840,15 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
         editor(true);
 }
 void Renderer::stage() {
+    auto settings = impl->config->data.value("renderer", Json::object());
+    if (GraphicsDevice::select(settings) != impl->device->backend())
+        throw std::runtime_error("Changing renderer.backend requires restarting the runtime; the current device is retained");
+    if (impl->device->backend() == "direct3d11") {
+        auto options = settings.value("direct3d11", Json::object());
+        if (options.value("driver", std::string("auto")) != impl->deviceOptions.value("driver", std::string("auto")) ||
+            options.value("debug", false) != impl->deviceOptions.value("debug", false))
+            throw std::runtime_error("Changing the Direct3D driver/debug layer requires restarting the runtime");
+    }
     staged = std::make_unique<Impl>();
     staged->config = impl->config;
     staged->context = impl->context;
@@ -915,6 +948,7 @@ void Renderer::render(World &world) {
     glfwGetWindowSize(impl->window, &world.width, &world.height);
     if (w <= 0 || h <= 0 || world.width <= 0 || world.height <= 0)
         return;
+    impl->device->beginFrame(w, h);
     ++impl->frame;
     impl->frameImages.clear();impl->imageResolutions=0;impl->particleUpload=0;impl->particleSortMs=0;
     impl->particleSnapshot=world.particles?world.particles->draw(world):std::vector<ParticleDraw>{};
@@ -1055,7 +1089,8 @@ void Renderer::render(World &world) {
         {"render_targets", impl->targets.size()},
         {"render_ms",
          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()}};
-    glfwSwapBuffers(impl->window);
+    impl->stats.update(impl->device->diagnostics());
+    impl->device->present(impl->vsync);
 }
 void Renderer::poll(){pollInput(impl->window,*impl);}
 
@@ -1103,8 +1138,8 @@ void Renderer::editor(bool enabled) {
         io.Fonts->AddFontFromFileTTF(impl->fontFaces.front()->name.c_str(), 18, nullptr,
                                      io.Fonts->GetGlyphRangesCyrillic());
         ImGui::StyleColorsDark();
-        ImGui_ImplGlfw_InitForOpenGL(impl->window, true);
-        ImGui_ImplOpenGL3_Init("#version 330 core");
+        try { impl->device->initializeEditor(); }
+        catch (...) { ImGui::DestroyContext(); throw; }
         impl->editorContext = true;
     }
     #else

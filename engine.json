@@ -26,6 +26,7 @@
     "fullscreen": false
   },
   "renderer": {
+    "backend": "opengl",
     "vertex_shader": "default.vert",
     "fragment_shader": "default.frag",
     "font": "font.ttf",

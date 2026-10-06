@@ -150,7 +150,142 @@
     },
     "renderer": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": [
+            "opengl",
+            "direct3d11",
+            "auto"
+          ],
+          "default": "opengl",
+          "description": "Direct3D 11 is optional and Windows-only. Explicit unavailable backends fail; auto follows build capabilities."
+        },
+        "direct3d11": {
+          "type": "object",
+          "properties": {
+            "driver": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "hardware",
+                "warp"
+              ],
+              "default": "auto"
+            },
+            "debug": {
+              "type": "boolean",
+              "default": false
+            },
+            "shaders": {
+              "type": "object",
+              "properties": {
+                "scene": {
+                  "type": "object",
+                  "properties": {
+                    "vertex": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "vertex",
+                    "fragment"
+                  ],
+                  "additionalProperties": true
+                },
+                "post": {
+                  "type": "object",
+                  "properties": {
+                    "vertex": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "vertex",
+                    "fragment"
+                  ],
+                  "additionalProperties": true
+                },
+                "shadow": {
+                  "type": "object",
+                  "properties": {
+                    "vertex": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "vertex",
+                    "fragment"
+                  ],
+                  "additionalProperties": true
+                },
+                "particles": {
+                  "type": "object",
+                  "properties": {
+                    "vertex": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "vertex",
+                    "fragment"
+                  ],
+                  "additionalProperties": true
+                },
+                "particles_instanced": {
+                  "type": "object",
+                  "properties": {
+                    "vertex": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "vertex",
+                    "fragment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "shadow_vertex_shader": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shadow_fragment_shader": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "rendering": {
       "type": "object",

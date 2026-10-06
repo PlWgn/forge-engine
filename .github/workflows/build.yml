@@ -26,9 +26,28 @@ jobs:
           if [ "${{ matrix.editor }}" = OFF ]; then python tools/forge.py compile --without-editor; else python tools/forge.py compile; fi
       - name: All native regressions (including numeric and packager_paths)
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Direct3D WARP native HLSL and auto-selection
+        if: runner.os == 'Windows'
+        env:
+          FORGE_TEST_BACKEND: direct3d11
+          FORGE_TEST_SILENT_AUDIO: '1'
+        run: python tests/direct3d_graphics.py build/bin/Release/forge.exe
+      - name: Direct3D WARP shared GPU regressions (silent audio)
+        if: runner.os == 'Windows' && matrix.editor == 'ON'
+        env:
+          FORGE_TEST_BACKEND: direct3d11
+          FORGE_TEST_SILENT_AUDIO: '1'
+        run: |
+          python tests/graphics.py build/bin/Release/forge.exe
+          python tests/features_graphics.py build/bin/Release/forge.exe
+          python tests/simulation_graphics.py build/bin/Release/forge.exe
+          python tests/rendering_graphics.py build/bin/Release/forge.exe
       - run: python tools/forge.py build --output dist/Game
       - name: Verify standalone hashes and launch outside checkout
         run: python tools/verify_package.py dist/Game
+      - name: Verify standalone Direct3D GLSL compilation and launch
+        if: runner.os == 'Windows'
+        run: python tools/verify_package.py dist/Game --graphics-backend direct3d11
       - uses: actions/upload-artifact@v4
         with:
           name: Forge-${{ matrix.os }}-editor-${{ matrix.editor }}

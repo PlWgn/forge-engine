@@ -1,4 +1,5 @@
 #include <forge/engine.hpp>
+#include <forge/graphics_settings.hpp>
 #include <forge/physics.hpp>
 #include <forge/particles.hpp>
 #include <forge/material.hpp>
@@ -111,6 +112,7 @@ void Config::validate(bool media) const {
     if(!development.is_object())throw std::runtime_error("development must be an object");
     auto watchInterval=finiteNumber(development.value("watch_interval",Json(.3)),"development.watch_interval");
     if(watchInterval<.05 || watchInterval>10)throw std::runtime_error("development.watch_interval must be .05..10 seconds");
+    validateGraphicsConfiguration(*this);
     auto graphics = data.value("renderer",Json::object());
     if(graphics.contains("texture_filter") && graphics["texture_filter"]!="nearest" && graphics["texture_filter"]!="linear")throw std::runtime_error("renderer.texture_filter must be nearest or linear");
     if(graphics.contains("particle_instancing") && !graphics["particle_instancing"].is_boolean())throw std::runtime_error("renderer.particle_instancing must be boolean");

@@ -4,6 +4,7 @@ import json,struct,subprocess,unittest
 import graphics as base
 from model_fixture import animated_triangle
 ROOT,ENGINE=base.ROOT,base.ENGINE
+engine_command=base.engine_command
 
 def sheet(path):
     # Original uncompressed BMP: red and green horizontal regions.
@@ -25,7 +26,7 @@ class FeatureGraphicsTests(unittest.TestCase):
     def run_scene(self,source,*,command='run',frames=8,extra=()):
         (self.root/'scenes/gpu.py').write_text(source,encoding='utf-8');self.config['entry_scene']='gpu.py'
         self.config['window'].update(width=640,height=480,vsync=False);self.write_config()
-        result=subprocess.run([str(ENGINE),command,'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log',*extra],capture_output=True,text=True,timeout=60)
+        result=subprocess.run([*base.engine_command(command),'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log',*extra],capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result.stdout+result.stderr
     def test_batching_and_uv_regions(self):
@@ -159,7 +160,7 @@ def on_update(dt):
 '''
         file=self.root/'scenes/window.py';file.write_text(source)
         self.config['entry_scene']='window.py';self.config['window'].update(width=640,height=480,vsync=True);self.write_config()
-        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        process=subprocess.Popen([*base.engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:
             self.wait_log('WINDOW_READY',process)
             file.write_text("import forge\ndef on_start():\n    forge.set_window({'width':800,'height':600,'vsync':False})\n    raise RuntimeError('WINDOW_CANDIDATE_FAILED')\n")
@@ -185,7 +186,7 @@ def on_update(dt):
 '''
         file=self.root/'scenes/material.py';file.write_text(source)
         self.config['entry_scene']='material.py';self.write_config()
-        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        process=subprocess.Popen([*base.engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:
             self.wait_log('material-before.ppm',process);texture.write_bytes(b'invalid image')
             self.wait_log('material-rollback.ppm',process)

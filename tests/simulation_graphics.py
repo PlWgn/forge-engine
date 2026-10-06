@@ -149,7 +149,7 @@ def on_update(dt):
         (self.root/'scenes/particle-reload.py').write_text(source)
         self.config['entry_scene']='particle-reload.py';self.config['window'].update(width=640,height=480,vsync=True);self.write_config()
         shader=self.root/'graphics/particle.frag';original=shader.read_text()
-        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        process=subprocess.Popen([*base.engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:
             self.wait_log('before.ppm',process)
             shader.write_text('this is not GLSL')

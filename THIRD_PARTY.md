@@ -6,6 +6,8 @@ The engine uses these pinned dependencies. Run `python tools/dependencies.py` to
 
 | Dependency | Version | License / source |
 | --- | --- | --- |
+| glslang | 15.1.0 | BSD/MIT/Apache notices, https://github.com/KhronosGroup/glslang/blob/15.1.0/LICENSE.txt |
+| SPIRV-Cross | vulkan-sdk-1.4.309.0 | Apache-2.0, https://github.com/KhronosGroup/SPIRV-Cross/blob/vulkan-sdk-1.4.309.0/LICENSE |
 | GLFW | 3.4 | zlib/libpng, https://github.com/glfw/glfw/blob/3.4/LICENSE.md |
 | GLM | 1.0.1 | MIT, https://github.com/g-truc/glm/blob/1.0.1/copying.txt |
 | pybind11 | 3.0.1 | BSD-3-Clause, https://github.com/pybind/pybind11/blob/v3.0.1/LICENSE |
@@ -26,3 +28,5 @@ The generated textures (including the soft particle sprite and the PBR base/norm
 The compiled localization data in `engine/include/forge/localization_data.hpp` derives from [CLDR JSON 48.0.0 plurals.json](https://github.com/unicode-org/cldr-json/blob/48.0.0/cldr-json/cldr-core/supplemental/plurals.json). Sample annotations were removed and locale keys normalized; the original SHA-256 is recorded in that header. The evaluator supports cardinal rules for ordinary JSON numeric counts; compact-exponent operands are zero. Engine UI translations are original Forge strings. The Unicode copyright/permission notice is preserved in `engine/resources/Unicode-LICENSE.txt` and copied to game builds and starter projects as `licenses/Unicode.txt`.
 
 The PBR shader is an original Forge implementation of the metallic/roughness workflow (GGX distribution, Smith visibility approximation and Schlick Fresnel); it is not copied from a third-party renderer. Channel conventions follow the [Khronos glTF 2.0 material specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#materials). Supporting glTF material maps does not imply complete glTF extension or renderer conformance. No new dependency is introduced in Forge 2.2.
+
+The optional Direct3D 11 backend uses Windows system D3D11/DXGI/D3DCompiler APIs. Its GLSL translator statically links glslang and SPIRV-Cross (only GLSL parsing/SPIR-V output and HLSL generation, without tools/tests/optimizers/HLSL parsing). Compiler license texts are preserved under licenses/glslang.txt and licenses/spirv_cross.txt when the dependencies are present; original source copyright/permission notices are retained in licenses/Shader-NOTICE.txt. OpenGL-only bootstrap can skip them. No Microsoft SDK DLL is redistributed by Forge; Windows 10 supplies the system compiler/runtime. Native HLSL examples are original adaptable Forge source.

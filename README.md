@@ -1,6 +1,8 @@
-# Forge 2.5.1
+# Forge 2.6.0
 
-Modular game runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS and Windows.
+Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Direct3D 11, macOS and Windows.
+
+Forge 2.6 adds an optional Windows Direct3D 11 backend while keeping OpenGL as the default. Existing GLSL shaders remain editable and are translated for Direct3D; optional native HLSL pairs let projects customize individual pipelines. Scripts/scenes retain their APIs. [Backend selection, shader authoring, build switches, and verification limits](docs/DIRECT3D11.md).
 
 Bugfix 2.5.1 corrects editor rollback, saves, path/numeric checks, audio, and PBR preloading. Unchanged text entities are no longer translated every frame. Project format and shell API remain version 1. [Fixes and release validation](docs/BUGFIX_2_5_1.md).
 
@@ -74,7 +76,7 @@ macOS build --output dist/MyGame.app creates an app with private Python, icon, a
 
 Git contains C++ source, adaptable Python modules, tools, built-in examples/assets, tests, documentation, licenses, and dependency lock. Builds, environments, downloads, saves, logs, screenshots, and local reports are ignored through [.gitignore](.gitignore). Fonts, OBJ/glTF models, images, and example WAVs are required source assets and remain tracked.
 
-After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eight suites, including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Linux runs four GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [guide section 20.6](GUIDE.md).
+After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eight base suites plus the optional shader_compiler suite (enabled by default on Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [guide section 20.6](GUIDE.md).
 
 ## License and Modifications
 

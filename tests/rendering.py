@@ -5,6 +5,35 @@ ROOT,ENGINE=base.ROOT,base.ENGINE
 class RenderingTests(unittest.TestCase):
     setUp,tearDown=base.EngineTests.setUp,base.EngineTests.tearDown
     write_config,script_scene,run_engine=base.EngineTests.write_config,base.EngineTests.script_scene,base.EngineTests.run_engine
+    def test_graphics_backend_configuration_and_capabilities(self):
+        self.script_scene("""import forge
+def on_start():
+    available=forge.graphics_backends()
+    assert available[0]=='opengl'
+    assert available==forge.capabilities()['graphics_backends']
+    assert 'renderer_backends' in forge.capabilities()['features']
+    forge.log('BACKEND_API_OK');forge.quit()
+""")
+        for backend in ('opengl','auto','direct3d11'):
+            self.config['renderer']['backend']=backend;self.write_config()
+            self.assertIn('BACKEND_API_OK',self.run_engine())  # Headless needs no device.
+        original=json.loads(json.dumps(self.config['renderer']))
+        invalid=[('backend',None),('backend',True),('backend','direct3d12'),
+                 ('direct3d11',[]),('direct3d11',{'driver':'unknown'}),
+                 ('direct3d11',{'debug':1}),('direct3d11',{'shaders':[]}),
+                 ('direct3d11',{'shaders':{'scene':{'vertex':'missing.hlsl'}}}),
+                 ('direct3d11',{'shaders':{'scene':{'vertex':'missing.hlsl','fragment':'missing.hlsl'}}})]
+        for field,value in invalid:
+            with self.subTest(field=field,value=value):
+                self.config['renderer']=dict(original,**{field:value});self.write_config()
+                self.assertIn('renderer' if field=='backend' else 'shader' if isinstance(value,dict) and 'shaders' in value else 'direct3d11',
+                              self.run_engine('validate',expected=1).lower())
+        self.config['renderer']=original
+        self.config['renderer']['direct3d11']={'shaders':{'scene':{
+            'vertex':'direct3d11/unlit.vert.hlsl','fragment':'direct3d11/unlit.frag.hlsl'}}}
+        self.write_config();self.run_engine('validate')
+        self.config['renderer']['direct3d11']['shaders']['scene']['vertex']='../../outside.hlsl'
+        self.write_config();self.assertIn('escapes',self.run_engine('validate',expected=1))
     def test_incremental_and_atomic_bulk_transforms(self):
         self.script_scene("""import forge
 def build():return {'mode':'3d','physics_enabled':False,'entities':[{'id':'e'+str(i),'kind':'empty'} for i in range(2000)]+[{'id':'child','kind':'empty','parent':'e0','position':[1,0,0]}]}

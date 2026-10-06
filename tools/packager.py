@@ -170,11 +170,13 @@ def build_bundle(config_file, engine_file, output):
         if (source_root / 'THIRD_PARTY.md').exists(): shutil.copy2(source_root / 'THIRD_PARTY.md', stage / 'THIRD_PARTY.md')
         licenses = stage / 'licenses'; licenses.mkdir()
         vendor = source_root / 'vendor'
-        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt'), ('bullet','LICENSE.txt')]:
+        for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt'), ('bullet','LICENSE.txt'), ('glslang','LICENSE.txt'), ('spirv_cross','LICENSE')]:
             f = vendor / name / filename
             if f.exists(): shutil.copy2(f, licenses / (name + '.txt'))
         for filename in ['stb_image.h', 'stb_truetype.h', 'miniaudio.h', 'json.hpp']:
             if (vendor / filename).exists(): shutil.copy2(vendor / filename, licenses / filename) # license text is embedded in header
+        if (vendor / 'glslang').exists() or (vendor / 'spirv_cross').exists():
+            shutil.copy2(source_root / 'engine/resources/Shader-NOTICE.txt', licenses / 'Shader-NOTICE.txt')
         # Preserve the license texts for Assimp's compiled internal dependencies too.
         for license_file in (vendor / 'assimp' / 'contrib').rglob('*'):
             if license_file.is_file() and ('license' in license_file.name.lower() or 'copying' in license_file.name.lower()):

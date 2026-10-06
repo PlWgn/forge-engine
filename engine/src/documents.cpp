@@ -3,6 +3,7 @@
 #include <forge/material.hpp>
 #include <forge/prefab.hpp>
 #include <forge/logger.hpp>
+#include <forge/graphics_device.hpp>
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -160,6 +161,7 @@ Json projectRequest(const fs::path &settings,const Json &request) {
     if(!request.is_object() || (request.contains("api_version") && (!request["api_version"].is_number_integer() || request["api_version"]!=1)))throw std::runtime_error("Expected project API version 1 request object");
     auto op=request.at("op").get<std::string>();
     if(op=="capabilities")return {{"api_version",1},{"engine_version",FORGE_VERSION},{"base_shell",bool(FORGE_WITH_EDITOR)},
+        {"graphics_backends",GraphicsDevice::backends()},
         {"operations",{"capabilities","inspect","list","read","commit","patch","apply_patch","merge","check"}}};
     if(op=="apply_patch")return request.at("data").patch(request.at("patch"));
     if(op=="merge")return mergeDocuments(request.at("base"),request.at("local"),request.at("disk"));

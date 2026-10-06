@@ -46,5 +46,13 @@
   "bullet": {
     "url": "https://codeload.github.com/bulletphysics/bullet3/tar.gz/refs/tags/3.25",
     "sha256": "c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77"
+  },
+  "glslang": {
+    "url": "https://codeload.github.com/KhronosGroup/glslang/tar.gz/refs/tags/15.1.0",
+    "sha256": "4bdcd8cdb330313f0d4deed7be527b0ac1c115ff272e492853a6e98add61b4bc"
+  },
+  "spirv_cross": {
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/refs/tags/vulkan-sdk-1.4.309.0",
+    "sha256": "cf4f12a767d63f63024e61750e372ffdc95567513b99ed9be6f21f474b328ddd"
   }
 }

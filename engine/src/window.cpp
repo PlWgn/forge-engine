@@ -159,6 +159,6 @@ void windowOptions(GLFWwindow* window,bool& vsync,const Json &options) {
     } else
         glfwSetWindowMonitor(window, nullptr, 100, 100, width, height, GLFW_DONT_CARE);
     vsync = current.value("vsync", true);
-    glfwSwapInterval(vsync ? 1 : 0);
+    if (glfwGetCurrentContext()) glfwSwapInterval(vsync ? 1 : 0);
 }
 }

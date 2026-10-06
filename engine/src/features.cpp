@@ -1,5 +1,6 @@
 #include <forge/engine.hpp>
 #include <forge/documents.hpp>
+#include <forge/graphics_device.hpp>
 #include <algorithm>
 #include <forge/model.hpp>
 #include <forge/physics.hpp>
@@ -268,6 +269,7 @@ void bindFeatures(py::module_ &m) {
         data["uniforms"][name] = fromPython(value);
         runtime().world.renderSettings = validateRenderSettings(std::move(data));
     });
+    m.def("graphics_backends", []() { return python(GraphicsDevice::backends()); });
     m.def("renderer_stats",
           []() { return python(runtime().renderer ? runtime().renderer->diagnostics() : Json::object()); });
     m.def("profile", []() { return python(runtime().profile); });

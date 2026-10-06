@@ -169,3 +169,8 @@ CMake: -DFORGE_WITH_EDITOR=OFF. Bootstrap with --without-editor does not downloa
 ## Verification
 
 tests/project_api.py <binary> checks independent shells/manual edits/unknown fields, ID/order merging/conflicts, atomic failure, Unicode/paths/symlinks, config/material/prefab checks, SDK history, shared adapters, CLI stdout/status, and paused lifecycle/rollback. CTest/launcher include it; GPU suites cover viewport/ImGui/animation tools. CI builds macOS/Windows ON/OFF; GPU suites use builtin UI. One active Python runtime, existing subsystem limits, and dependency licenses remain.
+
+
+## Graphics Backends in Forge 2.6
+
+The document capabilities response includes graphics_backends (compiled support). Renderer fields are documented in [DIRECT3D11.md](DIRECT3D11.md) and schemas/project.schema.json. Every shell may edit backend/shader settings through the same document API, preserving unknown fields. Backend/driver/debug changes take effect after runtime restart; live shader candidates retain rollback. SDK Client.launch(silent_audio=True) disables hardware audio independently of graphics. Project and shell protocol versions remain 1.

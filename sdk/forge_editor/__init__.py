@@ -82,7 +82,7 @@ class Client:
         self._plugins.append(module)
         return module
 
-    def launch(self, command='run', *, scene=None, output=None, headless=False, frames=None, shell=None):
+    def launch(self, command='run', *, scene=None, output=None, headless=False, frames=None, shell=None, silent_audio=False):
         """Return Popen; the shell owns cancellation, progress and exit reporting."""
         if command not in ('validate', 'run', 'dev', 'edit', 'build'):
             raise ValueError('Unsupported engine command')
@@ -90,6 +90,7 @@ class Client:
         if scene is not None: args += ['--scene', str(scene)]
         if output is not None: args += ['--output', str(Path(output).resolve())]
         if headless: args += ['--headless']
+        if silent_audio: args += ['--silent-audio']
         if frames is not None: args += ['--frames', str(frames)]
         if shell is not None: args += ['--shell', str(shell)]
         return subprocess.Popen(args)

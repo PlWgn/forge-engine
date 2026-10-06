@@ -5,16 +5,16 @@
 #include <forge/material.hpp>
 #include <forge/physics.hpp>
 #include <forge/animation.hpp>
+#include <forge/graphics_device.hpp>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cstdio>
 namespace forge {
 void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KEY_LAST+1> &keys, const std::array<bool,8> &buttons, glm::vec2 mouseDelta, const Json &diagnostics) {
     const Config* config=&runtime.config;
-    ImGui_ImplOpenGL3_NewFrame();
+    GraphicsDevice::current().editorNewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     auto before = world.serialize();
@@ -301,6 +301,6 @@ void Editor::draw(World &world, Runtime &runtime, const std::array<bool, GLFW_KE
     }
     if (changed && !preview) session.record(before,world.serialize());
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    GraphicsDevice::current().editorDraw();
 }
 } // namespace forge

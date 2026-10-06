@@ -1,8 +1,10 @@
 """Fetch pinned, redistributable native dependencies once (no network at build time)."""
 from pathlib import Path
-import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time
+import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time, sys
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
+    'glslang': ('https://codeload.github.com/KhronosGroup/glslang/tar.gz/refs/tags/15.1.0', 'archive'),
+    'spirv_cross': ('https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/refs/tags/vulkan-sdk-1.4.309.0', 'archive'),
     'bullet': ('https://codeload.github.com/bulletphysics/bullet3/tar.gz/refs/tags/3.25', 'archive'),
     'assimp': ('https://codeload.github.com/assimp/assimp/tar.gz/refs/tags/v6.0.5', 'archive'),
     'imgui': ('https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b', 'archive'),
@@ -18,12 +20,17 @@ PACKAGES = {
 }
 def main():
     import argparse
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--without-editor",action="store_true");args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--without-editor",action="store_true")
+    parser.add_argument("--without-directx",action="store_true",help="Skip optional Windows shader compiler dependencies")
+    parser.add_argument("--shader-tools",action="store_true",help="Fetch shader compiler dependencies on any platform")
+    args=parser.parse_args()
     vendor = ROOT / 'vendor'; vendor.mkdir(exist_ok=True)
     lock_path = vendor / 'dependencies.lock.json'
     lock = json.loads(lock_path.read_text()) if lock_path.exists() else {}
     for name, (url, filename) in PACKAGES.items():
         if args.without_editor and name=="imgui": continue
+        if name in ('glslang', 'spirv_cross') and not args.shader_tools and (sys.platform != 'win32' or args.without_directx): continue
         target = vendor / (name if filename == 'archive' else filename)
         if target.exists(): continue
         # The distributable project already contains the exact default font snapshot.
