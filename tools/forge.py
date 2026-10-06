@@ -64,7 +64,7 @@ def scaffold(destination):
         shutil.copy2(ROOT / filename, destination / filename)
     shutil.copytree(ROOT/'schemas',destination/'schemas')
     (destination/'docs').mkdir()
-    for name in ('PROJECT_API.md','FORGE_2.md','DIRECT3D11.md','METAL.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
+    for name in ('PROJECT_API.md','FORGE_2.md','DIRECT3D11.md','METAL.md','BUGFIX_2_7_1.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
     shutil.copytree(ROOT/'examples/editor',destination/'examples/editor',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / filename, destination / filename)

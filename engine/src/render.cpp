@@ -120,6 +120,7 @@ struct Renderer::Impl : WindowInput {
     size_t batchAllocated = 0, gpuBytes = 0, gpuLimit = 128 * 1024 * 1024;
     Json renderOptions = Json::object(), entityUniforms = Json::object(), stats = Json::object(),
          previousWindow;
+    UniformScope sceneUniforms, postUniforms;
     glm::mat4 shadowMatrix{1};
     bool shadowEnabled = false;
     bool editorEnabled = false, editorContext = false;
@@ -196,6 +197,8 @@ struct Renderer::Impl : WindowInput {
         std::swap(gpuBytes, other.gpuBytes);
         std::swap(gpuLimit, other.gpuLimit);
         std::swap(batching, other.batching);
+        std::swap(sceneUniforms, other.sceneUniforms);
+        std::swap(postUniforms, other.postUniforms);
     }
     void reserve(size_t bytes) {
         for (auto it = textures.begin(); gpuBytes + bytes > gpuLimit && it != textures.end();) {
@@ -447,7 +450,11 @@ void main(){
               unsigned tex, bool lit, const std::vector<glm::mat4> *bones = nullptr,
               unsigned overrideProgram = 0) {
         auto p = overrideProgram ? overrideProgram : shadowPass ? shadowProgram : program;
+        static const Json noUniforms = Json::object();
+        const Json &globalUniforms = renderOptions.contains("uniforms") ? renderOptions.at("uniforms") : noUniforms;
         gl::UseProgram(p);
+        if (!shadowPass && !overrideProgram)
+            sceneUniforms.prepare(p, globalUniforms, entityUniforms);
         auto mvp = view * model;
         gl::UniformMatrix4fv(gl::GetUniformLocation(p, "u_mvp"), 1, 0, glm::value_ptr(mvp));
         gl::UniformMatrix4fv(gl::GetUniformLocation(p, "u_model"), 1, 0, glm::value_ptr(model));
@@ -465,7 +472,7 @@ void main(){
         gl::Uniform2fv(gl::GetUniformLocation(p, "u_resolution"), 1, glm::value_ptr(resolution));
         if (!shadowPass && !overrideProgram) {
             lighting(p);material(p);
-            uniforms(p, renderOptions.value("uniforms", Json::object()));
+            uniforms(p, globalUniforms);
             uniforms(p, entityUniforms);
         }
         if (shadowPass) {
@@ -1059,6 +1066,7 @@ void Renderer::render(World &world) {
         gl::Viewport(0, 0, w, h);
         gl::Disable(gl::DEPTH_TEST);
         gl::UseProgram(impl->postProgram);
+        impl->postUniforms.prepare(impl->postProgram, post.value("uniforms", Json::object()));
         for (auto field : {"grain", "bloom", "aberration", "scanlines", "vignette", "fade", "gamma"})
             gl::Uniform1f(gl::GetUniformLocation(impl->postProgram, (std::string("u_") + field).c_str()),
                           post.value(field, std::string(field) == "gamma" ? 1.f : 0.f));

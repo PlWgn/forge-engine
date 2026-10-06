@@ -29,6 +29,7 @@ struct Assets::Impl {
     unsigned nextId = 0;
     size_t limit = 256 * 1024 * 1024, resident = 0;
     uint64_t clock = 0;
+    uint64_t retiredModels = 0;
     explicit Impl(Config &c) : config(c) {
         for (int i = 0; i < 4; ++i)
             workers.emplace_back([this] { work(); });
@@ -43,7 +44,9 @@ struct Assets::Impl {
             worker.join();
     }
     bool evict(size_t incoming) {
-        while (resident + incoming > limit) {
+        if (incoming > limit)
+            return false;
+        while (resident > limit - incoming) {
             auto candidate = cache.end();
             for (auto it = cache.begin(); it != cache.end(); ++it) {
                 auto &e = *it->second;
@@ -136,9 +139,23 @@ struct Assets::Impl {
     }
     std::shared_ptr<Entry> ensure(const fs::path &path, const std::string &kind) {
         auto stamp = fs::last_write_time(path).time_since_epoch().count();
-        auto key = path.u8string() + "#" + kind + "#" + std::to_string(static_cast<long long>(stamp));
+        auto key = path.u8string() + "#" + kind + "#" + std::to_string(static_cast<long long>(stamp)) +
+                   "#" + std::to_string(fs::file_size(path));
         std::lock_guard<std::mutex> lock(mutex);
         auto found = cache.find(key);
+        if (found != cache.end() && kind == "models") {
+            if (found->second->status == "failed") {
+                // A repaired sidecar need not change the main model's metadata.
+                cache.erase(found);
+                found = cache.end();
+            } else if (found->second->model && !found->second->model->dependenciesCurrent()) {
+                // Retain old pinned generations and their budget accounting.
+                auto retired = cache.extract(found);
+                retired.key() += "#retired:" + std::to_string(++retiredModels);
+                cache.insert(std::move(retired));
+                found = cache.end();
+            }
+        }
         if (found != cache.end()) {
             found->second->used = ++clock;
             return found->second;

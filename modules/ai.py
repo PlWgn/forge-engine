@@ -17,18 +17,24 @@ class Scheduler:
     def call_later(self, delay, callback, *, repeat=0):
         _time(delay); _time(repeat)
         if not callable(callback): raise TypeError('callback must be callable')
+        deadline = _time(self.time+delay)
         self._next += 1
         self._tasks[self._next] = (callback, repeat)
-        heapq.heappush(self._queue, (self.time+delay, self._next))
+        heapq.heappush(self._queue, (deadline, self._next))
         return self._next
     def every(self, interval, callback):
         if interval <= 0: raise ValueError('interval must be positive')
         return self.call_later(interval, callback, repeat=interval)
-    def cancel(self, task): self._tasks.pop(task, None)
+    def cancel(self, task):
+        self._tasks.pop(task, None)
+        # Amortized compaction bounds retained tombstones without rebuilding on every cancel.
+        if len(self._queue) > max(64, 2*len(self._tasks)):
+            self._queue = [entry for entry in self._queue if entry[1] in self._tasks]
+            heapq.heapify(self._queue)
     def update(self, dt):
         _time(dt)
         if forge.is_paused() and not self.run_paused: return
-        self.time += dt
+        self.time = _time(self.time+dt)
         count = 0
         while self._queue and self._queue[0][0] <= self.time and count < self.budget:
             due, id = heapq.heappop(self._queue)
@@ -41,7 +47,11 @@ class Scheduler:
             finally:
                 if interval and id in self._tasks:
                     # Missed periods are skipped instead of producing an unbounded catch-up burst.
-                    heapq.heappush(self._queue, (max(due+interval, self.time+interval), id))
+                    try: deadline = _time(max(due+interval, self.time+interval))
+                    except ValueError:
+                        self._tasks.pop(id, None)
+                        raise
+                    heapq.heappush(self._queue, (deadline, id))
         return count
     @property
     def pending(self): return len(self._tasks)

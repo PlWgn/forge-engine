@@ -5,6 +5,20 @@ ROOT,ENGINE=base.ROOT,base.ENGINE
 class RenderingTests(unittest.TestCase):
     setUp,tearDown=base.EngineTests.setUp,base.EngineTests.tearDown
     write_config,script_scene,run_engine=base.EngineTests.write_config,base.EngineTests.script_scene,base.EngineTests.run_engine
+    def test_world_position_rejects_destroyed_children(self):
+        self.script_scene("""import forge
+def on_start():
+    parent=forge.spawn({'id':'parent','kind':'empty'})
+    child=forge.spawn({'id':'child','kind':'empty','parent':'parent','position':[1,0,0]})
+    parent.destroy()
+    before=tuple(child.position)
+    try:child.world_position=(2,0,0)
+    except RuntimeError as error:assert 'current world' in str(error)
+    else:raise AssertionError('Destroyed child accepted a world-position update')
+    assert tuple(child.position)==before and not child.alive
+    forge.log('RETIRED_CHILD_SAFE');forge.quit()
+""")
+        self.assertIn('RETIRED_CHILD_SAFE',self.run_engine())
     def test_graphics_backend_configuration_and_capabilities(self):
         self.script_scene("""import forge
 def on_start():

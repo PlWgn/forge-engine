@@ -10,6 +10,88 @@ def png(path,rgba):
 class RenderingGraphicsTests(unittest.TestCase):
     setUp,tearDown=base.FeatureGraphicsTests.setUp,base.FeatureGraphicsTests.tearDown
     run_scene,write_config,wait_log=base.FeatureGraphicsTests.run_scene,base.FeatureGraphicsTests.write_config,base.FeatureGraphicsTests.wait_log
+    def test_hot_reload_updates_external_model_buffer_pixels(self):
+        file=self.root/'models/external.gltf';base.animated_triangle(file)
+        model=json.loads(file.read_text());data=bytearray(base64.b64decode(model['buffers'][0]['uri'].split(',')[1]))
+        buffer=self.root/'models/external.bin';buffer.write_bytes(data)
+        model['buffers'][0]['uri']='external.bin';file.write_text(json.dumps(model),encoding='utf-8')
+        scene=self.root/'scenes/external.py'
+        scene.write_text("""import forge
+from pathlib import Path
+frames=0
+def build():return {'mode':'3d','physics_enabled':False,'background':[0,0,0,1],'camera':{'position':[0,0,4],'target':[0,0,0]}}
+def on_start():
+    global changed
+    changed=Path(forge.project_path('changed')).exists()
+    forge.spawn({'kind':'mesh','model':'external.gltf'})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:
+        forge.screenshot('buffer-after.ppm' if changed else 'buffer-before.ppm')
+    if frames==4 and changed:forge.quit()
+""",encoding='utf-8')
+        self.config['entry_scene']='external.py';self.config['window'].update(width=640,height=480,vsync=False);self.write_config()
+        process=subprocess.Popen([*base.engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            self.wait_log('buffer-before.ppm',process)
+            (self.root/'changed').touch()
+            position=model['accessors'][model['meshes'][0]['primitives'][0]['attributes']['POSITION']]
+            offset=model['bufferViews'][position['bufferView']]['byteOffset']
+            for vertex in range(3):
+                at=offset+vertex*12
+                struct.pack_into('<f',data,at,struct.unpack_from('<f',data,at)[0]+2)
+            buffer.write_bytes(data)
+            self.wait_log('buffer-after.ppm',process)
+            self.assertEqual(process.wait(timeout=15),0)
+            self.assertGreater(base.point(self.root/'buffer-before.ppm',320,240)[1],30)
+            self.assertEqual(base.point(self.root/'buffer-after.ppm',320,240),(0,0,0))
+            self.assertGreater(base.point(self.root/'buffer-after.ppm',528,240)[1],30)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+    def test_removed_custom_uniforms_do_not_leak_between_entities_or_frames(self):
+        (self.root/'graphics/scoped.frag').write_text('#version 330 core\nuniform vec4 bias;out vec4 color;\nvoid main(){color=vec4(0,1,0,1)+bias;}\n',encoding='utf-8')
+        self.config['renderer']['fragment_shader']='scoped.frag';self.write_config()
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'2d','background':[0,0,0,1],'physics_enabled':False}
+def on_start():
+    global first
+    first=forge.spawn({'screen':True,'position':[100,100,0],'scale':[60,60,1],'uniforms':{'bias':[1,-1,0,0]}})
+    forge.spawn({'screen':True,'position':[300,100,0],'scale':[60,60,1]})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:forge.screenshot('scoped.ppm')
+    if frames==3:first.uniforms={}
+    if frames==4:forge.screenshot('removed.ppm')
+    if frames==5:
+        forge.set_shader_uniform('bias',[1,-1,0,0]);first.uniforms={'bias':[0,0,0,0]}
+    if frames==6:forge.screenshot('global.ppm')
+    if frames==7:first.uniforms={}
+    if frames==8:forge.screenshot('global-removed.ppm')
+""",frames=10)
+        self.assertGreater(base.point(self.root/'scoped.ppm',100,100)[0],240)
+        self.assertEqual(base.point(self.root/'scoped.ppm',300,100),(0,255,0))
+        self.assertEqual(base.point(self.root/'removed.ppm',100,100),(0,255,0))
+        self.assertGreater(base.point(self.root/'global.ppm',300,100)[0],240)
+        self.assertEqual(base.point(self.root/'global.ppm',100,100),(0,255,0))
+        self.assertEqual(base.point(self.root/'global-removed.ppm',100,100),(255,0,0))
+    def test_removed_postprocess_uniforms_restore_zero_defaults(self):
+        (self.root/'graphics/scoped-post.frag').write_text('#version 330 core\nuniform vec4 bias;out vec4 color;\nvoid main(){color=vec4(0,1,0,1)+bias;}\n',encoding='utf-8')
+        self.config['renderer']['post_shader']='scoped-post.frag';self.write_config()
+        self.run_scene("""import forge
+frames=0
+def on_start():forge.set_postprocess({'enabled':True,'uniforms':{'bias':[1,-1,0,0]}})
+def on_update(dt):
+    global frames
+    frames+=1
+    if frames==2:forge.screenshot('post.ppm')
+    if frames==3:forge.set_postprocess({'uniforms':{}})
+    if frames==4:forge.screenshot('post-removed.ppm')
+""",frames=6)
+        self.assertEqual(base.point(self.root/'post.ppm',320,240),(255,0,0))
+        self.assertEqual(base.point(self.root/'post-removed.ppm',320,240),(0,255,0))
     def test_pbr_factors_and_six_texture_channels_change_pixels(self):
         for name,color in {'normal':(230,128,180,255),'orm':(30,180,240,255),'metal':(20,20,20,255),'rough':(220,220,220,255),'ao':(0,0,0,255),'emission':(0,255,0,255),'albedo':(255,30,30,255)}.items():png(self.root/f'textures/{name}.png',color)
         self.run_scene('''import forge

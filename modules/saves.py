@@ -50,15 +50,27 @@ def _atomic(path, data):
 
 class SaveManager:
     def __init__(self, version=1, *, migrations=None, validate=None, directory=None, max_bytes=16*1024*1024):
-        if type(version) is not int or version < 1 or max_bytes < 1:
+        if type(version) is not int or version < 1 or type(max_bytes) is not int or max_bytes < 1:
             raise ValueError('Save version and max_bytes must be positive integers')
         directory = directory or forge.settings().get('save_directory', 'saves')+'/slots'
         self.root = Path(forge.storage_path(directory))
+        self._directory = directory
         self.version, self.migrations, self.validate = version, dict(migrations or {}), validate
         self.max_bytes, self._autosave = max_bytes, None
         self._listener, self._elapsed = None, 0
 
+    def _check_root(self):
+        # A parent directory can be replaced after this manager was created.
+        # Recheck the configured storage boundary at each managed operation.
+        try:
+            current = Path(forge.storage_path(self._directory))
+            if current.resolve() != self.root.resolve():
+                raise SaveError('Storage location changed; create a new SaveManager')
+        except (RuntimeError, OSError) as error:
+            raise SaveError(f'Invalid save directory: {error}') from error
+
     def _path(self, slot):
+        self._check_root()
         slot = str(slot)
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', slot):
             raise SaveError('Slot id must contain 1..80 ASCII letters, digits, underscores or hyphens')
@@ -84,7 +96,7 @@ class SaveManager:
             return value
         except FileNotFoundError:
             raise
-        except (OSError, ValueError, KeyError, TypeError) as error:
+        except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
             raise SaveCorrupt(f'{path.name}: {error}') from error
 
     def _validate(self, data):
@@ -172,13 +184,15 @@ class SaveManager:
             return dict(slot=str(slot), status='corrupt', title='Повреждённое сохранение', error=str(error))
 
     def slots(self):
+        self._check_root()
         ids = {path.name[:-5] for path in self.root.glob('*.json')}
         ids.update(path.name[:-9] for path in self.root.glob('*.json.bak'))
         return [self.info(slot) for slot in sorted(ids)]
 
     def delete(self, slot):
-        path = self._path(slot)
+        self._path(slot)
         def remove():
+            path = self._path(slot)
             for candidate in (path, path.with_suffix('.json.bak')):
                 candidate.unlink(missing_ok=True)
         forge.defer_persistence(remove, include_initialization=False)

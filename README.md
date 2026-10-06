@@ -1,6 +1,8 @@
-# Forge 2.7.0
+# Forge 2.7.1
 
 Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows.
+
+Bugfix 2.7.1 fixes a retired-entity crash, shader values leaking between draws, stale asset generations, save-path/recovery checks, and timer/animation arithmetic. Canceled timers use bounded retained queues; event cleanup releases callbacks. Project and shell APIs remain version 1. [Fixes, compatibility, and validation](docs/BUGFIX_2_7_1.md).
 
 Forge 2.7 adds optional native Metal on macOS/Apple Silicon, retaining OpenGL and Windows Direct3D 11. GLSL stays portable/editable; native MSL overrides are optional. [Metal setup, custom shaders, and limits](docs/METAL.md).
 

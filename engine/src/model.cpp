@@ -54,6 +54,7 @@ struct Stream : Assimp::IOStream {
 };
 struct ProjectIO : Assimp::IOSystem {
     fs::path root, folder;
+    std::map<fs::path, Model::Dependency> dependencies;
     ProjectIO(fs::path r, fs::path f) : root(std::move(r)), folder(std::move(f)) {}
     fs::path path(const char *value) const {
         auto p = fs::u8path(value);
@@ -76,7 +77,13 @@ struct ProjectIO : Assimp::IOSystem {
     Assimp::IOStream *Open(const char *value, const char *mode) override {
         if (std::strchr(mode, 'w'))
             return nullptr;
-        return new Stream(path(value));
+        auto requested=fs::u8path(value);
+        requested=(requested.is_absolute()?requested:folder/requested).lexically_normal();
+        auto resolved=path(value);
+        Model::Dependency dependency{requested,resolved,fs::last_write_time(requested),fs::file_size(requested)};
+        auto stream=std::make_unique<Stream>(resolved);
+        dependencies[requested]=std::move(dependency);
+        return stream.release();
     }
     void Close(Assimp::IOStream *stream) override {
         delete stream;
@@ -107,7 +114,8 @@ template <class T> T sample(const std::vector<std::pair<double, T>> &keys, doubl
 } // namespace
 std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRoot) {
     Assimp::Importer importer;
-    importer.SetIOHandler(new ProjectIO(projectRoot, file.parent_path()));
+    auto io=new ProjectIO(projectRoot, file.parent_path());
+    importer.SetIOHandler(io);
     auto scene =
         importer.ReadFile(file.u8string(), aiProcess_Triangulate | aiProcess_GenSmoothNormals |
                                                aiProcess_JoinIdenticalVertices | aiProcess_LimitBoneWeights |
@@ -115,6 +123,7 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
     if (!scene || !scene->mRootNode || !scene->mNumMeshes)
         throw std::runtime_error("Model " + file.u8string() + ": " + importer.GetErrorString());
     auto result = std::make_shared<Model>();
+    for(const auto& [path,dependency]:io->dependencies)result->dependencies.push_back(dependency);
     std::map<std::string, int> names;
     std::map<const aiNode *, int> indices;
     std::function<void(aiNode *, int)> nodes = [&](aiNode *node, int parent) {
@@ -345,6 +354,9 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
         result->clips.push_back(std::move(clip));
     }
     result->memoryBytes += result->nodes.size() * sizeof(Model::Node);
+    for(const auto& dependency:result->dependencies)
+        result->memoryBytes += sizeof(dependency) +
+            (dependency.path.native().size()+dependency.resolved.native().size())*sizeof(fs::path::value_type);
     for (auto &clip : result->clips)
         for (auto &channel : clip.channels)
             result->memoryBytes += sizeof(channel) + channel.positions.size() * sizeof(channel.positions[0]) +
@@ -403,5 +415,14 @@ Json Model::info() const {
     }
     return {{"parts", parts.size()},    {"vertices", vertices}, {"bones", bones},
             {"animations", animations}, {"bytes", memoryBytes}, {"textures", textures},{"morph_targets",morphs},{"skeleton",skeleton}};
+}
+bool Model::dependenciesCurrent() const {
+    try {
+        for(const auto& dependency:dependencies)
+            if(fs::weakly_canonical(dependency.path)!=dependency.resolved ||
+               fs::last_write_time(dependency.path)!=dependency.modified || fs::file_size(dependency.path)!=dependency.size)
+                return false;
+        return true;
+    }catch(const fs::filesystem_error&){return false;}
 }
 } // namespace forge

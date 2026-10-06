@@ -8,6 +8,187 @@ ROOT, ENGINE = base.ROOT, base.ENGINE
 class FeatureTests(unittest.TestCase):
     setUp, tearDown = base.EngineTests.setUp, base.EngineTests.tearDown
     write_config, run_engine, script_scene = base.EngineTests.write_config, base.EngineTests.run_engine, base.EngineTests.script_scene
+    def test_event_unsubscribe_is_idempotent_and_releases_callbacks(self):
+        self.script_scene("""import forge,gc,weakref
+from events import EventBus
+def on_start():
+    bus=EventBus();calls=[]
+    callback=lambda:calls.append('called')
+    first=bus.on('event',callback);second=bus.on('event',callback)
+    first();first();bus.emit('event');assert calls==['called']
+    second();second()
+    class Receiver:
+        def callback(self):pass
+    receiver=Receiver();reference=weakref.ref(receiver)
+    unsubscribe=bus.on('owned',receiver.callback)
+    del receiver;gc.collect();assert reference() is not None
+    unsubscribe();gc.collect();assert reference() is None,'Cleanup retained retired callback owner'
+    for i in range(1000):bus.emit('unused-'+str(i))
+    assert not bus._listeners,'Emitting unknown events retained empty entries'
+    forge.log('EVENT_LIFETIME_OK');forge.quit()
+""")
+        self.assertIn('EVENT_LIFETIME_OK',self.run_engine())
+    def test_scheduler_cancellation_bounds_retained_queue(self):
+        self.script_scene("""import forge
+from ai import Scheduler
+def on_start():
+    scheduler=Scheduler(automatic=False,budget=3);calls=[]
+    for i in range(10):scheduler.call_later(1,lambda i=i:calls.append(i))
+    canceled=[scheduler.call_later(1000,lambda:None) for _ in range(5000)]
+    for handle in canceled:scheduler.cancel(handle)
+    assert scheduler.pending==10 and len(scheduler._queue)<300,'Canceled timers retained an unbounded heap'
+    assert scheduler.update(1)==3 and calls==[0,1,2]
+    while scheduler.pending:scheduler.update(0)
+    assert calls==list(range(10));scheduler.close()
+    forge.log('SCHEDULER_QUEUE_OK');forge.quit()
+""")
+        self.assertIn('SCHEDULER_QUEUE_OK',self.run_engine())
+    def test_scheduler_rejects_overflow_without_poisoning_clock(self):
+        self.script_scene("""import forge
+from ai import Scheduler
+def on_start():
+    scheduler=Scheduler(automatic=False);scheduler.update(1e308)
+    for operation in (lambda:scheduler.update(1e308),lambda:scheduler.call_later(1e308,lambda:None)):
+        try:operation()
+        except ValueError:pass
+        else:raise AssertionError('Overflowing timer clock accepted')
+        assert scheduler.time==1e308 and scheduler.pending==0
+    repeat=Scheduler(automatic=False);calls=[]
+    repeat.every(1e308,lambda:calls.append('once'))
+    try:repeat.update(1e308)
+    except ValueError:pass
+    else:raise AssertionError('Overflowing repeating deadline accepted')
+    assert calls==['once'] and repeat.pending==0 and not repeat._queue
+    repeat.close()
+    scheduler.close();forge.log('SCHEDULER_NUMBERS_OK');forge.quit()
+""")
+        self.assertIn('SCHEDULER_NUMBERS_OK',self.run_engine())
+    def test_legacy_animation_rejects_invalid_steps_atomically(self):
+        self.script_scene("""import forge
+from animation import Tween,SpriteAnimation
+def on_start():
+    entity=forge.spawn({'kind':'empty'})
+    for duration in (float('nan'),float('inf'),-1,0):
+        try:Tween(entity,'position',(1,2,3),duration)
+        except ValueError:pass
+        else:raise AssertionError('Invalid tween duration accepted')
+    try:Tween(entity,'position',(1,2),1)
+    except ValueError:pass
+    else:raise AssertionError('Mismatched tween shape accepted')
+    tween=Tween(entity,'position',(1,2,3),1)
+    for dt in (-1,float('nan'),float('inf')):
+        try:tween.update(dt)
+        except ValueError:pass
+        else:raise AssertionError('Invalid tween step accepted')
+        assert tween.elapsed==0 and tuple(entity.position)==(0,0,0)
+    tween.update(.5);assert tuple(entity.position)==(.5,1,1.5)
+    invalid=Tween(entity,'position',(1e100,0,0),1)
+    before=tuple(entity.position)
+    try:invalid.update(1)
+    except RuntimeError:pass
+    else:raise AssertionError('Overflowing native tween accepted')
+    assert invalid.elapsed==0 and tuple(entity.position)==before
+    animation=SpriteAnimation(entity,('a','b'),fps=1e308)
+    try:animation.update(10)
+    except ValueError:pass
+    else:raise AssertionError('Overflowing sprite frame accepted')
+    assert animation.elapsed==0 and entity.texture==''
+    forge.log('LEGACY_ANIMATION_NUMBERS_OK');forge.quit()
+""")
+        self.assertIn('LEGACY_ANIMATION_NUMBERS_OK',self.run_engine())
+    def test_asset_cache_detects_size_changes_with_preserved_timestamp(self):
+        self.script_scene("""import forge,os
+from pathlib import Path
+from assets import AssetHandle
+def on_start():
+    path=Path(forge.asset_path('audio','changed.bin'))
+    path.write_bytes(b'old');stamp=path.stat()
+    with AssetHandle('audio','changed.bin') as first:
+        assert first.wait().bytes()==b'old'
+        path.write_bytes(b'new contents')
+        os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+        with AssetHandle('audio','changed.bin') as second:
+            assert second.wait().bytes()==b'new contents','Asset cache returned old bytes'
+            assert first.bytes()==b'old','A pinned old generation changed'
+    forge.log('ASSET_GENERATIONS_OK');forge.quit()
+""")
+        self.assertIn('ASSET_GENERATIONS_OK',self.run_engine())
+    def test_model_cache_tracks_external_buffer_generations(self):
+        import base64
+        file=self.root/'models/external.gltf';animated_triangle(file)
+        model=json.loads(file.read_text());data=base64.b64decode(model['buffers'][0]['uri'].split(',')[1])
+        (self.root/'models/external.bin').write_bytes(data)
+        model['buffers'][0]['uri']='external.bin';file.write_text(json.dumps(model),encoding='utf-8')
+        accessor=model['animations'][0]['samplers'][0]['input']
+        offset=model['bufferViews'][model['accessors'][accessor]['bufferView']]['byteOffset']+4
+        self.config['external_time_offset']=offset
+        self.script_scene("""import forge,os,struct
+from pathlib import Path
+from assets import AssetHandle,AssetError
+def on_start():
+    with AssetHandle('models','external.gltf') as old:
+        old.wait();assert old.info['model']['animations'][0]['duration']==1
+        path=Path(forge.asset_path('models','external.bin'));stamp=path.stat()
+        data=bytearray(path.read_bytes());struct.pack_into('<f',data,forge.settings()['external_time_offset'],2)
+        path.write_bytes(data);os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns+1000000000))
+        with AssetHandle('models','external.gltf') as fresh:
+            fresh.wait();assert fresh.info['model']['animations'][0]['duration']==2,'Model reused an old external buffer'
+        assert old.info['model']['animations'][0]['duration']==1,'Pinned model generation changed'
+        assert forge.model_info('external.gltf')['animations'][0]['duration']==2
+        path.unlink()
+        try:
+            with AssetHandle('models','external.gltf') as missing:missing.wait()
+        except AssetError:pass
+        else:raise AssertionError('Missing model dependency returned cached success')
+        path.write_bytes(data)
+        with AssetHandle('models','external.gltf') as restored:
+            restored.wait();assert restored.info['model']['animations'][0]['duration']==2
+    forge.log('MODEL_DEPENDENCY_GENERATIONS_OK');forge.quit()
+""")
+        self.assertIn('MODEL_DEPENDENCY_GENERATIONS_OK',self.run_engine())
+    def test_slot_manager_rechecks_redirected_storage_directory(self):
+        self.script_scene("""import forge,tempfile
+from pathlib import Path
+from saves import SaveManager,SaveError
+def on_start():
+    store=SaveManager(directory='guarded-slots')
+    store.write('a',{'value':1})
+    root=store.root;root.rename(root.with_name('previous-slots'))
+    with tempfile.TemporaryDirectory() as external:
+        root.symlink_to(external,target_is_directory=True)
+        for operation in (lambda:store.write('a',{'value':2}),lambda:store.read('a'),lambda:store.info('a'),lambda:store.delete('a'),lambda:store.slots()):
+            try:operation()
+            except SaveError:pass
+            else:raise AssertionError('Save manager accepted an escaped storage directory')
+        assert not list(Path(external).iterdir())
+        root.unlink()
+    forge.log('SAVE_DIRECTORY_GUARD_OK');forge.quit()
+""")
+        self.assertIn('SAVE_DIRECTORY_GUARD_OK',self.run_engine())
+    def test_deeply_corrupt_slots_recover_and_report_without_parser_crashes(self):
+        self.script_scene("""import forge
+from saves import SaveManager,SaveError
+def on_start():
+    store=SaveManager();store.write('deep',{'value':1});store.write('deep',{'value':2})
+    primary=store.root/'deep.json';backup=store.root/'deep.json.bak'
+    import sys
+    depth=max(100000,sys.getrecursionlimit()+100)
+    damage='['*depth+'0'+']'*depth
+    primary.write_text(damage,encoding='utf-8')
+    assert store.info('deep')['status']=='recoverable'
+    assert store.read('deep')=={'value':1}
+    backup.write_text(damage,encoding='utf-8')
+    assert store.info('deep')['status']=='corrupt'
+    try:store.read('deep')
+    except SaveError:pass
+    else:raise AssertionError('Corrupt slot accepted')
+    for limit in (True,.5,float('nan'),float('inf')):
+        try:SaveManager(max_bytes=limit)
+        except ValueError:pass
+        else:raise AssertionError('Invalid save size limit accepted')
+    forge.log('CORRUPT_SLOT_PARSER_OK');forge.quit()
+""")
+        self.assertIn('CORRUPT_SLOT_PARSER_OK',self.run_engine())
     def test_actions_record_replay_and_contexts(self):
         self.script_scene('''import forge
 from input_actions import ActionMap,InputRecorder,InputReplay
@@ -261,6 +442,43 @@ def on_update(dt):
             (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def test_deferred_delete_rechecks_storage_at_commit(self):
+        with base.tempfile.TemporaryDirectory(prefix='forge external saves ') as external:
+            victim=Path(external)/'victim.json';victim.write_text('keep',encoding='utf-8')
+            self.config['external_test_directory']=external
+            self.script_scene('''import forge
+from pathlib import Path
+from saves import SaveManager
+def on_start():
+    store=SaveManager(directory='guarded-slots')
+    if not forge.settings().get('redirect_at_commit',False):
+        store.write('victim',{'valid':True});forge.log('DELETE_READY');return
+    store.delete('victim')
+    root=store.root;previous=root.with_name('old-guarded-slots')
+    root.rename(previous)
+    root.symlink_to(forge.settings()['external_test_directory'],target_is_directory=True)
+    def finish():
+        root.unlink();previous.rename(root)
+        forge.log('DELETE_COMMIT_COMPLETE');forge.quit()
+    forge.defer_persistence(finish)
+''')
+            process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            try:
+                deadline=time.monotonic()+15
+                while time.monotonic()<deadline:
+                    log=self.root/'forge.log'
+                    if log.exists() and 'DELETE_READY' in log.read_text():break
+                    if process.poll() is not None:self.fail(log.read_text())
+                    time.sleep(.03)
+                else:self.fail('Timed out waiting for deferred delete fixture')
+                self.config['redirect_at_commit']=True;self.write_config()
+                self.assertEqual(process.wait(timeout=15),0)
+                self.assertIn('DELETE_COMMIT_COMPLETE',log.read_text())
+                self.assertTrue(victim.exists(),'Deferred deletion escaped the storage root')
+                self.assertEqual(victim.read_text(),'keep')
+                self.assertTrue((self.root/'guarded-slots/victim.json').exists())
+            finally:
+                if process.poll() is None:process.kill();process.wait()
     @unittest.skipUnless(sys.platform=='darwin','macOS .app packaging')
     def test_app_bundle_private_runtime_user_paths_manifest_and_signature(self):
         self.script_scene('''import forge

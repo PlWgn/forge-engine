@@ -86,10 +86,12 @@ unsigned linkProgram(const std::string &vertex, const std::string &fragment, con
 void uniforms(unsigned program, const Json &values) {
     for (auto it = values.begin(); it != values.end(); ++it) {
         auto location = gl::GetUniformLocation(program, it.key().c_str());
-        auto value = it.value();
+        const auto &value = it.value();
         if (value.is_boolean() || value.is_number_integer())
             gl::Uniform1i(location, value.is_boolean() ? int(value.get<bool>()) : value.get<int>());
         else if (value.is_array()) {
+            if (value.empty() || value.size() > 4)
+                throw std::runtime_error("Invalid shader uniform");
             float v[4]{};
             for (size_t i = 0; i < value.size(); ++i)
                 v[i] = finiteNumber(value[i], it.key());
@@ -112,5 +114,30 @@ void uniforms(unsigned program, const Json &values) {
         } else
             gl::Uniform1f(location, finiteNumber(value, it.key()));
     }
+}
+void UniformScope::prepare(unsigned program, const Json &base, const Json &overrides) {
+    if (previous.empty() && base.empty() && overrides.empty())
+        return;
+    Json removed = Json::object();
+    for (auto it = previous.begin(); it != previous.end();) {
+        if (!base.contains(it.key()) && !overrides.contains(it.key())) {
+            removed[it.key()] = it.value();
+            it = previous.erase(it);
+        } else
+            ++it;
+    }
+    uniforms(program, removed);
+    for (const Json *values : {&base, &overrides})
+        for (auto it = values->begin(); it != values->end(); ++it) {
+            if (previous.contains(it.key()))
+                continue;
+            const auto &value = it.value();
+            if (value.is_array())
+                previous[it.key()] = Json::array_t(value.size(), Json(0.0));
+            else if (value.is_boolean() || value.is_number_integer())
+                previous[it.key()] = 0;
+            else
+                previous[it.key()] = 0.0;
+        }
 }
 }

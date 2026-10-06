@@ -68,3 +68,5 @@ In 2.6, graphics_device, graphics_settings, direct3d11, and shader_compiler are 
 
 
 In 2.7, metal.hpp/metal.mm and native MSL examples are independent adaptable modules outside the Core list. Shared graphics/compiler/configuration implementations add Metal device selection, shader validation/reflection, and capability reporting. Core-origin Python capabilities gain the additive metal feature; Core boundaries and game/shell API versions remain unchanged.
+
+Bugfix 2.7.1 changes `main.cpp` only to validate the complete `--frames` integer and provide a useful range diagnostic. Renderer/GPU resource, hierarchy, asset-cache, save, event, timer, and animation fixes remain within their existing adaptable components. The Core list and public format/API versions do not expand.

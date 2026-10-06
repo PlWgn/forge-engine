@@ -44,7 +44,14 @@ int main(int argc,char** argv) {
     std::string sceneOverride;fs::path settings=defaultSettings,out,requestFile;bool serve=false;std::string shell="builtin";std::vector<std::string> extensions;bool headless=false,noOpen=false,silentAudio=false;int frames=-1;
     try {
         for(int i=index;i<argc;++i){std::string arg=argv[i];auto value=[&](){if(++i>=argc)throw std::runtime_error("Missing value after "+arg);return std::string(argv[i]);};
-            if(arg=="--extension")extensions.push_back(value());else if(arg=="--request")requestFile=fs::u8path(value());else if(arg=="--serve")serve=true;else if(arg=="--shell")shell=value();else if(arg=="--scene")sceneOverride=value();else if(arg=="--project")settings=fs::absolute(fs::u8path(value()));else if(arg=="--output")out=fs::absolute(fs::u8path(value()));else if(arg=="--frames"){frames=std::stoi(value());if(frames<1)throw std::runtime_error("--frames must be positive");}else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--silent-audio")silentAudio=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
+            if(arg=="--extension")extensions.push_back(value());else if(arg=="--request")requestFile=fs::u8path(value());else if(arg=="--serve")serve=true;else if(arg=="--shell")shell=value();else if(arg=="--scene")sceneOverride=value();else if(arg=="--project")settings=fs::absolute(fs::u8path(value()));else if(arg=="--output")out=fs::absolute(fs::u8path(value()));else if(arg=="--frames"){
+                auto text=value();size_t consumed=0;
+                auto error="--frames must be a positive integer in 1.."+std::to_string(std::numeric_limits<int>::max());
+                try {frames=std::stoi(text,&consumed);}
+                catch(const std::invalid_argument&){throw std::runtime_error(error);}
+                catch(const std::out_of_range&){throw std::runtime_error(error);}
+                if(consumed!=text.size() || frames<1)throw std::runtime_error(error);
+            }else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--silent-audio")silentAudio=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
         }
         if(command=="help" || command=="--help") {std::cout<<"Forge " FORGE_VERSION " | C++ / Python modular game engine\n\nCommands: validate, dev, run, edit, build, project\nProject API: forge project --serve (JSON lines) or --request request.json\nEditor: edit --shell builtin|none|project-shell.py; external shells use the project API\nOptions: --project engine.json --headless --silent-audio --frames N --no-open-log\nBuild: forge build --output dist/MyGame\nScaffold/build engine: python tools/forge.py --help\n";return 0;}
         if(command!="validate" && command!="dev" && command!="run" && command!="build" && command!="edit" && command!="project")throw std::runtime_error("Unknown command: "+command);

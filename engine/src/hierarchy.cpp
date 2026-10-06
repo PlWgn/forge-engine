@@ -135,6 +135,7 @@ void World::setPositions(const std::vector<std::pair<std::shared_ptr<Entity>,glm
 }
 glm::vec3 World::worldPosition(const Entity& e)const{return glm::vec3(e.worldMatrix[3]);}
 void World::setWorldPosition(Entity& e,glm::vec3 value){
+    if(find(e.id).get()!=&e)throw std::runtime_error("Entity is not in current world");
     if(!transformCache)syncTransforms();auto next=glm::dvec3(value);
     if(!e.parent.empty()){auto p=find(e.parent);auto m=glm::dmat4(p->worldMatrix);if(std::abs(glm::determinant(m))<1e-15)throw std::runtime_error("Parent transform is singular");next=glm::dvec3(glm::inverse(m)*glm::dvec4(next,1));}
     glm::vec3 checked{checkedFloat(next.x,"local position"),checkedFloat(next.y,"local position"),checkedFloat(next.z,"local position")};

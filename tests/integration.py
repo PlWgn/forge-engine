@@ -24,6 +24,14 @@ class EngineTests(unittest.TestCase):
     def script_scene(self, text):
         (self.root / 'scenes/test.py').write_text(text, encoding='utf-8')
         self.config['entry_scene'] = 'test.py'; self.write_config()
+    def test_frame_limit_requires_complete_positive_integer(self):
+        self.script_scene("import forge\ndef on_start():forge.log('FRAME_LIMIT_OK')\n")
+        for limit in ('2junk','2.5','1e3','0','-1','2147483648','not-a-number'):
+            with self.subTest(limit=limit):
+                result=subprocess.run([str(ENGINE),'run','--project',str(self.root/'engine.json'),'--headless','--frames',limit,'--no-open-log'],capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,1,result.stdout+result.stderr)
+                self.assertIn('--frames must be a positive integer',result.stdout+result.stderr)
+        self.assertIn('FRAME_LIMIT_OK',self.run_engine(frames=2))
     def test_default_scene_and_renamed_layout(self):
         for key, old in self.config['paths'].items():
             new = 'ресурсы/' + key

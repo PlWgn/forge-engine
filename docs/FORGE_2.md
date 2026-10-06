@@ -1,5 +1,11 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.7.1
+
+The stability update covers retired-child world-position setters, draw-scoped custom uniforms, CPU asset/model dependency generations, save-directory redirection/deferred deletion/JSON recovery/size limits, event cleanup, timer compaction/overflow, legacy animation validation, and CLI frame limits. `integration.py`, `rendering.py`, `features.py`, and `rendering_graphics.py` exercise these through native APIs and actual frames, including glTF buffer hot reload. Project/save/API formats stay unchanged; shader and module implementations remain adaptable. See [bugfix details and verification limits](BUGFIX_2_7_1.md).
+
+## Feature Map
+
 This map links features to implementations and reproducible tests under `tests/`. It describes coverage, not the result of a particular run. Public APIs, examples, and commands: [GUIDE.md, sections 16 and 18–24](../GUIDE.md). Core boundaries: [CORE.md](../CORE.md).
 
 | Feature | Implementation | Verification |

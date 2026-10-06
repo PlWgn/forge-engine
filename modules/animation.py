@@ -23,26 +23,36 @@ class SpriteAnimation:
         self.entity, self.frames, self.fps, self.loop, self.elapsed = entity, frames, fps, loop, 0
     def update(self, dt):
         if not math.isfinite(dt) or dt < 0: raise ValueError('dt must be finite and nonnegative')
-        self.elapsed += dt
-        index = int(self.elapsed * self.fps)
+        elapsed = self.elapsed + dt
+        frame = elapsed * self.fps
+        if not math.isfinite(elapsed) or not math.isfinite(frame):
+            raise ValueError('Sprite animation time overflow')
+        index = int(frame)
         frames = self.frames.frames if isinstance(self.frames, SpriteSheet) else self.frames
         index = index % len(frames) if self.loop else min(index, len(frames)-1)
         if isinstance(self.frames, SpriteSheet): self.frames.apply(self.entity, index)
         else: self.entity.texture = frames[index]
-        return self.loop or self.elapsed*self.fps < len(frames)
+        self.elapsed = elapsed
+        return self.loop or frame < len(frames)
 
 class Tween:
     def __init__(self, entity, property, target, duration):
-        if duration <= 0: raise ValueError('duration must be positive')
-        self.entity, self.property, self.start, self.target = entity, property, getattr(entity, property), target
+        if not math.isfinite(duration) or duration <= 0: raise ValueError('duration must be finite and positive')
+        start, target = tuple(getattr(entity, property)), tuple(target)
+        if not start or len(start) != len(target) or any(not math.isfinite(v) for v in (*start, *target)):
+            raise ValueError('Tween endpoints must be matching finite vectors')
+        self.entity, self.property, self.start, self.target = entity, property, start, target
         self.duration, self.elapsed = duration, 0
     def update(self, dt):
-        self.elapsed += dt
-        t = min(self.elapsed / self.duration, 1)
+        if not math.isfinite(dt) or dt < 0: raise ValueError('dt must be finite and nonnegative')
+        elapsed = self.elapsed + dt
+        if not math.isfinite(elapsed): raise ValueError('Tween time overflow')
+        t = min(elapsed / self.duration, 1)
         t = t*t*(3-2*t)
-        value = tuple(a + (b-a)*t for a,b in zip(self.start,self.target))
+        value = tuple(a*(1-t) + b*t for a,b in zip(self.start,self.target))
         setattr(self.entity, self.property, value)
-        return self.elapsed < self.duration
+        self.elapsed = elapsed
+        return elapsed < self.duration
 
 # Additional authoring API; SpriteSheet, SpriteAnimation and Tween remain compatible.
 from bisect import bisect_right

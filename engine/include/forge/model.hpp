@@ -12,6 +12,11 @@ struct ModelVertex {
     glm::vec4 weights{0};
 };
 struct Model {
+    struct Dependency {
+        fs::path path, resolved;
+        fs::file_time_type modified;
+        uintmax_t size;
+    };
     struct Node {
         std::string name;
         int parent = -1;
@@ -49,12 +54,14 @@ struct Model {
     std::vector<Node> nodes;
     std::vector<Part> parts;
     std::vector<Clip> clips;
+    std::vector<Dependency> dependencies;
     glm::mat4 rootInverse{1};
     size_t memoryBytes = 0;
     std::vector<glm::mat4> pose(const std::string &, double seconds, bool loop) const;
     std::vector<glm::mat4> localPose(const std::string&,double,bool) const;
     std::vector<double> morphPose(size_t part,const std::string&,double,bool) const;
     Json info() const;
+    bool dependenciesCurrent() const;
 };
 std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRoot);
 } // namespace forge
