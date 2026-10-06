@@ -1,65 +1,64 @@
-# Ядро и изменяемые компоненты Forge
+# Forge Core and Adaptable Components
 
-Нормативные условия установлены в [LICENSE](LICENSE). Этот файл поясняет их и не добавляет новых ограничений.
+[LICENSE](LICENSE) defines the binding terms. This document explains them without adding restrictions.
 
-Forge должен оставаться универсальным и простым в использовании: игра выбирает конфигурацию, сцены и независимые модули, а не подстраивается под конкретный жанр внутри ядра. Исходный код всех компонентов открыт для изучения и изменения. Ядро также можно менять; обычным разработчикам игр это не рекомендуется, поскольку его контракты обеспечивают запуск, обновление и упаковку проектов. Разработка самого движка и исправление ошибок могут требовать изменения ядра и не требуют отдельного разрешения сверх условий лицензии.
+Forge should remain universal and simple: games select configuration, scenes, and independent modules rather than adopt genre rules embedded in the Core. All source is available for study and modification. Core changes are permitted too, but are not recommended for ordinary game development because its contracts support startup, updates, and packaging. Engine development and bug fixes may require Core changes without approval beyond the license terms.
 
-## Что считается ядром
+## What Counts as Core
 
-Для лицензии этой версии перечень закрытый:
+The list for this license version is exhaustive:
 
-| Файл | Назначение |
+| File | Purpose |
 | --- | --- |
-| `engine/src/main.cpp` | Точка входа, команды и запуск интерпретатора |
-| `engine/src/config.cpp` | Чтение и проверка конфигурации |
-| `engine/src/log.cpp` | Терминал, журнал и открытие ошибок |
-| `engine/src/runtime.cpp` | Игровой цикл и orchestration; API/lifecycle/reload выделены в отдельные реализации |
-| `engine/include/forge/engine.hpp` | Общий контракт ядра и интерфейсы модулей |
-| `tools/packager.py` | Упаковка проекта, вызываемая ядром |
+| `engine/src/main.cpp` | Entry point, commands, interpreter startup |
+| `engine/src/config.cpp` | Configuration reading and validation |
+| `engine/src/log.cpp` | Terminal/file logging and error-log opening |
+| `engine/src/runtime.cpp` | Game loop and orchestration; API/lifecycle/reload have separate implementations |
+| `engine/include/forge/engine.hpp` | Shared Core contracts and module interfaces |
+| `tools/packager.py` | Project packaging invoked by the Core |
 
-В версии 2.2 объявления типов из `engine.hpp` вынесены в `engine/include/forge/types.hpp`, `scene.hpp` и `image.hpp`. Это перемещённые контракты ядра: их происхождение и лицензионный статус сохраняются, закрытый перечень LICENSE не расширяется новым независимым компонентом. Перемещение или переименование не выводит код этих файлов из ядра. Изменение только внешнего компонента не становится изменением ядра из-за его размещения в `engine/`.
+In 2.2, type declarations moved from `engine.hpp` into `engine/include/forge/types.hpp`, `scene.hpp`, and `image.hpp`. These retain Core origin and license status; the exhaustive LICENSE list does not gain a new independent component. Renaming/moving does not remove Core status. An external component does not become Core merely because it lives under `engine/`.
 
-В версии 2.3 код Python API, lifecycle и hot reload из `runtime.cpp` выделен в `engine/src/python_api.cpp`, `scene_runtime.cpp` и `reload.cpp`; преобразование Python/JSON из `config.cpp`/`runtime.cpp` — в `python_bridge.cpp`. Эти файлы продолжают реализацию перечисленного ядра и сохраняют его происхождение. Это разделение существующей ответственности, а не добавление физики, графики или независимых модулей в закрытый перечень.
+In 2.3, Python API, lifecycle, and reload code moved from `runtime.cpp` into `python_api.cpp`, `scene_runtime.cpp`, and `reload.cpp`; Python/JSON conversion from `config.cpp`/`runtime.cpp` moved into `python_bridge.cpp`. These continue the listed Core implementations and retain their origin. Splitting responsibilities does not add physics, graphics, or independent modules to the Core list.
 
-## Что можно менять для игры
+## What Can Be Changed for a Game
 
-Всё вне приведённого перечня можно менять, заменять и дополнять, если отдельная лицензия конкретного компонента не устанавливает другие условия. В частности:
+Everything outside that list may be changed, replaced, or extended unless a component's separate license says otherwise. Examples:
 
-- конфигурацию проекта, сцены, пользовательские скрипты, объекты и материалы;
-- текстуры, модели, аудио и прочие игровые ресурсы;
-- `graphics/*`, включая GLSL-шейдеры;
-- `modules/*`, включая Python- и C++-расширения;
-- физику и реализацию мира в `engine/src/world.cpp`, Bullet bridge в `engine/src/physics.cpp` / `engine/include/forge/physics.hpp`;
-- систему частиц в `engine/src/particles.cpp` / `engine/include/forge/particles.hpp`, её Python-модуль и шейдеры;
-- иерархию в `engine/src/hierarchy.cpp`, процедурную геометрию в `geometry.cpp` / `geometry.hpp`, проверку материалов в `material.cpp` / `material.hpp`, редактор в `editor.cpp` / `editor.hpp`;
-- графический модуль в `engine/src/render.cpp`, отдельные `particle_render.cpp`, `gpu_resources.cpp`, `text.cpp`, `media.cpp` и соответствующие заголовки, загрузчик `engine/include/forge/gl.hpp`;
-- звуковой модуль в `engine/src/audio.cpp`;
-- загрузку ресурсов, импорт моделей, локализацию и платформенные сервисы в `engine/src/assets.cpp`, `model.cpp`, `localization.cpp`, `platform.cpp`, а также дополнительные API в `features.cpp`;
-- `CMakeLists.txt`, launcher `tools/forge.py` и конфигурацию сборки.
+- Configuration, scenes, user scripts, objects, and materials;
+- Textures, models, audio, and other game assets;
+- `graphics/*`, including GLSL shaders;
+- `modules/*`, including Python/C++ extensions;
+- World/legacy physics in `world.cpp` and the Bullet bridge in `physics.cpp` / `physics.hpp`;
+- Particles in `particles.cpp` / `particles.hpp`, their Python module, and shaders;
+- Hierarchy in `hierarchy.cpp`, procedural geometry in `geometry.cpp` / `geometry.hpp`, materials in `material.cpp` / `material.hpp`, and editor in `editor.cpp` / `editor.hpp`;
+- Renderer `render.cpp`, separate `particle_render.cpp`, `gpu_resources.cpp`, `text.cpp`, `media.cpp`, related headers, and OpenGL loader `gl.hpp`;
+- Audio implementation `audio.cpp`;
+- Asset loading, model import, localization, and platform services in `assets.cpp`, `model.cpp`, `localization.cpp`, `platform.cpp`, and additional APIs in `features.cpp`;
+- `CMakeLists.txt`, launcher `tools/forge.py`, and build configuration.
 
-Изменение физики или графического модуля само по себе оставляет подпись «Используется движок Forge». Если для него пришлось изменить общий заголовок ядра или runtime, нужна подпись «Создано на основе движка Forge (ядро изменено)».
+Physics/graphics changes alone retain “Uses the Forge engine”. If they also require changes to Core contracts/runtime, use “Built on the Forge engine (modified core)” for your own changes outside official releases/documented approval.
 
-Сторонние библиотеки и Noto Sans сохраняют собственные лицензии. Например, разрешение менять шейдеры не отменяет SIL OFL для поставляемого шрифта. См. [THIRD_PARTY.md](THIRD_PARTY.md).
+Dependencies and Noto Sans retain their licenses. Permission to change shaders does not cancel the bundled font's SIL OFL. See [THIRD_PARTY.md](THIRD_PARTY.md).
 
-## Как обозначать происхождение
+## Identifying Origin
 
-| Ситуация | Подпись на загрузочном экране и в меню |
+| Situation | Notice on loading screen and in menu |
 | --- | --- |
-| Неизменённое официальное ядро; изменены сцены, шейдеры, физика или другие внешние компоненты | «Используется движок Forge» |
-| Применён официальный выпуск или документированно одобренная правообладателями правка ядра | «Используется движок Forge» |
-| Внесены собственные правки в ядро, включая исправления ошибок, не включённые в официальный выпуск и не имеющие указанного одобрения | «Создано на основе движка Forge (ядро изменено)» |
+| Unchanged official Core; modified scenes/shaders/physics/other non-Core components | “Uses the Forge engine” |
+| Official release or Core changes documented as approved by affected copyright holders | “Uses the Forge engine” |
+| Your own Core changes, including fixes outside official releases and without that approval | “Built on the Forge engine (modified core)” |
 
-Изменять ядро разрешается без отдельного согласования при соблюдении лицензии. «Нерекомендованность» здесь определена происхождением правок, а не субъективной оценкой их качества. Это правило делает атрибуцию проверяемой.
+Core modification needs no separate permission when the license is followed. “Non-recommended” identifies a change's origin rather than its subjective quality, making attribution verifiable.
 
-Компиляция с другим компилятором, смена ОС, конфигурации или архитектуры без изменений исходников ядра не требует иной подписи. Изменённый бинарный файл, в котором заменена реализация ядра, требует указания изменённого происхождения.
+Compiling unchanged source with another compiler, OS, configuration, or architecture requires no different notice. Replacing a Core implementation in a modified binary requires modified-origin attribution.
 
-## Применение к текущему проекту
+## Application to This Repository
 
-Текущая версия репозитория — исходный официальный проект Forge. Его стартовый контент — примеры для дальнейшей разработки. Обязательные подписи для вашей готовой игры определяются пунктом 3 LICENSE; размещать их в интерфейсе должен разработчик игры. Условия лицензии не обеспечиваются блокировкой или скрытой проверкой интерфейса внутри runtime.
+This repository is the original official Forge project; starter content comprises development examples. LICENSE section 3 defines your distributed game's UI notices, which the game developer places. The runtime has no hidden attribution checks or UI lockouts.
 
-В версии 2.4 `dispatch.cpp` и `game_loop.cpp` продолжают orchestration из runtime.cpp; `config.hpp`, `assets.hpp`, `logger.hpp`, `localization.hpp`, `renderer.hpp`, `audio.hpp` выделяют прежние контракты engine.hpp. Это перемещённый код ядра с сохранением происхождения. Новые самостоятельные `file_watch`, `prefab`, `animation`, `animation_api`, `animation_editor`, `morph` и выделенная изменяемая реализация `window` относятся к расширяемым компонентам; размещение в engine не добавляет их в закрытый перечень LICENSE. Настройка prefab/animation, замена анимации, retarget или morph renderer не требуют изменения ядра игры.
+In 2.4, `dispatch.cpp` and `game_loop.cpp` continue runtime orchestration; `config.hpp`, `assets.hpp`, `logger.hpp`, `localization.hpp`, `renderer.hpp`, and `audio.hpp` split former engine.hpp contracts. This moved code retains Core origin. New independent `file_watch`, `prefab`, `animation`, `animation_api`, `animation_editor`, `morph`, and the extracted adaptable `window` implementation remain extensible; their engine-directory placement does not expand LICENSE. Prefab/animation setup, replacement animation, retargeting, and morph rendering do not inherently require game Core changes.
 
+In 2.5, independent `documents.cpp`/`documents.hpp`, `editor_session.cpp`/`editor_session.hpp`, SDK, schemas, shells, and extension registries are outside the Core list and replaceable. Changes to main/runtime/game_loop/scene_runtime/config and shared headers add project CLI, optional editor hosting, scene candidates, and source metadata; affected Core-origin contracts retain their origin. Games/shells use public APIs without changing them. Disabling ImGui, changing plugins/UI, schema annotations, or extensions alone is not a Core change.
 
-В 2.5 независимые `documents.cpp`/`documents.hpp`, `editor_session.cpp`/`editor_session.hpp`, Python SDK, схемы, оболочки и registry расширений не входят в закрытый перечень ядра. Они открыты для замены и адаптации. Изменения main/runtime/game_loop/scene_runtime/config и общих headers добавляют CLI project, optional editor host, candidate scene input и сохранение source metadata; эти затронутые контракты сохраняют происхождение ядра. Обычная игра и пользовательская оболочка используют публичные API без их изменения. CMake-флаг отключения ImGui, изменение plugin/UI, JSON schema annotations и расширений само по себе не является правкой ядра.
-
-В bugfix 2.5.1 правки core-origin config/main/runtime/scene_runtime/python_api/features и общих headers уточняют проверки конфигурации/Python, membership callbacks, границу authoring persistence и кеш переводов. Они исправляют прежние отказы и не расширяют закрытый перечень ядра. Реализации physics/renderer/audio/preloader/SDK остаются заменяемыми согласно прежним границам; новая необязательная настройка defer_persistence документирована в инструкции.
+Bugfix 2.5.1 adjusts Core-origin configuration/Python validation, listener membership, authoring persistence, and translation caches in config/main/runtime/scene_runtime/python_api/features and shared headers. These fixes do not expand the Core list. Physics/renderer/audio/preloader/SDK implementations remain replaceable under their existing boundaries; the optional defer_persistence argument is documented in GUIDE.md.

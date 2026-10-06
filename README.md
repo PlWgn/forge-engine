@@ -1,12 +1,12 @@
 # Forge 2.5.1
 
-Модульный игровой runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS и Windows.
+Modular game runtime: C++17, Python 3.10+, GLFW/OpenGL 3.3, macOS and Windows.
 
-Bugfix 2.5.1 исправляет откат редакторских изменений, сохранения, проверки путей/чисел, звук и preload PBR-ресурсов. Неизменённые текстовые объекты больше не переводятся заново каждый кадр. Формат проекта и API оболочек сохраняют версию 1. [Исправления и проверка выпуска](docs/BUGFIX_2_5_1.md).
+Bugfix 2.5.1 corrects editor rollback, saves, path/numeric checks, audio, and PBR preloading. Unchanged text entities are no longer translated every frame. Project format and shell API remain version 1. [Fixes and release validation](docs/BUGFIX_2_5_1.md).
 
-Репозиторий содержит исходники. `.tools`, `build`, `dist` и скачанные библиотеки не входят в Git; в `vendor` хранятся описание и lock-файл. Сначала установите зависимости и скомпилируйте C++-движок. Команды выполняются из корня репозитория.
+This repository contains source code. .tools, build, dist, and downloaded libraries are not tracked; vendor holds a README and dependency lock. Install dependencies and compile the C++ engine first. Run commands from the repository root.
 
-На macOS нужны Command Line Tools и Python 3.10+ с python.org:
+On macOS, install Command Line Tools and Python 3.10+ from python.org:
 
 ```sh
 python3 -m venv .tools
@@ -20,7 +20,7 @@ python3 -m venv .tools
 .tools/bin/python tools/forge.py build --output dist/MyGame.app
 ```
 
-На Windows установите Python x64 и Visual Studio 2022 Build Tools с Desktop development with C++; используйте Developer PowerShell:
+On Windows, install Python x64 and Visual Studio 2022 Build Tools with Desktop development with C++; use Developer PowerShell:
 
 ```powershell
 python -m venv .tools
@@ -31,63 +31,63 @@ python -m venv .tools
 .tools\Scripts\python.exe tools/forge.py build --output dist/MyGame
 ```
 
-`compile` создаёт бинарный файл движка, `dev` запускает игровой контент без упаковки, `build` создаёт самостоятельную игру в новой папке `dist/MyGame`. Повторно компилировать C++ для изменений Python, JSON и ресурсов не требуется. Интернет нужен для первой установки зависимостей.
+compile creates the engine executable, dev runs content without packaging, and build creates a standalone game in a new dist/MyGame directory. Python/JSON/asset edits do not require recompiling C++. Internet access is needed for initial dependency setup.
 
-A/D — движение; Space — прыжок; Enter — текст новеллы; F5 — сохранение и звук; 2 — 3D; **3 — новый UI с меню, журналом и слотами**; 1 — возврат в 2D; Escape — выход.
+A/D moves; Space jumps; Enter advances dialogue; F5 saves/plays audio; 2 opens 3D; **3 opens the UI with menus, history, and slots**; 1 returns to 2D; Escape exits.
 
-[Подробная инструкция](Инструкция.md) · [Конфигурация](engine.json) · [Лицензия Forge](LICENSE) · [Атрибуция](ATTRIBUTION.md) · [Лицензии зависимостей](THIRD_PARTY.md)
+[Full guide](GUIDE.md) · [Configuration](engine.json) · [Forge license](LICENSE) · [Attribution](ATTRIBUTION.md) · [Dependency licenses](THIRD_PARTY.md)
 
-Ядро не требует изменений при создании игры. Все папки контента задаются в JSON. Python API: `import forge`. Собранная игра содержит собственный Python runtime.
+Creating a game needs no Core changes. Content directories are configured in JSON. Python API: import forge. Packaged games contain a private Python runtime.
 
-В Forge 1.2 есть готовые `Canvas`, `Row/Column`, кнопки, ползунки, прокрутка и перенос текста. Крупный текст учитывает HiDPI. Независимые модули предоставляют диалог/авточтение, журнал, меню паузы, сохраняемые настройки звука, слоты с версиями/проверкой целостности/backup и автосохранение, аудиоканалы и crossfade. Обработчики объектов допускают вложенный spawn; неудачный hot reload возвращает управляемое состояние движка.
+Forge 1.2 supplies Canvas, Row/Column, buttons, sliders, scrolling, and text wrapping. Large text handles HiDPI. Independent modules provide dialogue/auto-reading, history, pause menus, persistent audio preferences, versioned/checksummed/backup save slots, autosave, audio channels, and crossfade. Behaviors allow nested spawning; failed reload restores managed engine state.
 
-В версии 1.2.2 усилены проверки упаковки и числовых границ, восстановление слотов доступно из меню, а raycast и коллизии одинаково учитывают отключённые коллайдеры. Исправлен первый переход Shift+Tab. Подробные ограничения и статусы сохранений описаны в инструкции.
+Version 1.2.2 strengthened packaging/numeric checks, exposed backup recovery in menus, unified disabled-collider handling for raycast/collisions, and fixed initial Shift+Tab navigation. The guide details limits/save statuses.
 
-Локализация встроена в C++: JSON-переводы, параметры и множественные формы, резервный язык, сохранение выбора и переключение языка в готовом меню. `forge.message()` связывает перевод с UI и объектами; `forge.tr()` возвращает строку. Русский и английский доступны в стартовых сценах. Подробнее — раздел 10.5 инструкции. Для сложных письменностей и RTL требуется расширить рендерер текста.
+C++ localization supports JSON catalogs, parameters/plurals, fallback languages, saved selection, and language switching in the menu. forge.message() binds UI/entities; forge.tr() returns a string. Starter scenes include English/Russian. See guide section 10.5; complex scripts/RTL require a text backend extension.
 
-Встроенные примеры входят в исходную поставку: [2D-сцена](scenes/welcome.json), [3D-сцена](scenes/world3d.py), [интерфейс с локализацией и меню](scenes/interface.py), [расширенная 3D-сцена](scenes/advanced.json), [пустая сцена редактора](scenes/editor-empty.json), [физика с частицами](scenes/simulation.json) и [PBR/иерархия/процедурные меши](scenes/materials.json). Они используют поставляемые модели, текстуры, шрифт и звук; отдельная игра для запуска примеров не нужна. Для прямого запуска выберите `dev --scene interface.py`, `dev --scene world3d.py` или `dev --scene advanced.json`.
+Built-in examples are source-distribution content: [2D](scenes/welcome.json), [3D](scenes/world3d.py), [localized UI/menus](scenes/interface.py), [advanced 3D](scenes/advanced.json), [empty editor scene](scenes/editor-empty.json), [physics/particles](scenes/simulation.json), and [PBR/hierarchy/procedural meshes](scenes/materials.json). They use bundled models, textures, font, and audio; no separate game is needed. Launch with dev --scene interface.py, dev --scene world3d.py, or dev --scene advanced.json.
 
-Forge 2.0 добавляет камеры с render targets, UV/sprite sheets, batching и атласы глифов, постобработку и uniforms из Python, fallback-шрифты, фоновые asset handles и бюджеты памяти. Встроены action map, контроллеры и запись/воспроизведение ввода, стили и переходы UI, планировщик AI, состояния и таймлайны. Звук поддерживает pan, spatial audio, DSP, ducking, лимиты голосов и субтитры по playback cursor.
+Forge 2.0 adds render-target cameras, UV/sprite sheets, batching/glyph atlases, postprocessing/Python uniforms, fallback fonts, background asset handles, and memory budgets. It includes action maps, controllers, input recording/replay, UI styles/transitions, AI scheduling, states, and timelines. Audio supports pan/spatial/DSP/ducking/voice limits and playback-cursor subtitles.
 
-3D-набор включает swept AABB character controller, point/directional/spot lights, PCF-тени, импорт OBJ/glTF/GLB/FBX/DAE и skeletal animation на GPU. Команда `edit` открывает редактор с иерархией, инспектором, браузером ресурсов, undo/redo, preview и сохранением JSON. `--scene` выбирает начальную сцену без изменения конфигурации.
+The 3D set includes a swept AABB controller, point/directional/spot lights, PCF shadows, OBJ/glTF/GLB/FBX/DAE import, and GPU skeletal animation. edit opens hierarchy, inspector, asset browser, undo/redo, preview, and JSON saving. --scene selects an initial scene without editing configuration.
 
-Forge 2.1 добавляет нативную систему частиц и необязательную 3D-физику Bullet: вращающиеся тела, box/sphere/capsule, трение, упругость, силы/моменты, CCD, слои столкновений и capsule-контроллер на наклонных поверхностях. Частицы поддерживают непрерывный выпуск и burst, текстуры, цвет/размер по времени, привязку к объектам, billboards и batching. Прежняя AABB-физика остаётся default; для новой достаточно `"physics": {"backend": "bullet"}` в 3D-сцене. Все реализации и шейдеры доступны для изменения; подробности — раздел 19 инструкции.
+Forge 2.1 adds native particles and optional Bullet 3D physics: rotating box/sphere/capsule bodies, friction, restitution, forces/torques, CCD, collision masks, and sloped capsule control. Particles support continuous/burst emission, textures, lifetime color/size, following, billboards, and batching. AABB remains the default; choose "physics":{"backend":"bullet"} in a 3D scene. Implementations/shaders are editable; see section 19.
 
 ```sh
 python tools/forge.py dev --scene simulation.json
 ```
 
-WASD — движение капсулы, Space — прыжок, E — искры, R — перезапуск шара.
+WASD moves the capsule, Space jumps, E emits sparks, R resets the sphere.
 
-Forge 2.3 ускоряет частицы: кеширует разрешённые пути текстур, собирает снимок один раз за кадр и использует OpenGL 3.3 instancing вместо шести CPU-вершин на частицу. Прежние пользовательские vertex shaders автоматически используют совместимый путь. Изменение трансформации пересчитывает только затронутое поддерево; `set_positions` и `raycast_many` позволяют обновлять и запрашивать мир пакетно. Bullet обновляет только изменившиеся тела, Python bridge передаёт обычные данные без промежуточных JSON-строк. Lifecycle, Python API, reload, шрифты, медиа, GPU-ресурсы и рендер частиц разделены на реализации. Контракты, диагностика и воспроизводимый benchmark — раздел 21 инструкции. Один активный Python runtime, CPU-симуляция/alpha-sort частиц и остальные функциональные границы сохранены.
+Forge 2.3 speeds up particles with cached texture paths, one snapshot per frame, and OpenGL 3.3 instancing instead of six CPU vertices per particle. Existing custom vertex shaders retain a compatible path. Transform setters update affected subtrees; set_positions/raycast_many batch world updates/queries. Bullet synchronizes changed bodies only; Python bridge transfers ordinary data without intermediate JSON strings. Lifecycle, Python API, reload, fonts, media, GPU resources, and particle rendering have separate implementations. Contracts/diagnostics/benchmarks are in section 21. One active Python runtime, CPU particle simulation/alpha sorting, and other boundaries remain.
 
-Forge 2.2 добавляет PBR metallic/roughness с albedo, normal, ORM/AO и emissive-картами, прозрачный проход, иерархию объектов с локальными и мировыми координатами, обновляемые процедурные меши с цветами вершин, фильтрацию/mipmaps и снимки в пользовательский каталог. `find` использует индекс; legacy-физика отбирает пары по X вместо полного перебора. Редактор вынесен в отдельный модуль. Вложенные metadata отложенных сохранений фиксируются независимой копией. Прежние defaults сохранены; контракты и ограничения — раздел 20 инструкции.
+Forge 2.2 adds metallic/roughness PBR with albedo/normal/ORM/AO/emissive maps, transparency, local/world hierarchies, editable procedural meshes/vertex colors, filtering/mipmaps, and user captures. find uses an index; legacy physics filters pairs along X rather than testing every pair. Editor is separate. Deferred nested save metadata is copied independently. Defaults remain; see section 20.
 
 ```sh
 python tools/forge.py dev --scene materials.json
 python tools/benchmark_world.py build/bin/forge
 ```
 
-На macOS `build --output dist/MyGame.app` создаёт приложение с приватным Python, иконкой и пользовательскими каталогами. Есть команды Developer ID signing/notarization, настройки окна и crash reports. [Карта возможностей и проверок 2.x](docs/FORGE_2.md) связывает подсистемы с проверками. Точные границы рендера, физики, редактора и отката описаны в инструкции.
+macOS build --output dist/MyGame.app creates an app with private Python, icon, and user directories. Developer ID signing/notarization commands, window settings, and crash reports are available. [2.x capabilities and test coverage](docs/FORGE_2.md) maps subsystems to checks. The guide details rendering/physics/editor/rollback boundaries.
 
-## Состав исходного репозитория
+## Source Repository Contents
 
-Git хранит C++-исходники, изменяемые Python-модули, инструменты, встроенные примеры с исходными ресурсами, тесты, документацию, лицензии и lock-файл зависимостей. Сборки, окружения, скачанные библиотеки, сохранения, логи, скриншоты и локальные отчёты исключены через [.gitignore](.gitignore). Шрифт, модели `.obj`/glTF, изображения и WAV примеров — необходимые исходные ресурсы и остаются в Git.
+Git contains C++ source, adaptable Python modules, tools, built-in examples/assets, tests, documentation, licenses, and dependency lock. Builds, environments, downloads, saves, logs, screenshots, and local reports are ignored through [.gitignore](.gitignore). Fonts, OBJ/glTF models, images, and example WAVs are required source assets and remain tracked.
 
-После компиляции `python tools/forge.py validate` проверяет ресурсы и синтаксис, `python tools/forge.py test` запускает интеграционные наборы. Полный CTest запускает восемь наборов, включая numeric, packager_paths, rendering, authoring и project API: `ctest --test-dir build -C Release --output-on-failure`. Workflow macOS/Windows собирает варианты с базовым редактором и без него, выполняет CTest, отдельный Linux job — четыре графических набора на Mesa/Xvfb. Software OpenGL не подтверждает работу физических GPU или аудиоустройств этих ОС. Команды — [инструкция, раздел 20.6](Инструкция.md).
+After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eight suites, including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Linux runs four GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [guide section 20.6](GUIDE.md).
 
-## Лицензия и изменения
+## License and Modifications
 
-Forge распространяется по пользовательской **Forge Attribution License 1.0** с открытым исходным кодом и обязательным указанием движка на загрузочном экране и в меню игры. Для собственного изменённого ядра нужна подпись «Создано на основе движка Forge (ядро изменено)»; для обычного ядра — «Используется движок Forge». Коммерческие и закрытые игры разрешены.
+Forge uses the custom **Forge Attribution License 1.0**, with available source and required loading-screen/menu attribution. Your modified Core requires “Built on the Forge engine (modified core)”; unchanged official Core uses “Uses the Forge engine”. Commercial and closed-source games are allowed.
 
-Всё вне [перечня файлов ядра](CORE.md) можно изменять для своей игры, если отдельная лицензия не устанавливает другие условия. Это включает шейдеры, физику, графические и звуковые модули. Изменение ядра тоже разрешено, но обычным разработчикам игр рекомендуется использовать конфигурацию и расширения: так проще сохранять совместимость с обновлениями движка. Лицензии сторонних компонентов сохраняются.
+Everything outside the [Core list](CORE.md) may be adapted unless separately licensed, including shaders, physics, graphics, and audio. Core modification is permitted too, but ordinary game developers should prefer configuration/extensions for easier upgrades. Preserve dependency licenses.
 
-Лицензия пользовательская и не имеет статуса OSI-approved. Полные условия: [LICENSE](LICENSE).
+This custom license is not OSI-approved. Full terms: [LICENSE](LICENSE).
 
-Forge 2.4 добавляет prefab-иерархии и независимые экземпляры, property clips, layered skeletal animation с переходами/событиями, state machine, retarget по rest pose и morph targets. В сценовом редакторе доступны клипы, bone keys, layers, scrub, marker timeline, morph sliders и retarget JSON. Пример: `python tools/forge.py dev --scene authoring.py`; API/границы — раздел 22 инструкции. Watcher работает в фоне, listener/contact dispatch избегает повторных полных обходов; лёгкие C++ контракты сохраняют совместимый engine.hpp. CI проверяет также запуск самостоятельной поставки через `tools/verify_package.py`.
+Forge 2.4 adds prefab hierarchies/independent instances, property clips, layered skeletal animation/transitions/events, state machines, rest-pose retargeting, and morph targets. Editor tools cover clips/bone keys/layers/scrubbing/markers/morph sliders/retarget JSON. Example: python tools/forge.py dev --scene authoring.py; see section 22. The background watcher and indexed listener/contact dispatch avoid repeated full traversals; lightweight C++ contracts retain engine.hpp compatibility. CI also verifies standalone packages with tools/verify_package.py.
 
 
-Forge 2.5 отделяет оболочку редактора от открытого формата проекта и API. Базовый ImGui-интерфейс необязателен (`compile --without-editor`); JSON-lines CLI, Python SDK, общие extension commands и runtime editing работают без него. Сохранение учитывает неизвестные поля и внешние правки, обнаруживает конфликты и использует атомарную замену файла. [Руководство по оболочкам, формату и API](docs/PROJECT_API.md) · [JSON Schema](schemas/project.schema.json) · [Пример сторонней оболочки](examples/editor/terminal_shell.py).
+Forge 2.5 separates editor shells from the open project format/API. Builtin ImGui is optional (compile --without-editor); JSON-lines CLI, Python SDK, shared extension commands, and runtime editing work without it. Saves preserve unknown fields/external changes, detect conflicts, and replace files atomically. [Shell, format, and API guide](docs/PROJECT_API.md) · [JSON Schema](schemas/project.schema.json) · [Alternative shell example](examples/editor/terminal_shell.py).
 
 ```sh
 python tools/forge.py shell --shell examples/editor/terminal_shell.py --extension examples/editor/labels_extension.py

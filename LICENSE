@@ -1,18 +1,19 @@
 Forge Attribution License 1.0
 SPDX identifier: LicenseRef-Forge-Attribution-1.0
 
-Copyright (c) 2026 правообладатели и участники проекта Forge.
-Права на самостоятельные вклады принадлежат их соответствующим авторам.
+Copyright (c) 2026 Forge copyright holders and contributors.
+Independent contributions remain the property of their respective authors.
 
-1. Область действия и определения
+1. Scope and definitions
 
-«Движок» — оригинальные исходники, инструменты, документация и стартовые
-ресурсы Forge, к которым не приложена отдельная лицензия.
-«Правообладатель» — лицо, имеющее права на соответствующую часть Движка.
-«Продукт» — игра или другое пользовательское приложение, использующее
-ядро Forge полностью или частично, в исходной или скомпилированной форме.
+“Engine” means the original Forge source code, tools, documentation, and
+starter assets that are not accompanied by a separate license.
+“Copyright Holder” means a person holding rights to the relevant part of
+the Engine.
+“Product” means a game or other user application using the Forge Core in
+whole or in part, in source or compiled form.
 
-Для этой версии Движка «Ядро» исчерпывающе определено следующими файлами:
+For this Engine version, “Core” is exhaustively defined by these files:
   engine/src/main.cpp
   engine/src/config.cpp
   engine/src/log.cpp
@@ -20,142 +21,135 @@ Copyright (c) 2026 правообладатели и участники прое
   engine/include/forge/engine.hpp
   tools/packager.py
 
-Копирование, переименование или перемещение этих файлов, а также перенос
-их кода в другие файлы, не меняет статус соответствующего кода как Ядра.
-Файлы новых версий могут быть отнесены к Ядру только явно, в лицензии
-соответствующей версии. CORE.md поясняет эту границу, но не расширяет её.
+Copying, renaming, or moving these files, or transferring their code into
+other files, does not change the relevant code's status as Core. Files in
+new versions may be designated Core only explicitly in that version's
+license. CORE.md explains this boundary but does not expand it.
 
-«Изменённое ядро» — Ядро, в котором разработчик Продукта или третье лицо
-изменили исходный код либо заменили его реализацию вне официального
-выпуска Forge или документированного одобрения правообладателями
-затронутого кода. Это объективный критерий «нерекомендованных изменений»:
-самостоятельное мнение разработчика о полезности правки не отменяет
-обязанности обозначить изменённое происхождение.
+“Modified Core” means Core whose source code or implementation has been
+changed by a Product developer or third party outside an official Forge
+release or documented approval by the copyright holders of the affected
+code. This is the objective criterion for “non-recommended changes”:
+a developer's own opinion that a change is beneficial does not remove
+the obligation to identify its modified origin.
 
-Использование неизменённой официальной версии, её обычная компиляция,
-смена ОС или архитектуры, настройка JSON и изменения только вне Ядра
-сами по себе не означают, что Ядро изменено.
+Using an unchanged official version, ordinary compilation, changing OS or
+architecture, configuring JSON, or modifying only non-Core components
+does not by itself constitute a Core modification.
 
-2. Разрешённые действия
+2. Permissions
 
-При соблюдении условий этой лицензии Правообладатель предоставляет
-бесплатное, неисключительное разрешение любому лицу использовать,
-изучать, копировать, изменять, объединять с другим программным
-обеспечением и распространять Движок в исходной и бинарной форме,
-в том числе в коммерческих и некоммерческих Продуктах.
+Subject to this license, the Copyright Holder grants any person a free,
+nonexclusive permission to use, study, copy, modify, combine with other
+software, and distribute the Engine in source or binary form, including
+in commercial and noncommercial Products.
 
-Разрешается продавать Продукты и копии Движка. Роялти не требуются.
-Эта лицензия не требует раскрывать исходники вашей игры, собственных
-скриптов, ресурсов или собственных дополнений. Вы вправе выбирать
-лицензию для самостоятельно созданного кода и контента. Такое решение
-не отменяет условий использования включённого оригинального кода Forge.
+Products and copies of the Engine may be sold. No royalties are required.
+This license does not require disclosure of your game's source code,
+your own scripts, assets, or independently created additions. You may
+choose licenses for independently created code and content. That choice
+does not remove the conditions governing included original Forge code.
 
-Изменение Ядра разрешено: запрета на форки, исправления или замену
-реализаций нет. Для изменённого Ядра применяется правило пункта 3.
+Core modification is permitted: forks, fixes, and implementation
+replacement are not prohibited. Section 3 applies to Modified Core.
 
-3. Обязательная атрибуция в Продукте
+3. Required attribution in Products
 
-При передаче Продукта другим пользователям, его публикации либо
-публичной демонстрации необходимо показывать явное указание Forge:
+When providing a Product to other users, publishing it, or demonstrating
+it publicly, display explicit Forge attribution:
 
-  • на загрузочном экране при запуске Продукта;
-  • в главном меню или в разделе «О программе» / «О движке», доступном
-    непосредственно из меню Продукта.
+  • on the loading screen when the Product starts; and
+  • in the main menu or an About / About the Engine section accessible
+    directly from the Product's menu.
 
-Обычная подпись:
-  «Используется движок Forge».
+Standard notice:
+  “Uses the Forge engine”.
 
-Если Продукт использует Изменённое ядро, подпись в ОБОИХ указанных
-местах должна сообщать об этом:
-  «Создано на основе движка Forge (ядро изменено)».
+For a Product using Modified Core, the notice in BOTH locations must
+identify that modification:
+  “Built on the Forge engine (modified core)”.
 
-Допустим точный по смыслу перевод, например:
-  «Uses the Forge engine»;
-  «Built on the Forge engine (modified core)».
+A translation preserving the exact meaning of these notices is permitted.
 
-Указание должно быть читаемым, иметь достаточный контраст и оставаться
-на экране достаточно долго для обычного прочтения. Его можно оформить
-в стиле Продукта; логотип не обязателен. Скрытый текст, сообщение только
-в терминале или журнале, запись только в документации, титрах либо
-странице магазина не заменяют оба требуемых места.
+Attribution must be readable, have sufficient contrast, and remain
+visible long enough for ordinary reading. It may match the Product's
+style; a logo is optional. Hidden text, a terminal/log message alone,
+or a notice only in documentation, credits, or a store page does not
+replace both required locations.
 
-Если у Продукта нет загрузочного экрана, добавьте стартовый экран
-с указанием. Если нет меню, добавьте доступный пользователю экран
-информации через меню или отдельный пункт навигации Продукта.
-Отладочный запуск, автоматические тесты и внутренние сборки, которые
-не передаются другим пользователям и не демонстрируются публично,
-не обязаны иметь эти экраны.
+If there is no loading screen, add a startup screen with the notice.
+If there is no menu, add a user-accessible information screen through a
+menu or a separate Product navigation entry. Debug runs, automated tests,
+and internal builds neither provided to other users nor demonstrated
+publicly do not require these screens.
 
-Копирование отдельного модуля или ресурса вне Ядра без использования
-Ядра Forge само по себе не превращает другой продукт в Продукт по
-этой лицензии и не требует указания о применении движка в интерфейсе.
-Условия сохранения лицензии и авторских уведомлений остаются в силе.
+Copying a separate non-Core module or asset without using Forge Core
+does not by itself make another application a Product under this
+license or require engine attribution in its UI. License and copyright
+notice preservation requirements still apply.
 
-4. Изменения вне Ядра
+4. Non-Core modifications
 
-Если для конкретного файла или ресурса явно не установлена отдельная
-лицензия, разрешается свободно изменять, заменять, дополнять, удалять,
-перемещать и переименовывать всё вне Ядра для своей игры или приложения.
-В частности, это относится к JSON-настройкам, сценам, игровым скриптам,
-модулям, объектам, материалам, текстурам, моделям, аудио, шейдерам,
-графическим и звуковым реализациям и физике.
+Unless a file or asset explicitly carries a separate license, everything
+outside the Core may freely be modified, replaced, extended, removed,
+moved, or renamed for your game or application. This includes JSON
+settings, scenes, game scripts, modules, objects, materials, textures,
+models, audio, shaders, graphics/audio implementations, and physics.
 
-В этой версии engine/src/world.cpp (включая физику),
+In this version, engine/src/world.cpp (including physics),
 engine/src/render.cpp, engine/src/audio.cpp, engine/include/forge/gl.hpp,
-graphics/* и modules/* находятся вне Ядра. Их изменение само по себе
-не требует подписи «ядро изменено». Если одновременно изменены файлы
-Ядра или перенесённый из них код, действует правило Изменённого ядра.
+graphics/*, and modules/* are outside the Core. Modifying these alone
+does not require the “modified core” notice. If Core files or code moved
+from them are also modified, the Modified Core rule applies.
 
-Изменение игровых файлов не требует согласования с разработчиками
-Движка и не передаёт им права на вашу самостоятельную игру.
+Changes to game files require no approval from Engine developers and do
+not transfer rights to your independently created game to them.
 
-5. Распространение и сохранение условий
+5. Distribution and preservation of terms
 
-Включайте полный текст этой лицензии и NOTICE во все распространяемые
-копии Движка и Продукты, содержащие Движок; сохраняйте имеющиеся
-уведомления об авторских правах и лицензиях. Допускается расположение
-этих файлов в каталоге лицензий поставки.
+Include the full text of this license and NOTICE in all distributed
+Engine copies and Products containing the Engine. Preserve existing
+copyright and license notices. These files may reside in a distribution's
+licenses directory.
 
-При распространении изменённых исходников Ядра обозначайте внесённые
-изменения в сопроводительном описании или истории версий так, чтобы
-их можно было отличить от официального выпуска Forge. Не представляйте
-свой форк как неизменённый официальный выпуск.
+When distributing modified Core sources, describe changes in accompanying
+documentation or version history so they can be distinguished from an
+official Forge release. Do not present your fork as an unchanged official
+release.
 
-Нельзя отменить требования атрибуции и сохранения уведомлений для
-включённого оригинального кода Forge, просто переименовав Движок или
-поместив его под иной лицензией. Вы можете устанавливать дополнительные
-условия для своих самостоятельных вкладов, если они не лишают получателя
-прав на оригинальный код, предоставленных этой лицензией.
+Renaming the Engine or placing it under a different license cannot remove
+attribution and notice requirements for included original Forge code.
+You may impose additional terms on independent contributions if they do
+not deprive recipients of rights to original code granted here.
 
-Лицензии сторонних библиотек, шрифтов и иных отдельно лицензированных
-ресурсов действуют самостоятельно. Эта лицензия не меняет их условия
-и не предоставляет прав сверх предоставленных их правообладателями.
-Сведения о таких компонентах приведены в THIRD_PARTY.md и рядом с ними.
+Third-party library, font, and other separately licensed asset licenses
+apply independently. This license does not alter their terms or grant
+rights beyond those granted by their copyright holders. Information is
+provided in THIRD_PARTY.md and alongside those components.
 
-6. Название и отсутствие одобрения
+6. Name and absence of endorsement
 
-Указание Forge разрешено для правдивой атрибуции и описания происхождения.
-Лицензия не предоставляет права заявлять об одобрении вашей игры или
-форка правообладателями Forge и не передаёт права на чужие товарные знаки.
+The Forge name may be used for truthful attribution and origin
+identification. This license grants no right to claim Forge copyright
+holders endorse your game or fork, and conveys no rights to third-party
+trademarks.
 
-7. Отсутствие гарантий и ограничение ответственности
+7. Disclaimer of warranty and limitation of liability
 
-Движок предоставляется «как есть», без каких-либо гарантий, явных или
-подразумеваемых, включая гарантии пригодности для определённой цели,
-товарной пригодности и отсутствия нарушения чужих прав. В пределах,
-допускаемых применимым законом, Правообладатели не несут ответственности
-за требования, убытки или иной ущерб, возникающий из использования
-Движка или невозможности его использования.
+The Engine is provided “as is”, without warranties of any kind, express
+or implied, including fitness for a particular purpose, merchantability,
+and noninfringement. To the extent permitted by applicable law, Copyright
+Holders are not liable for claims, losses, or other damages arising from
+use of the Engine or inability to use it.
 
-8. Соблюдение и статус лицензии
+8. Compliance and license status
 
-Разрешения распространяются на использование в соответствии с условиями
-этой лицензии. Использование или распространение за пределами этих
-разрешений требует отдельного разрешения соответствующих Правообладателей.
-Прекращение несоответствующего использования или его исправление не
-отменяет обязательств, уже возникших по применимому закону.
+Permissions cover use complying with this license. Use or distribution
+outside these permissions requires separate permission from the relevant
+Copyright Holders. Discontinuing or correcting noncompliant use does not
+remove obligations already arising under applicable law.
 
-Это самостоятельная пользовательская лицензия. Она не является MIT,
-BSD, GPL или другой стандартной лицензией и не имеет статуса OSI-approved.
-Открытый доступ к исходному коду не следует представлять как подтверждение
-одобрения этой лицензии Open Source Initiative.
+This is an independent custom license, not MIT, BSD, GPL, or another
+standard license. It is not OSI-approved. Public access to source code
+must not be represented as evidence of Open Source Initiative approval
+of this license.

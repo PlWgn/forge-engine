@@ -1,44 +1,44 @@
-# Forge 2.5.1 — bugfix
+# Forge 2.5.1 — Bugfix
 
-Исправления после проверки Forge 2.5; формат проекта, API оболочек и save envelope остаются версии 1. Базовый редактор необязателен. Лицензия, границы ядра и встроенные примеры сохранены.
+Fixes following the Forge 2.5 review. Project format, shell API, and save envelope remain version 1. The builtin editor stays optional; licenses, Core boundaries, and examples are preserved.
 
-## Подтверждённые ошибки
+## Confirmed Bugs
 
-- **Откат редактора.** Неудачный apply мог изменить общий procedural mesh registry и записать/удалить сохранения. Теперь registry кандидата независим, save/write/delete откладываются до commit. Listener membership восстанавливается при отказе; после успешного apply внутри on_frame callbacks старой сцены больше не вызываются.
-- **Оболочка после отказа reload.** Пользовательский on_update прекращался вместе с gameplay и не позволял восстановить сцену. Теперь он продолжает работу; доступен явный load и исправление watched files.
-- **Пути сохранений и упаковки.** Save/backup symlink мог вывести запись за storage; core save мог затереть существующий .tmp. Пакет мог копировать внешний файл через вложенную symlink или зациклиться. Проверки выполняются до записи/копирования; действующие игровые папки test/tests/tkinter больше не отбрасываются как CPython test-suite.
-- **Проверка проекта.** Дробные schema_version/размеры окна усекались; переполнение integer могло дать другой размер. Теперь принимаются только целые значения в диапазоне, set_window сначала проверяет весь запрос. validate/build проверяют синтаксис также в python_paths. Автоматические entity_N не конфликтуют с явно заданным ID последующего объекта.
-- **Физика.** Отказ вычисления позднего тела оставлял ранние тела уже сдвинутыми. Legacy solver восстанавливает состояние всего шага; разрешение столкновения обновляет трансформации детей. Bullet mode/gravity setters отклоняют несовместимые значения до изменения мира.
-- **Графика и числа.** Измерение большого текста могло вернуть Infinity, максимальный int32 uniform ошибочно отклонялся. Большие конечные направления камеры/света переполняли float-нормализацию и давали чёрный кадр. Промежуточные вычисления выполнены в double с проверкой перед сужением; listener звука использует тот же принцип.
-- **Звук.** Неудачное декодирование нового файла при voice limit останавливало прежний голос. Decode/DSP готовятся до замены. Проверки settings/options не допускают дробных лимитов и неверных типов. Удаление ducking rule сбрасывает его gain.
-- **Preload.** Наследованные prefab-ресурсы и карты PBR учитываются полностью; виртуальные @mesh/@target не интерпретируются как файлы. Loader можно повторно использовать после close.
+- **Editor rollback.** Rejected apply could modify shared procedural geometry or write/delete saves. Candidates now isolate registries and defer saves until commit. Listener membership restores on failure; synchronous apply inside on_frame retires remaining old-scene callbacks.
+- **Shell recovery.** Custom on_update stopped with gameplay after rejected reload. It now continues, allowing explicit load or watched-file repair.
+- **Save/package paths.** Save/backup symlinks could escape storage; core save could overwrite an existing .tmp. Nested packaging symlinks could copy external files or cycle. Checks now precede writes/copying. Game folders test/tests/tkinter are no longer dropped as CPython test content.
+- **Project validation.** Fractional schema_version/window sizes truncated, and integer overflow could produce another size. Integers/ranges are strict; set_window validates the complete request. validate/build includes python_paths syntax. Generated entity_N IDs avoid explicit IDs declared later.
+- **Physics.** Failure in a later body could leave earlier bodies moved. Legacy restores the entire step; collision corrections refresh children. Bullet mode/gravity setters reject invalid changes before mutation.
+- **Graphics/numbers.** Large text measurement could return Infinity and maximum int32 uniforms were wrongly rejected. Large finite camera/light directions overflowed float normalization, producing black frames. Double intermediates are checked before narrowing; audio listener normalization follows the same principle.
+- **Audio.** Failed decode at capacity stopped the old voice. Decode/DSP prepare before replacement. Settings/options reject fractional limits and invalid types; removing ducking rules releases their gains.
+- **Preload.** Inherited prefab assets and PBR maps are included; @mesh/@target are not file paths. Loaders can be reused after close.
 
-## Оптимизация
+## Optimization
 
-Entity кеширует ключ перевода, параметры и revision локализации. При неизменённом состоянии текст не переводится заново каждый кадр; изменения языка/ключа/параметров обновляют его. profile()['localization_translations'] показывает число переводов последнего refresh. Кеш производный и не попадает в формат сцены.
+Entities cache translation key, parameters, and localization revision. Unchanged text no longer translates each frame; language/key/parameter changes refresh it. profile()['localization_translations'] reports the last refresh count. Derived cache state is not serialized.
 
-В локальном headless тесте на macOS arm64 с 4000 локализованными объектами, без рендера и физики, выполнены три запуска по 125 кадров; первые пять кадров исключены из выборки. Медиана frame_ms по запускам: 2.0149 мс у бинарника 2.5 и 0.2533 мс у 2.5.1, около 7.95 раза меньше. Результат относится к этому сценарию; CPU-обход объектов остаётся, общий FPS игры зависит от других подсистем.
+On macOS arm64, an isolated headless benchmark with 4000 localized entities and no physics/rendering used three 125-frame runs, excluding the first five frames. Median frame_ms across runs: 2.0149 ms for 2.5 and 0.2533 ms for 2.5.1, about 7.95 times less. Entity traversal remains; this is not a general game-FPS claim.
 
-## Совместимость
+## Compatibility
 
-Поддерживаемые проекты продолжают работать. Строгие проверки намеренно отклоняют значения, прежде молча усекавшиеся или повреждавшие состояние. window.width/height в config: целые 1..16384; set_window: width 320..16384, height 240..16384. fullscreen/vsync, stream/spatial/follow_camera требуют bool; лимиты голосов — целые 1..1024.
+Supported projects remain compatible. Strict validation intentionally rejects inputs previously truncated or allowed to corrupt state. Config window dimensions: integer 1..16384; set_window: width 320..16384, height 240..16384. fullscreen/vsync/stream/spatial/follow_camera require bool; voice limits are integers 1..1024.
 
-Обычная инициализация игры сохраняет немедленную запись save/write/delete. Hot reload и JSON authoring-кандидат откладывают их до commit. defer_persistence(callable, include_initialization=True) сохраняет прежний default; False исключает только обычную инициализацию, не транзакции. Произвольный Python I/O не откатывается; очередь commit не обеспечивает атомарность нескольких файлов. Детали — разделы 18.8 и 24 инструкции и PROJECT_API.md.
+Ordinary startup retains immediate save/write/delete. Reload/JSON authoring defer until commit. defer_persistence(callable,include_initialization=True) retains its default; False excludes ordinary initialization only. Arbitrary Python I/O is not rolled back; callback queues are not multi-file atomic transactions. See [guide sections 18.8 and 24](../GUIDE.md) and [PROJECT_API.md](PROJECT_API.md).
 
-## Проверка выпуска
+## Release Validation
 
-На macOS arm64, Release, CMake 3.31.6:
+On macOS arm64, Release, CMake 3.31.6:
 
-- compile и полный CTest: 8/8 с FORGE_WITH_EDITOR=ON и 8/8 с OFF;
-- graphics, features_graphics, simulation_graphics, rendering_graphics: 29/29 с реальным desktop/OpenGL и устройством аудио;
-- validate, standalone directory build, hashes/notices и запуск трёх встроенных сцен из другой папки с неверными PYTHONHOME/PYTHONPATH;
-- features дополнительно проверяет macOS .app, подпись и standalone запуск.
+- Compilation/full CTest: 8/8 with FORGE_WITH_EDITOR=ON and 8/8 with OFF;
+- graphics/features_graphics/simulation_graphics/rendering_graphics: 29/29 on actual desktop/OpenGL/audio hardware;
+- validate, standalone directory packaging, hashes/notices, and three scenes launched from another cwd with invalid PYTHONHOME/PYTHONPATH;
+- features additionally checks macOS .app/signing/standalone launch.
 
-Новые регрессии воспроизвели отказы на прежнем бинарнике/коде до исправлений. Windows и Linux здесь не запускались; workflow сохраняет их отдельные проверки. Проверка не доказывает отсутствие любых ошибок и не добавляет mesh/joints/navmesh, IBL/HDR, RTL/shaping или игровую terrain/voxel-логику.
+New regressions reproduced failures against the previous binary/code before fixes. Windows/Linux were not run locally; their workflow checks remain. This does not establish absence of all bugs or add mesh/joints/navmesh, IBL/HDR, RTL/shaping, or game terrain/voxel logic.
 
-## Обновление
+## Updating
 
-Обновите исходники/модули, установите закреплённые зависимости и пересоберите runtime:
+Update sources/modules, install pinned dependencies, and recompile:
 
 ```sh
 python tools/forge.py compile
@@ -46,4 +46,4 @@ python tools/forge.py validate --no-open-log
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Для варианта без базовой оболочки добавьте --without-editor к compile. Готовую игру упакуйте в новую папку build --output dist/MyGame-2.5.1; существующие поставки автоматически не заменяются. На Windows используйте python.exe и ctest.exe из .tools\Scripts либо активированного окружения.
+Add --without-editor to compile for the optional-shell variant. Package into a new directory with build --output dist/MyGame-2.5.1; existing distributions are not replaced. On Windows use python.exe/ctest.exe from .tools\Scripts or an activated environment.

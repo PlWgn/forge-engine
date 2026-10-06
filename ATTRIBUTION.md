@@ -1,35 +1,33 @@
-# Атрибуция Forge в игре
+# Forge Attribution in Your Game
 
-Полные условия: [LICENSE](LICENSE). Здесь приведены подписи и практические правила для разработчика игры.
+Full terms: [LICENSE](LICENSE). This guide provides notices and practical placement rules for game developers.
 
-Обычное ядро: **«Используется движок Forge»**.
+Standard Core: **“Uses the Forge engine”**.
 
-Собственные изменения ядра: **«Создано на основе движка Forge (ядро изменено)»**.
+Your own Core modifications: **“Built on the Forge engine (modified core)”**.
 
-Разместите соответствующую подпись **в двух местах**:
+Display the appropriate notice **in both locations**:
 
-1. На загрузочном экране при запуске игры. Если такого экрана нет, добавьте стартовый экран с подписью.
-2. В главном меню или разделе «О программе» / «О движке», доступном непосредственно из меню.
+1. On the loading screen when the game starts. If none exists, add a startup screen with attribution.
+2. In the main menu or an About / About the Engine section accessible directly from the menu.
 
-Подпись должна быть читаемой, контрастной и видимой достаточно долго, чтобы её прочитать. Можно подобрать оформление к игре и перевести текст с сохранением смысла. Публикация только в логе, README, титрах или магазине не заменяет оба места.
+The notice must be readable, sufficiently contrasted, and visible long enough to read. It may match the game's design and be translated without changing its meaning. A log, README, credits, or store-page notice alone does not replace the two locations.
 
-Для английской версии: **“Uses the Forge engine”** или **“Built on the Forge engine (modified core)”**.
+Shader, physics, graphics-module, and game-content changes alone do not require modified-core attribution. The exhaustive Core list is in [CORE.md](CORE.md) and LICENSE.
 
-Изменения шейдеров, физики, графических модулей и игровых файлов сами по себе не требуют подписи об изменённом ядре. Закрытый перечень файлов ядра приведён в [CORE.md](CORE.md) и LICENSE.
-
-Добавить текст в свою загрузочную сцену или сцену меню можно через готовый UI-модуль:
+Place text in each loading/menu scene through the UI module:
 
 ```python
 import ui
 
-# В каждой из двух соответствующих сцен.
-ui.text('engine-attribution', 'Используется движок Forge', 40, 40, 20)
+# In each of the two relevant scenes.
+ui.text('engine-attribution', 'Uses the Forge engine', 40, 40, 20)
 
-# Вместо обычной строки, если изменено ядро:
+# Instead, if the Core was modified:
 # ui.text('engine-attribution',
-#         'Создано на основе движка Forge (ядро изменено)', 40, 40, 20)
+#         'Built on the Forge engine (modified core)', 40, 40, 20)
 ```
 
-Это пример размещения текста, а не готовая система загрузочного экрана или меню. Убедитесь, что подпись действительно видна в вашей компоновке, включая поддерживаемые размеры окна.
+This demonstrates text placement, not a complete loading-screen/menu system. Check actual visibility in your layout at all supported window sizes.
 
-Сохраняйте LICENSE и NOTICE в поставке. `build` автоматически копирует документы лицензии Forge из установки движка; `init` копирует их в новый игровой проект. Для модифицированного ядра дополнительно приложите описание изменений. Коммерческие и закрытые игры разрешены: раскрытие их собственного кода не требуется.
+Preserve LICENSE and NOTICE in your distribution. `build` copies Forge license documents from the engine installation; `init` copies them into a new game project. For Modified Core, include a change description. Commercial and closed-source games are allowed; their independently created code need not be disclosed.

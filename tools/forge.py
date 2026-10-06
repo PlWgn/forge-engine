@@ -54,7 +54,8 @@ def scaffold(destination):
     for directory in ('graphics', 'modules', 'scenes', 'scripts', 'textures', 'materials', 'models', 'objects', 'audio', 'locales'):
         shutil.copytree(ROOT / directory, destination / directory, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy2(ROOT / 'engine.json', destination / 'engine.json')
-    shutil.copy2(ROOT / 'Инструкция.md', destination / 'Инструкция.md')
+    for filename in ('GUIDE.md', 'Инструкция.md'):
+        shutil.copy2(ROOT / filename, destination / filename)
     shutil.copytree(ROOT/'schemas',destination/'schemas')
     (destination/'docs').mkdir()
     for name in ('PROJECT_API.md','FORGE_2.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)

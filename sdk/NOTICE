@@ -1,17 +1,17 @@
 Forge game engine
-Copyright (c) 2026 правообладатели и участники проекта Forge.
+Copyright (c) 2026 Forge copyright holders and contributors.
 License: Forge Attribution License 1.0
 SPDX: LicenseRef-Forge-Attribution-1.0
 
-Обязательная подпись на загрузочном экране и в меню игры:
-  Используется движок Forge
+Required attribution on the loading screen and in the game menu:
+  Uses the Forge engine
 
-При изменённом ядре — в обоих местах:
-  Создано на основе движка Forge (ядро изменено)
+For modified Core, in both locations:
+  Built on the Forge engine (modified core)
 
-Полные условия и определения: LICENSE.
-Границы ядра и правила изменения компонентов: CORE.md.
-Отдельные лицензии зависимостей: THIRD_PARTY.md.
+Full terms and definitions: LICENSE.
+Core boundaries and component modification rules: CORE.md.
+Separate dependency licenses: THIRD_PARTY.md.
 
 This product uses Forge or code derived from Forge. Preserve this notice
 and the complete Forge license with distributed copies. Third-party

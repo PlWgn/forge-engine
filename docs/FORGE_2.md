@@ -1,101 +1,103 @@
-# Forge 2.x — карта возможностей и проверок
+# Forge 2.x — Capabilities and Test Coverage
 
-Карта связывает возможности движка с реализацией и воспроизводимыми проверками в `tests/`. Она описывает покрытие тестами, а не результат конкретного локального запуска. Публичные API, примеры и команды проверок: [Инструкция.md, разделы 16, 18, 19, 20, 21 и 22](../Инструкция.md); границы ядра: [CORE.md](../CORE.md).
+This map links features to implementations and reproducible tests under `tests/`. It describes coverage, not the result of a particular run. Public APIs, examples, and commands: [GUIDE.md, sections 16 and 18–24](../GUIDE.md). Core boundaries: [CORE.md](../CORE.md).
 
-| Возможность | Реализация | Проверка |
+| Feature | Implementation | Verification |
 | --- | --- | --- |
-| Параллельные камеры | FBO render targets, 2D/3D, слои, texture @target:name | features_graphics: камеры/monitor |
-| Sprite sheets / batching | Entity.uv, SpriteSheet, совместимые CPU quad batches | GPU: пиксели двух UV-регионов, ≤4 draw calls для 100 sprites + 200 glyphs |
-| Постобработка / uniforms | Grain, bloom, aberration, CRT, fade/gamma; глобальные/объектные uniforms | GPU: сравнение кадров и custom GLSL |
-| Fallback fonts | Цепочка TTF, одинаковое измерение/отрисовка, WARN U+code | measure_text + реальные glyph tests; отсутствие shaping/RTL описано |
-| Assets / memory | 4 workers, handles/pins, scene preload, LRU CPU, GPU budget | features: статус/bytes/preload/отказ по бюджету |
-| UI стили/переходы/навигация | Theme, Widget.style/opacity, ScreenStack/state, action navigation | features + прежние UI regression tests |
-| Actions/controllers/events/replay | ActionMap contexts/remapping, GLFW gamepads, input snapshots и versioned record/replay | features: клавиши/мышь/pad/context/press/release/dt |
-| Glyph atlas / profiler | Атлас по font/raster/code, quad batches; CPU timers и render/audio/asset stats | GPU batch test, profile API |
-| Pan/spatial/DSP | Настройки sound handle, listener, lowpass/highpass/delay nodes | native silent PCM + прежние desktop audio tests |
-| Субтитры | SRT/JSON/key/params по native playback cursor | features: pause/resume/stop |
-| Ducking / voices / streaming | Channel rules, priorities/limits/overflow, decode/stream/auto | features: лимиты/DSP/duck/stream/cursor |
-| Physics toggle/collider lists | Independent physics_enabled, активные AABB в solver/raycast/controller | прежние regressions + controller test |
-| Частицы | Native bounded pools, seeded emission, lifetime/color/size, attachments; camera billboards/UV/alpha/additive batching | simulation: lifetime/capacity/seed/scene teardown; simulation_graphics: 5000 quads ≤3 calls, pixel curves/UV, cameras/depth/sorting/shader rollback |
-| Bullet 3D | Double-precision box/sphere/capsule, rotation/forces/torque, friction/restitution, sleep, CCD, masks/triggers | simulation: exact overlap/rays, fast body/thin wall, bounce/friction, sleep/wake/gravity, numeric rollback, fixed-step/collision callback forces |
-| Capsule controller | Convex sweep/slide, slope normals, bounded penetration recovery | simulation: landing/sliding on rotated ramp; example simulation.json |
-| AI/state/timeline | Scheduler budget/clock, StateMachine, Timeline/Sequence | features: порядок/пауза/loop/отмена |
-| Reload/persistence | Автоматический defer для core save/SaveManager, explicit deferred callback | features: отказ кандидата не меняет три файла, успех меняет |
-| .app / подпись | Bundle/Info.plist/icon/private Python; ad-hoc build и команды Developer ID/notarytool | features: codesign/manifest/launch; настоящая нотарификация требует credentials |
-| User dirs/window/crash | Application Support/AppData APIs, preferences/UI, crash JSON/native marker | features: storage вне игры, error reports, UI preferences |
-| Character controller | Swept AABB slide, gravity/grounded jump | features: большое движение блокируется стеной, вертикальная опора/прыжок |
-| Свет/тени | 16 directional/point/spot, ambient, одна PCF directional shadow map | GPU: кадры с тенями/без теней различаются |
-| Skeletal animation | Assimp hierarchy/TRS clips, 128 bone GPU palette / 4 weights | оригинальный glTF fixture + pose/GPU кадры |
-| glTF/GLB/FBX/DAE | Assimp importers, материалы и embedded/external textures | glTF fixture + FBX box; остальные варианты зависят от импортера |
-| Редактор | ImGui hierarchy/inspector/assets, transform/collider/text/light/camera, add/delete/duplicate, JSON/undo/preview | окно editor + serialization; ограничения Python state описаны |
+| Multiple cameras | FBO targets, 2D/3D, layers, @target:name textures | features_graphics: camera/monitor |
+| Sprite sheets / batching | Entity.uv, SpriteSheet, compatible CPU quad batches | GPU: two UV regions, ≤4 draw calls for 100 sprites + 200 glyphs |
+| Postprocessing / uniforms | Grain, bloom, aberration, CRT, fade/gamma; global/entity uniforms | GPU: frame comparisons/custom GLSL |
+| Fallback fonts | TTF chain, matching measurement/drawing, WARN U+code | measure_text/glyph tests; no shaping/RTL |
+| Assets / memory | Four workers, handles/pins, preload, CPU LRU/GPU budget | features: status/bytes/preload/budget refusal |
+| UI styles/transitions/navigation | Theme, Widget.style/opacity, ScreenStack/state, action navigation | features and existing UI regressions |
+| Actions/controllers/events/replay | Contexts/rebinding, GLFW gamepads, snapshots/versioned recording | features: key/mouse/pad/context/press/release/dt |
+| Glyph atlases / profiling | Font/raster/codepoint atlas, quad batches, CPU timers/subsystem stats | GPU batching/profile API |
+| Pan/spatial/DSP | Voice settings, listener, lowpass/highpass/delay nodes | Native silent PCM and desktop audio tests |
+| Subtitles | SRT/JSON/key/params against playback cursor | features: pause/resume/stop |
+| Ducking/voices/streaming | Channel rules, priorities/limits/overflow, decode/stream/auto | features: limits/DSP/duck/stream/cursor |
+| Physics toggle/active colliders | Independent physics_enabled; active colliders in solver/raycast/controller | Existing regressions/controller checks |
+| Particles | Bounded native pools, seeds, lifetime/color/size, attachments, billboards/UV/blending | simulation: capacity/seed/lifetime/teardown; GPU: 5000 quads ≤3 calls, pixel curves/UV, camera/depth/sort/shader rollback |
+| Bullet 3D | Double box/sphere/capsule, rotation/forces/torques, friction/restitution/sleep/CCD/masks | simulation: overlap/rays, fast bodies/thin walls, bounce/friction/sleep/gravity, numeric rollback/substep forces |
+| Capsule controller | Convex sweep/slide, slope normals, bounded penetration recovery | simulation: rotated ramp landing/sliding; simulation.json example |
+| AI/state/timeline | Scheduler budget/clock, StateMachine, Timeline/Sequence | features: ordering/pause/loop/cancellation |
+| Reload/persistence | Managed save deferral and explicit deferred callbacks | features: rejected candidate retains three files; accepted candidate updates them |
+| .app / signing | Bundle/plist/icon/private Python; ad-hoc packaging/Developer ID/notarytool commands | features: codesign/manifest/launch; real notarization needs credentials |
+| User directories/window/crash | Application Support/AppData, preferences/UI, JSON/native crash markers | features: external storage/error reports/preferences |
+| AABB character controller | Sweep/slide, gravity/grounded jumping | features: wall blocking/support/jump |
+| Lighting/shadows | 16 directional/point/spot lights, ambient, one PCF directional shadow map | GPU: shadowed/unshadowed frames differ |
+| Skeletal animation | Assimp hierarchy/TRS, 128-bone GPU palette/four weights | Original glTF fixture/pose/GPU frames |
+| glTF/GLB/FBX/DAE | Assimp importers, materials/embedded/external maps | glTF fixture/FBX box; other variants depend on importer |
+| Editor | ImGui hierarchy/inspector/assets, transforms/colliders/text/light/camera, add/delete/duplicate/JSON/undo/preview | Editor window/serialization; Python-state limits documented |
 
-| PBR | GGX/Smith/Schlick, albedo/normal/MR/AO/emissive; JSON/inline и glTF maps | rendering: validator atomic; rendering_graphics: карты/факторы меняют пиксели, embedded glTF emissive |
-| Прозрачность | opaque/mask/blend; opaque first, center-depth sort, no depth writes для blend; cutout shadows | rendering_graphics: порядок/alpha/mask по пикселям |
-| Родители/дети | Native local TRS, world matrix/position/orientation; cycle checks, reparent, subtree lifecycle | rendering: JSON/Python, rollback shear/overflow, colliders в обоих backend; GPU: дочерний sprite |
-| Процедурные меши | Scene-owned @mesh registry, revision, normals/UV/vertex colors, CPU/GPU budget/release | rendering: validation/lifetime/budget/reload; GPU: update/free, одно имя в разных сценах |
-| Масштабирование | Hash index find; legacy sweep по X, Bullet sync через индекс | rendering: 10000 boxes / 30000 lookups; tools/benchmark_world.py: локальные измерения без timing gates |
-| Texture sampling/captures | nearest/linear, mip chain с учётом GPU bytes; user_screenshot | rendering_graphics: mip budget и пользовательский capture |
-| Границы модулей | editor.cpp, hierarchy.cpp, geometry.cpp, material.cpp; lightweight scene/model headers, explicit renderer Runtime | прежние native/GPU regressions; один Python runtime остаётся ограничением |
-| Snapshot metadata | Deep JSON copy для отложенного SaveManager.write | rendering: настоящий успех/отказ reload, nested metadata/data, восстановление меша/дерева |
+## Forge 2.2 and 2.3
 
-| Particle instancing | OpenGL 3.3 instance stream (52 bytes/particle), один frame snapshot, alpha CPU sort/additive grouping, кеш путей | simulation_graphics: UV/color/rotation/depth, 5001 instances/260052 bytes, ноль повторных path resolutions, custom shader/explicit fallback, rollback |
-| Transform cache/bulk | Scalar setter проверяет и меняет только subtree; set_positions атомарно строит общее состояние | rendering: 2000 roots/2001 pose updates, no per-setter audit, parent/child bulk, duplicate/NaN/overflow rollback, destroy/id reuse |
-| Physics cache/batch | Raw shape/pose snapshots, unchanged Bullet bodies retained; raycast_many — одна sync на batch | simulation: оба backend, cached body counters, changed pose/collider, destroy/id reuse, batch validation |
-| Python bridge | Native dict/list/scalar conversion, независимые copies; JSON fallback для нестандартных ключей/типов | rendering: nested copies, Unicode, tuples, uint64/big ints, legacy key coercion, rejected NaN/Infinity/cycles/types |
-| Разделение реализации | python_api/scene_runtime/reload/python_bridge; particle_render/gpu_resources/text/media | все прежние native/GPU contracts; relocated core сохраняет происхождение, один Python runtime остаётся границей |
+| Feature | Implementation | Verification |
+| --- | --- | --- |
+| PBR | GGX/Smith/Schlick, albedo/normal/MR/AO/emission, JSON/inline/glTF maps | rendering: atomic validation; GPU: factors/maps/embedded emission change pixels |
+| Transparency | opaque/mask/blend, depth order, no blend depth writes, cutout shadows | GPU: order/alpha/mask pixels |
+| Parent/child objects | Local TRS/world pose, cycles/reparent/subtree lifetime | rendering: JSON/Python/shear/overflow/both backend colliders; GPU: child sprites |
+| Procedural meshes | Scene-owned @mesh/revisions/normals/UV/colors/CPU-GPU budgets | rendering: validation/lifetime/budget/reload; GPU: updates/free/name reuse |
+| World scaling | Hash-index find, legacy X sweep, indexed Bullet sync | rendering: 10000 boxes/30000 lookups; benchmark_world.py without timing gates |
+| Texture sampling/captures | nearest/linear, accounted mip chains, user_screenshot | GPU: mip budgets/user capture |
+| Module boundaries | Separate editor/hierarchy/geometry/material, lightweight contracts, explicit Runtime | Existing native/GPU checks; one Python runtime remains |
+| Save metadata snapshots | Deep JSON copy for deferred write | rendering: accepted/rejected reload, nested data/metadata, mesh/tree restoration |
+| Particle instancing | OpenGL 3.3 52-byte stream, one snapshot, CPU alpha sorting/additive grouping, path cache | GPU: UV/color/rotation/depth, 5001 instances/260052 bytes, zero repeated resolves, custom/fallback shader rollback |
+| Transform cache/bulk | Subtree setters and atomic set_positions | rendering: 2000 roots/2001 pose updates, no per-setter audit, parent/child bulk, duplicate/NaN/overflow/destruction/ID reuse |
+| Physics cache/batch | Raw shape/pose snapshots, unchanged bodies retained, one sync per raycast_many | simulation: both backends/counters/body changes/destruction/batch validation |
+| Python bridge | Direct dict/list/scalars, independent copies, JSON fallback | rendering: nested copies/Unicode/tuples/large ints/key coercion/rejected invalid types |
+| Implementation separation | python_api/scene_runtime/reload/python_bridge; particle_render/gpu_resources/text/media | Previous contracts preserved; relocated Core retains origin |
 
-Минимальная сложность для игры: `engine.json` + сцена; все новые модули необязательные. Defaults прежних проектов сохраняются: project storage, базовый свет при пустом lights, прежние play_sound/Entity/UI API. Пример `advanced.json` показывает расширения вместе, `simulation.json` — Bullet и частицы, `materials.json` — PBR, иерархия и живые меши; `editor-empty.json` — начало авторской сцены.
+A minimal game needs `engine.json` and a scene; new modules are optional. Defaults remain compatible: project storage, basic lighting for empty lights, existing play_sound/Entity/UI APIs. advanced.json combines features; simulation.json shows Bullet/particles; materials.json shows PBR/hierarchy/live meshes; editor-empty.json starts authoring.
 
-Границы: legacy-физика остаётся AABB; Bullet поддерживает только box/sphere/capsule без mesh-коллайдеров, joints, navmesh и автоматического step climbing. Частицы — CPU-симуляция без столкновений, GPU compute и теней; локальная привязка переносит позицию без вращения/масштаба владельца. Остальные границы: PBR без IBL/environment maps и HDR pipeline, одна shadow map без cascades, TRS skinning без blend tree/morph/retarget, text без bidi/shaping, редактор без visual scripting/gizmos. Режим replay фиксирует ввод/dt, а не внешние сервисы и RNG. Crash reporter не отправляет данные автоматически. Windows должен пройти CI/локальные тесты на своей машине: исполнение macOS не подтверждает Windows binary.
+Boundaries: legacy remains AABB; Bullet has box/sphere/capsule without mesh/joints/navmesh/automatic step climbing. Particles use CPU simulation without collisions/GPU compute/shadows; local following inherits position only. PBR has no IBL/environment maps/HDR; one shadow map has no cascades. Animation supports layers/morph/retarget since 2.4 but no full blend-tree graph. Text lacks bidi/shaping; editor lacks visual scripting/gizmos. Replay stores input/dt, not external services/RNG. Crash reporting sends nothing automatically. macOS results do not establish Windows behavior.
 
-CI запускает все шесть CTest suites на macOS/Windows и четыре GPU suites на Linux с Mesa/Xvfb и виртуальным аудиоустройством. Workflow описывает будущие проверки; его наличие не доказывает успешное исполнение. Графические наборы отдельно от CTest. Контракты PBR/иерархии/геометрии и воспроизводимые команды — раздел 20 инструкции.
+Current CI runs eight CTest suites on macOS/Windows and four GPU suites on Linux Mesa/Xvfb with virtual audio. The workflow describes checks, not proof of an unexecuted result. GPU suites are separate from CTest; section 20 documents PBR/hierarchy/geometry contracts and commands.
 
-Динамическое физическое тело должно быть корнем дерева; визуальные дети разрешены, дочерние коллайдеры — статические/кинематические. Матрица рендера наследует scale, размеры коллайдера задаются явно. Blend сортируется по центрам объектов, без OIT и общей сортировки с частицами. В материале фиксированы стандартные каналы и один UV set; произвольный vertex layout требует изменения графического модуля. Процедурные меши не сериализуются в scene JSON. Состояние Python, ввод/окно/GPU пока не полностью разделены: множество параллельных Python runtimes не поддерживается.
+Dynamic bodies must be hierarchy roots; visual children and static/kinematic child colliders are allowed. Render matrices inherit scale while collider dimensions remain explicit. Blend sorts centers without OIT or joint particle sorting. Material channels/first UV set are fixed; arbitrary vertex layout requires graphics changes. Procedural vertices do not serialize into scene JSON. Python/window/input/GPU are not completely isolated; concurrent Python runtimes are unsupported.
 
-Профилирование 2.3: `tools/benchmark_hotpaths.py` создаёт временный проект и измеряет scalar setters, повторные raycast, Python/JSON roundtrips; `--particles` добавляет настоящий GPU-прогон. Это локальный benchmark без timing assertions, а не гарантия FPS. Bullet и нативные публичные поля по-прежнему требуют линейного аудита, legacy raycast сканирует коллайдеры; `raycast_many` сокращает число аудитов. IBL/HDR, cascaded shadows, mesh colliders, joints, navmesh и bidi/shaping в этом этапе не добавлены.
+`tools/benchmark_hotpaths.py` measures scalar setters, repeated rays, and Python/JSON roundtrips in a temporary project; --particles adds actual rendering. This is a local benchmark without timing assertions/FPS guarantees. Public-field audits remain linear and legacy rays scan colliders; batching reduces audits. IBL/HDR/cascades/mesh colliders/joints/navmesh/bidi/shaping remain absent.
 
 ## Forge 2.4
 
-| Возможность | Реализация | Проверка |
+| Feature | Implementation | Verification |
 | --- | --- | --- |
-| Prefab hierarchy/inheritance | prefab.cpp, modules/prefabs.py, JSON Merge Patch, local IDs/atomic create | authoring: independent copies, attachment, cycles, duplicate IDs, world overflow rollback |
-| Layered animation/playback | animation.cpp/api, masks, TRS blends, interruptible crossfade, markers/finished queues | authoring: weighted poses, authored bone keys, pause/seek/loops/events/budget rejection |
-| Retarget | source-to-target names, local rest TRS delta, translation_scale | authoring: renamed/proportioned skeleton; rendering_graphics: actual movement pixels |
-| Morph targets | Assimp deltas/default/animated weights, CPU deformation before GPU skinning | authoring: named weights/numeric failures; rendering_graphics: deformation and per-instance pixel isolation |
-| Property clips/state machine | animation.py tracks, events, parameters, triggers and exit_time | authoring: 2D properties/playback and native-backed graph transitions |
-| Animation editor | animation_editor.cpp, Inspector layers/scrub/markers/morphs/retarget JSON/prefab export | rendering_graphics: native panel opens/render; authoring tests cover applied API; button interactions are manual QA |
-| Dispatch | dispatch.cpp, listener IDs and per-entity contact changes | authoring: 5000 listeners/removal/addition; integration/simulation: lifecycle/contact behavior |
-| Background watch | file_watch.cpp worker; prepared snapshots of paths/python_paths | authoring/integration: reload, path changes/rollback; metadata scan, no content hash guarantee |
-| Stable extensions/build | api_version/capabilities, light contracts, shader configure dependencies, Threads | compile/CTest; CI verify_package hashes/notices/three private-Python launches |
+| Prefab hierarchy/inheritance | prefab.cpp/prefabs.py, JSON Merge Patch, local IDs/atomic creation | authoring: independent copies/attachment/cycles/duplicate IDs/overflow rollback |
+| Layered animation/playback | animation.cpp/api, masks/TRS blending/interruptible fades/markers | authoring: weighted poses/authored keys/pause/seek/loop/events/budget refusal |
+| Retarget | Name mapping, local rest delta, translation_scale | authoring: renamed/proportioned skeleton; GPU: actual movement |
+| Morph targets | Imported deltas/default/animated weights, CPU deformation before GPU skinning | authoring: weights/numeric refusal; GPU: per-instance pixel isolation |
+| Property clips/state machine | Python tracks/events/parameters/triggers/exit_time | authoring: 2D playback/native graph transitions |
+| Animation editor | Layers/scrub/markers/morphs/retarget JSON/prefab export | GPU: panel rendering; API authoring checks; button interaction requires manual QA |
+| Dispatch | Listener IDs/indexed contact changes | authoring: 5000 listeners/add/remove; lifecycle/contact regressions |
+| Background watcher | Worker snapshots of paths/python_paths | Reload/path/rollback tests; metadata rather than content hashes |
+| Stable extensions/build | API/capabilities/light contracts/shader dependencies/Threads | Compile/CTest/standalone manifest-notice-launch verification |
 
-Семь CTest suites и четыре GPU suites. Retarget не включает IK/anatomy inference/foot locking; morphs используют CPU upload, до 32 targets/part. Визуальный редактор редактирует playback/layers/markers/settings и TRS bone keyframes; node-graph state machine отсутствует. Один активный Python runtime сохраняется; renderer остаётся крупным GPU orchestration модулем. Остальные ранее описанные функциональные границы действуют. Подробные defaults, budgets и миграция legacy playback — раздел 22 инструкции.
-
+The current tree has eight CTest/four GPU suites. Retargeting excludes IK/anatomy inference/foot locking; morphs use CPU upload, up to 32 targets/part. The editor supports playback/layers/markers/settings/TRS keys without a state-machine node graph. One active Python runtime and renderer orchestration boundaries remain. Section 22 details defaults/budgets/legacy migration.
 
 ## Forge 2.5
 
-| Возможность | Реализация | Проверка |
+| Feature | Implementation | Verification |
 | --- | --- | --- |
-| Общий формат документов | schemas, documents.cpp, JSON Patch, ID merge, optimistic conflict/atomic replace | project_api: independent/manual/unknown fields, order/deletion/conflict, invalid paths/numbers |
-| Оболочки без builtin GUI | CMake FORGE_WITH_EDITOR, project JSON-lines, sdk/forge_editor, terminal/viewport examples | project_api CLI/native adapters; CI macOS/Windows ON/OFF |
-| Public runtime editing | editor_session.cpp, editor_command, shared selection/history/save, lifecycle candidate | project_api: paused patch/undo/redo, script/numeric rollback |
-| Общие extensions | SDK Client/RuntimeClient registry, builtin Extension commands panel | project_api: same extension in process and external; GUI panel rendering |
-| Сосуществование с ручными правками | authored delta projection, disk three-way merge, unknown source fields | project_api: original camera/entity metadata, defaults, conflicts retain file/draft |
+| Shared document format | Schemas/documents.cpp/JSON Patch/ID merge/optimistic atomic commit | project_api: independent/manual/unknown fields/order/delete/conflicts/invalid paths/numbers |
+| Shells without builtin GUI | FORGE_WITH_EDITOR, JSON-lines/SDK/terminal/viewport examples | CLI/native adapters; macOS/Windows ON/OFF CI |
+| Public runtime editing | editor_session.cpp/editor_command/shared selection/history/lifecycle | Paused patch/undo/redo and script/numeric rollback |
+| Shared extensions | Client/RuntimeClient registry and Extension commands panel | Same extension in external/in-process hosts; GUI rendering |
+| Coexistence with manual edits | Authored delta projection/disk merge/unknown-field preservation | Original camera/entity metadata/defaults/conflicts retain disk/draft |
 
-CTest содержит восемь наборов; launcher test — шесть интеграционных. Отдельные четыре GPU suites сохраняются. Открытый format/API не требуют SDK или интерфейса для game run/build. Нет embedding GPU viewport в сторонний toolkit, remote live-game RPC, универсального undo произвольного Python/I/O, widget ABI ImGui или распределённой файловой блокировки. При несохранённых editor changes автоматический hot reload сохраняет мир и сообщает об отказе; явный load/reset управляется пользователем. Контракты и пути перехода — [PROJECT_API.md](PROJECT_API.md) и раздел 23 инструкции.
+CTest has eight suites; launcher test has six integration suites; four GPU suites remain separate. Open format/API need no SDK/UI for game run/build. API 1 lacks third-party viewport embedding, remote live-game RPC, arbitrary Python/I/O undo, ImGui widget ABI, or distributed locking. Unsaved editor changes block automatic reload without losing the world; explicit load/reset is user-controlled. See [PROJECT_API.md](PROJECT_API.md) and guide section 23.
 
 ## Forge 2.5.1
 
-Bugfix сохраняет открытый формат и API 1, необязательный редактор и прежние defaults.
+Bugfix retains open format/API 1, optional editor, and existing defaults.
 
-| Исправление | Регрессии |
+| Fix | Regression coverage |
 | --- | --- |
-| Editor rollback: listeners, procedural geometry, managed save/write/delete; shell после отказа reload | project_api |
-| Целые размеры/версии, атомарные window options, строгие audio settings | project_api, features, features_graphics |
-| Storage symlinks/temp; вложенные copy symlinks/cycles; сохранение игровых tests-папок | integration, packager_paths, standalone package |
-| Проверка Python из python_paths, резервирование явных ID перед autogeneration | integration |
-| Откат legacy physics при переполнении, согласованные Bullet setters | integration, simulation |
-| Переполнение text metrics, int32 uniforms, большие конечные camera/light directions | integration, rendering_graphics |
-| Отказ decode при voice stealing, очистка ducking, prefab/PBR preload | features, прежние audio-device/GPU suites |
-| Кеш text_key/params/revision вместо повторных переводов каждый кадр | integration, прежние localization/UI suites |
+| Editor listener/geometry/save/write/delete rollback; shell recovery after reload failure | project_api |
+| Integer dimensions/versions, atomic window requests, strict audio settings | project_api/features/features_graphics |
+| Save symlinks/temp; nested copy symlinks/cycles; game tests directories preserved | integration/packager_paths/standalone package |
+| python_paths syntax and reserving explicit forward IDs | integration |
+| Legacy arithmetic rollback and consistent Bullet setters | integration/simulation |
+| Text overflow/int32 uniforms/large finite camera-light directions | integration/rendering_graphics |
+| Failed replacement decode, ducking cleanup, prefab/PBR preload | features/existing audio-GPU suites |
+| Translation key/params/revision caching | integration/localization/UI |
 
-Для выпуска на macOS arm64 выполнены все восемь CTest-наборов в сборках с базовым редактором и без него, четыре desktop/OpenGL/audio suites с редактором (29 проверок), validate и проверка самостоятельной поставки. Windows/Linux локально не запускались; они остаются отдельными CI-платформами. Методика изолированного headless benchmark локализации: 4000 объектов, три запуска по 125 кадров, первые пять исключены; медиана frame_ms по запускам 2.01 мс в 2.5 против 0.253 мс в 2.5.1. Это измерение данного сценария, не общей производительности игры.
+Release validation on macOS arm64 passed eight CTest suites with editor ON/OFF, four desktop/OpenGL/audio suites with editor (29 tests), validate, and standalone verification. Windows/Linux were not run locally. A localization benchmark used 4000 entities, three 125-frame headless runs excluding the first five frames: median frame_ms was 2.01 ms in 2.5 versus 0.253 ms in 2.5.1. This measures that scenario, not overall game performance.

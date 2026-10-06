@@ -1,20 +1,20 @@
-# Оболочки и открытый формат Forge 2.5
+# Forge 2.5 Shells and Open Project Format
 
-Проект принадлежит разработчику, а не редактору. Базовая ImGui-оболочка, сторонний GUI, терминал и ручное редактирование работают с одной конфигурацией и ресурсами. Скрытой базы редактора нет. Для `run`, `dev`, `validate` и `build` интерфейс и SDK не нужны. Нативный runtime по-прежнему содержит C++/CPython и GLFW/OpenGL для игры.
+The developer owns the project. Builtin ImGui, third-party GUIs, terminal tools, and manual edits share configuration/resources without a hidden editor database. run/dev/validate/build require neither UI nor SDK. The game runtime still uses C++/CPython and GLFW/OpenGL.
 
-## Формат и совместимость
+## Format and Compatibility
 
-`engine.json` — UTF-8 JSON, `schema_version: 1`. Название этого файла можно изменить и передать через `--project`. `paths` описывает группы ресурсов; пути относительны корню конфигурации, разрешаются с учётом symlinks и остаются внутри проекта. `python_paths` расширяет импорты. Python-сцены/скрипты остаются обычными исходниками. JSON-сцены содержат `mode`, `entities`, `camera`, `physics`, `rendering`, `emitters` и необязательный `script`. Сущности хранят локальные TRS, `parent`, ссылки на ресурсы, `scripts`, `data`, animator и morph settings. `parent` ссылается на ID, а не индекс строки. Scene script разрешается относительно группы scenes; Behavior — scripts. Материалы — JSON; изображения/модели/звук/шейдеры сохраняют свои стандартные форматы. `@mesh:` — runtime registry; документ не хранит его геометрию автоматически.
+engine.json is UTF-8 JSON with schema_version:1; rename it and select it through --project. paths defines resource groups relative to the configuration root; resolved symlinks must remain inside the project. python_paths adds import directories. Python scenes/scripts remain source files. JSON scenes contain mode/entities/camera/physics/rendering/emitters and optional script. Entities store local TRS, parent, assets, scripts/data, animator/morph settings. parent references IDs rather than row indices. Scene scripts resolve under scenes; Behaviors under scripts. Materials are JSON; images/models/audio/shaders keep standard formats. @mesh: refers to a runtime registry whose geometry is not automatically stored in documents.
 
-Версия движка, `schema_version`, project API и игровой API независимы. Новая оболочка не должна менять версию формата ради своего интерфейса. JSON Schema в `schemas/{project,scene,entity,prefab,material}.schema.json` описывает базовую структуру; `additionalProperties` разрешены. Семантические проверки ссылок, числовой арифметики, иерархии, физики и поддерживаемых ресурсов выполняет нативный движок. Schema не заменяет `validate`, проверку media или выполнение Python. Defaults и расширенные контракты описаны в `Инструкция.md`. `$schema` в пользовательском JSON необязателен; runtime сохраняет его как обычное поле.
+Engine version, schema_version, project API, and game API are independent. A shell must not bump format versions for its own UI. schemas/{project,scene,entity,prefab,material}.schema.json defines basic structure and allows additionalProperties. The native engine checks references, numerical arithmetic, hierarchy, physics, and resources. Schema does not replace validate, media checks, or Python execution. GUIDE.md describes defaults/extended contracts. Optional $schema is preserved as ordinary data.
 
-Рекомендуются устойчивые непустые `id` у сущностей и emitters. Для `entities` и `emitters` с уникальными строковыми ID merge сопоставляет записи по ID, поэтому перестановка строк не смешивает объекты. Без таких ID весь массив рассматривается как одно поле. Вектора, scripts, keyframes и остальные массивы также атомарны. Незнакомые поля на любом уровне сохраняются. Данные оболочки удобно помещать в `extensions["org.example.shell"]`; это соглашение для имён, не запрет на другие поля. Состояние панели, приватные кеши и история undo не обязательны для запуска игры; исходный проект не зависит от них.
+Use stable nonempty entity/emitter IDs. Arrays of entities/emitters with unique string IDs merge by ID so reordered rows do not mix objects. Without such IDs, the entire array is atomic. Vectors/scripts/keyframes/other arrays are also atomic. Unknown fields at every level are preserved. extensions["org.example.shell"] is a useful naming convention, not a restriction. Panel state/private caches/undo history are optional and not needed to run the game.
 
-При сохранении форматирование может стать двухпробельным; порядок ключей и исходные числовые лексемы не гарантируются. Значения неизвестных полей сохраняются. Если документ семантически не изменился, файл вообще не переписывается. JSON с комментариями, дублирующимися ключами, NaN/Infinity не является поддерживаемым обменным форматом. Произвольное состояние Python, closures, внешние файлы и побочные эффекты скриптов автоматически не сериализуются.
+Saving may normalize indentation to two spaces; key order/original number spelling are not guaranteed. Unknown values are preserved; semantically unchanged documents are not rewritten. Comments, duplicate keys, NaN/Infinity are unsupported interchange JSON. Arbitrary Python state/closures/external files/script effects are not automatically serialized.
 
-## API документов без GUI
+## Document API Without a GUI
 
-Все команды доступны нативно и через launcher:
+Commands are available through the native executable or launcher:
 
 ```sh
 build/bin/forge project --project engine.json --request request.json
@@ -22,51 +22,51 @@ python tools/forge.py project --project engine.json --request request.json
 python tools/forge.py project --project engine.json --serve
 ```
 
-На Windows укажите `build/bin/Release/forge.exe` или `build/bin/forge.exe`. Без `--request` и `--serve` одна JSON-команда читается из stdin до EOF. `--serve` — локальный JSON-lines протокол по stdin/stdout: один запрос и ответ на строку; завершение stdin завершает сервер. Никакого сетевого listener, аккаунта или GUI. stdout содержит только JSON, diagnostics — stderr и `forge.log`; лог автоматически не открывается. Один ошибочный запрос не останавливает serve. Одна неуспешная команда имеет exit code 1. Размер запроса ограничивается 16 MiB после чтения.
+On Windows use build/bin/Release/forge.exe or build/bin/forge.exe. Without --request/--serve, one JSON command is read from stdin to EOF. --serve uses local stdin/stdout JSON-lines with one request/response per line; EOF stops the server. No network listener, account, or GUI is involved. stdout contains JSON only; diagnostics go to stderr/forge.log without auto-opening it. An invalid request does not stop serve. A failed single command exits 1. Requests are limited to 16 MiB after reading.
 
-Запрос:
+Request:
 
 ```json
 {"api_version":1,"id":7,"op":"read","group":"scenes","file":"room.json"}
 ```
 
-Успех:
+Success:
 
 ```json
 {"api_version":1,"id":7,"ok":true,"result":{"exists":true,"revision":"opaque-content-revision","data":{"entities":[]}}}
 ```
 
-Отказ:
+Failure:
 
 ```json
 {"api_version":1,"id":7,"ok":false,"error":{"code":"conflict","message":"...","paths":["/entities/player/name"]}}
 ```
 
-`id` необязателен и возвращается без изменения; malformed JSON может не иметь id. `revision` — непрозрачный идентификатор JSON-содержимого, не security checksum. Сохранение использует **полный baseline `base`**, а не доверяет совпадению revision.
+id is optional and echoed unchanged; malformed JSON may lack it. revision is an opaque JSON-content identifier, not a security checksum. Saving uses the **complete baseline base**, not revision equality alone.
 
-| op | Аргументы | Результат |
+| op | Arguments | Result |
 | --- | --- | --- |
 | capabilities | — | api_version, engine_version, base_shell, operations |
-| inspect | — | Конфигурация проекта и имя settings |
-| list | group, необязательно | Относительные имена файлов группы; без group — весь корень |
-| read | file, group необязательно | exists, revision, data; для отсутствующего файла data/revision=null |
-| check | file, group, data | Проверка кандидата без записи: valid=true или ошибка |
-| commit | file, group, base, data | Объединение с текущим диском, проверка, атомарная запись и новый snapshot |
-| patch | file, group, base, data | data — список RFC 6902 операций относительно base; затем тот же commit |
-| apply_patch | data, patch | Применение RFC 6902 к JSON в памяти; без проверки сцены/записи |
-| merge | base, local, disk | Трёхстороннее объединение в памяти; без проверки ресурсов/записи |
+| inspect | — | Project configuration and settings filename |
+| list | optional group | Relative group filenames, or entire root without group |
+| read | file, optional group | exists/revision/data; absent file has data/revision=null |
+| check | file, group, data | Validate without writing: valid=true or error |
+| commit | file, group, base, data | Merge with disk, validate, atomically write, return snapshot |
+| patch | file, group, base, data | data is RFC 6902 operations against base, followed by commit |
+| apply_patch | data, patch | RFC 6902 in memory; no scene checks or writes |
+| merge | base, local, disk | Three-way merge in memory; no asset checks or writes |
 
-`file` без group разрешается от корня; с group — относительно её настроенного каталога. Семантический тип сцены/материала/объекта определяется фактическим расположением, в том числе без group. Config check проверяет новый набор paths и проект; scene check — JSON/числа/hierarchy/physics/resource references; prefab — наследование/структуру локальных ID; material — поля/карты. Эти проверки не запускают пользовательский Python и не создают GPU-контекст; полный `validate` дополнительно проверяет media, animation assets и Python syntax. Перед поставкой используйте `validate`/`build`.
+Without group, file resolves from root; with group, from its configured directory. Semantic scene/material/prefab type follows actual location even without group. Config checks new paths/project; scene checks JSON/numbers/hierarchy/physics/references; prefab checks inheritance/local IDs; material checks fields/maps. These do not execute user Python or create GPU contexts. Full validate adds media/animation/Python syntax checks; use validate/build before shipping.
 
-`base: null` означает создание нового файла; существующий файл не заменяется. Для обновления сначала `read`, затем передайте полученный data как base. Для удаления сущности используйте patch `/entities/N`, для удаления поля — JSON Pointer; нельзя молча перезаписывать целый документ по старому снимку. Файловое удаление, перемещение изображений, импорт файлов и текстовое редактирование Python остаются обычными операциями файловой системы: скрытого индекса редактора для них нет. Общая API обеспечивает все операции встроенного редактора над документами, а не пытается заменить системный файловый менеджер.
+base:null creates a file and never overwrites an existing one. For updates, read first and pass returned data as base. Remove an entity with /entities/N patch or a field by JSON Pointer rather than overwriting an entire stale document. Filesystem deletion/image moves/import/Python editing remain ordinary filesystem operations without a hidden editor index. The API supplies builtin document operations without replacing a file manager.
 
-Если local и disk изменили разные поля — изменения объединяются. Если одно поле изменено несовместимо, объект удалён с одной стороны и изменён с другой, или порядок одних и тех же записей изменён несовместимо — `conflict` с путями. ID в conflict path обозначает ключ записи; `/@order` — порядок. Черновик и файл сохраняются. Прочитайте новую версию, покажите конфликт человеку и сформируйте новый baseline; сервер никогда не выбирает победителя по времени.
+Disjoint local/disk changes merge. Incompatible changes to a field, delete-versus-edit, or incompatible order changes return conflict with paths. IDs identify keyed entries; /@order identifies ordering. Draft/disk are retained. Read the new version, present the conflict, and establish a new baseline; the server does not choose a winner by timestamp.
 
-Запись использует временный файл рядом с документом и атомарную замену (`MoveFileExW` на Windows, rename на POSIX). Проверки выполняются до замены. Кооперативные writers исключают одновременную запись через `.имя.json.forge-lock`; оставшийся после аварии lock удаляется вручную после остановки writer. Перед заменой также проверяется новое содержимое диска. Произвольный внешний редактор не соблюдает lock: остаётся узкое окно между финальной проверкой и rename. Это оптимистическое согласование, не распределённая блокировка и не гарантия fsync/восстановления питания. Ручные изменения, уже присутствующие при проверке, учитываются; конфликт никогда не приводит к delete-before-rename.
+Writes use adjacent temporary files and atomic replacement (MoveFileExW on Windows, rename on POSIX), validating first. Cooperative writers use .name.json.forge-lock; after a crash, remove a stale lock manually once the writer is stopped. Disk content is rechecked before replacement. External editors may ignore locks, leaving a narrow check-to-rename race. This is optimistic coordination, not distributed locking or guaranteed fsync/power-loss recovery. Already-present manual edits are included; conflicts never cause delete-before-rename.
 
-## Python SDK и расширения
+## Python SDK and Extensions
 
-SDK находится в `sdk/forge_editor`, использует только стандартную библиотеку. Для отдельного инструмента можно установить `python -m pip install ./sdk` или добавить `sdk` в Python search path. Launcher `shell` делает это сам. GUI toolkit выбирает автор оболочки: Qt, GTK, web UI с собственным локальным host или терминал. Любой язык может использовать JSON-lines протокол без SDK.
+The standard-library SDK lives in sdk/forge_editor. Install with python -m pip install ./sdk or add sdk to the search path; launcher shell does this automatically. Shell authors choose Qt/GTK/web UI with their own local host/terminal. Any language can speak JSON-lines without the SDK.
 
 ```python
 from forge_editor import Client, ProjectError
@@ -84,9 +84,9 @@ with Client("/path/to/forge", "/path/to/project/engine.json") as client:
     process.wait()
 ```
 
-`Document.data/base` возвращают глубокие снимки; `Document.replace(data)` проверяет и глубоко копирует данные; patch/check/undo/redo не пишут на диск. История ограничена 100 снимками. `save()` обновляет baseline/data, включая объединённые внешние поля, и очищает локальную историю. `reload()` явно отбрасывает черновик. `dirty` сравнивает текущие данные с baseline. Если нового файла нет, data=None; replace создаёт черновик. Client сериализует обмен одним lock, протокол не multiplex. `launch()` возвращает Popen: оболочка отвечает за отмену, progress и reporting exit code. CLI run/dev/validate/build остаётся источником их поведения и ошибок.
+Document.data/base return deep snapshots. replace(data) validates/deep-copies; patch/check/undo/redo do not write. History holds 100 snapshots. save() updates baseline/data with merged external fields and clears history; reload() explicitly discards the draft. dirty compares data with base. An absent new file has data=None; replace creates a draft. Client serializes exchanges under one lock without multiplexing. launch() returns Popen; the shell handles cancellation/progress/exit status. CLI run/dev/validate/build defines their behavior/errors.
 
-Расширение — явно подключённый доверенный Python-файл:
+An extension is an explicitly loaded, trusted Python file:
 
 ```python
 API_VERSION = 1
@@ -102,59 +102,59 @@ def tag(client, file, value):
     return doc.data
 ```
 
-`client.extension(path)` вызывает register; `client.command("studio.tag", file="room.json", value="work")` исполняет команду. Имя требует namespace, уникально; `forge.*` зарезервирован. При отказе регистрации registry откатывается, но произвольные побочные эффекты импортируемого Python не откатываются. Plugin не является security sandbox. Не загружайте плагины автоматически из неизвестных проектов. Нативные FORGE_MODULE и игровые Python-модули продолжают использовать прежний публичный API.
+client.extension(path) invokes register; client.command("studio.tag",file="room.json",value="work") invokes the command. Names are unique/namespaced; forge.* is reserved. Registration failure restores the registry, not arbitrary import side effects. Plugins are not sandboxed; do not auto-load plugins from unknown projects. Native FORGE_MODULE and game Python modules retain their public interfaces.
 
-Один и тот же `examples/editor/labels_extension.py` работает во внешнем Client и в базовой оболочке через RuntimeClient: это адаптер общего документного API, без второго Python runtime. Встроенный интерфейс показывает зарегистрированные команды в **Extension commands**, принимает JSON arguments и вызывает их. В edit добавьте конфигурацию:
+The same examples/editor/labels_extension.py works in external Client and builtin RuntimeClient, adapting the shared document API without another Python runtime. Builtin **Extension commands** displays registered commands and accepts JSON arguments. Configure edit:
 
 ```json
 {"editor":{"extensions":["tools/my_extension.py"]}}
 ```
 
-Эти пути относительны проекту. Либо явно `edit --extension path/to/plugin.py`; CLI-путь относителен текущей папке/может быть абсолютным. `run`/`dev`/`build` не загружают editor plugins. Обновление файлов оболочки/плагина требует перезапуска editor session; игровой hot reload не заменяет host автоматически. Для размещения визуальных панелей внешняя оболочка использует свой toolkit; builtin host предоставляет список команд, а не произвольный ImGui widget ABI.
+Configuration paths are project-relative. Alternatively use edit --extension path/to/plugin.py with a cwd-relative/absolute CLI path. run/dev/build do not load editor plugins. Shell/plugin source changes require restarting the session; game reload does not replace the host. External shells build panels with their own toolkit; builtin hosting offers commands rather than an arbitrary ImGui widget ABI.
 
-## Выбор оболочки и runtime editing API
+## Shell Selection and Runtime Editing API
 
 ```sh
-# Официальная оболочка по умолчанию
+# Default official shell.
 python tools/forge.py edit --scene editor-empty.json
-# Viewport без builtin UI
+# Viewport without builtin UI.
 python tools/forge.py edit --shell none --scene editor-empty.json
-# Python-controller собственного viewport внутри проекта
+# Project Python controller for a custom viewport.
 python tools/forge.py edit --shell examples/editor/viewport_shell.py --scene editor-empty.json
-# Самостоятельная оболочка через SDK
+# Independent SDK shell.
 python tools/forge.py shell --shell examples/editor/terminal_shell.py --extension examples/editor/labels_extension.py
 ```
 
-Viewport shell — проектный `.py` с `API_VERSION=1`, optional `on_start()`, `on_update(dt)`, `on_destroy()`. on_update работает и при паузе игры, включая остановку gameplay после неудачного hot reload. Shell может исправить watched file или вызвать editor load для восстановления; ошибка самой shell в этом режиме подавляет её повторные update до успешной загрузки/перезапуска. Пользуйтесь `forge` input/objects и `editor_command`; храните ID, а не указатели на старые сущности. Shell живёт до завершения edit, отдельно от смены игровой сцены. Состояние UI, созданное как игровые объекты, является частью мира и может попасть в экспорт; отдельный GUI через SDK этого ограничения не имеет. Внешняя оболочка может запускать native preview отдельным процессом; API 1 не предоставляет embedding GPU viewport в Qt/GTK и live RPC управления работающей игрой. Runtime API доступна коду внутри edit, документная RPC — внешним процессам.
+A viewport shell is a project .py with API_VERSION=1 and optional on_start(), on_update(dt), on_destroy(). on_update runs while gameplay is paused, including after a rejected reload. It can repair watched files or request editor load; a shell error in this mode suppresses repeated updates until successful load/restart. Use forge input/entities/editor_command; retain IDs rather than old entity references. The shell survives scene changes until edit exits. UI represented as game entities belongs to the world and may enter exports; separate SDK GUIs avoid that constraint. External shells can launch native preview processes; API 1 provides neither Qt/GTK viewport embedding nor live-game RPC. Runtime APIs are in-process; document RPC serves external processes.
 
-`forge.editor_command(dict)` доступен любой viewport shell, включая `--shell none`, в headless edit и при сборке без ImGui:
+forge.editor_command(dict) is available to any viewport controller, including --shell none, headless edit, and builds without ImGui:
 
-| op | Аргументы | Действие |
+| op | Arguments | Action |
 | --- | --- | --- |
-| snapshot | — | scene, selected, preview, размеры undo/redo |
-| select | id или пустая строка | Выделение текущей сущности/снятие выделения |
-| preview | enabled | Включение/пауза симуляции; не reset |
-| apply | scene | Подготовка/проверка полного JSON-кандидата, lifecycle transaction и commit |
-| patch | patch | Изменение snapshot через RFC 6902, тот же apply |
-| undo / redo | — | До 100 снимков; отказ сохраняет историю и рабочую сцену |
-| load | file | Явная отложенная загрузка сцены (отбрасывает несохранённый черновик) |
-| save | file | Сохранение/экспорт JSON через общий document commit |
-| commands | — | Имена команд подключённых extensions |
-| command | name, arguments | Вызов общей extension command |
+| snapshot | — | scene/selected/preview and undo/redo counts |
+| select | id or empty string | Select current entity or clear selection |
+| preview | enabled | Run/pause simulation; no reset |
+| apply | scene | Prepare/validate a full JSON candidate, lifecycle transaction, commit |
+| patch | patch | RFC 6902 snapshot update followed by apply |
+| undo / redo | — | Up to 100 snapshots; rejection retains history/world |
+| load | file | Explicit deferred load, discarding unsaved draft |
+| save | file | JSON save/export through shared document commit |
+| commands | — | Registered extension command names |
+| command | name, arguments | Invoke shared extension command |
 
-Add/delete/duplicate, parenting/TRS, assets/material/camera/light/physics/text, animator/morph/prefab authoring выражаются через snapshot+patch либо существующие публичные функции `forge`, `prefabs`, `animation` и document API. Для процедурных объектов также требуется регистрация геометрии. `forge.scene_data()`, `forge.save_scene(file)`, `forge.editor_select(entity)` сохраняют привычный путь; selection теперь общий для UI/API. `forge.project_request(dict)` возвращает result либо native exception; `forge.project_response(dict)` возвращает ту же структурированную envelope, что RPC. RuntimeClient использует вторую, обеспечивая общий ProjectError контракт.
+Add/delete/duplicate, parent/TRS, assets/material/camera/light/physics/text, animator/morph/prefab authoring use snapshot+patch or public forge/prefabs/animation/document APIs. Procedural entities also need registered geometry. scene_data()/save_scene(file)/editor_select(entity) retain existing workflows; selection is shared. project_request(dict) returns a result or native exception; project_response(dict) returns the RPC structured envelope. RuntimeClient uses the latter for shared ProjectError behavior.
 
-Document commit/patch и save_scene через runtime недоступны во время hot reload: используйте их после commit.
+Runtime document commit/patch and save_scene are unavailable during hot reload; invoke after commit.
 
-apply/patch/undo/redo требуют остановленную и полностью инициализированную editor session, вне reload/teardown. Замена запускает стандартный lifecycle, освобождает прежние entity references и может вызвать пользовательские callbacks заново. Отказ подготовленного кандидата оставляет прежний world/scripts/resources/history; произвольные внешние эффекты callbacks требуют стратегии автора игры. Это не сериализация состояния интерпретатора и не undo файловых записей плагина.
+apply/patch/undo/redo require a paused, fully initialized editor outside reload/teardown. Replacement executes lifecycle, retires old entities, and may repeat user callbacks. Rejection retains world/scripts/resources/history; arbitrary callback side effects require a game-defined strategy. This is not interpreter serialization or undo of plugin file writes.
 
-При сохранении исходной JSON-сцены вычисляется разница с runtime baseline и применяется к исходному документу. Неизменённые defaults/унаследованные prefab значения не материализуются. Затем результат объединяется с диском. Save As создаёт новый полный snapshot; в инициализированном edit он становится текущим документом, следующий Save использует его baseline. Экспорт из run/dev не переключает сцену. Существующий неоткрытый target требует сначала read/load — он не перезаписывается. Для Python-сцены экспорт выбирает новое JSON-имя; исходный `.py` не меняется. Неизвестные root/entity/camera/extension поля сохраняются. Обновлённые извне поля после сохранения находятся на диске; для отображения их в viewport выполните явный Reload.
+Saving original JSON computes a runtime-baseline delta and applies it to source without materializing unchanged defaults/inherited prefab values, then merges disk changes. Save As creates a full snapshot and becomes the current initialized edit document for subsequent baseline saves. Export from run/dev does not switch scenes. Existing unopened targets require read/load before overwrite. Python-scene exports use new JSON names without changing .py. Unknown root/entity/camera/extension fields survive. After external fields merge on disk, explicitly Reload to show them in the viewport.
 
-Автоматический hot reload не заменяет мир с несохранёнными правками editor session. Он выдаёт сообщение и сохраняет работу; сохраните/undo или явно reload, затем измените watched file для повторной попытки. При пустом черновике остаётся прежний hot reload. Play preview не возвращает сцену к исходному состоянию. Прямые изменения через Python setters доступны для низкоуровневого controller, но общий undo гарантируется для editor_command и builtin authoring, а не для произвольного Python.
+Automatic reload refuses a world with unsaved editor changes and reports the preserved work. Save/undo or explicitly reload, then edit a watched file to retry. A clean draft keeps ordinary reload behavior. Play preview does not reset the scene. Direct Python setters remain available, but shared undo is guaranteed for editor_command/builtin authoring, not arbitrary Python.
 
-В 2.5.1 подготовка JSON-кандидата изолирует registry процедурных мешей и набор действующих listeners. Синхронный apply из on_frame прекращает дальнейшие вызовы обработчиков прежней сцены. Управляемые forge.save/SaveManager.write/delete откладываются до успешного commit, при отказе отменяются; данные и metadata write фиксируются копией. Это не сериализация произвольного Python и не общая транзакция файловой системы: уже выполненные commit callbacks не откатываются при ошибке следующего. Обычная загрузка сцены вне authoring/reload сохраняет немедленное поведение save API.
+In 2.5.1, JSON candidates isolate procedural registries/listener membership. Synchronous on_frame apply stops remaining old-scene callbacks. Managed forge.save/SaveManager.write/delete defer until commit and cancel on rejection; write data/metadata are copied. This is not arbitrary Python serialization or a filesystem-wide transaction: completed commit callbacks do not roll back if another fails. Ordinary loading outside authoring/reload keeps immediate save behavior.
 
-## Сборка без базового интерфейса
+## Building Without the Builtin Interface
 
 ```sh
 python tools/dependencies.py --without-editor
@@ -164,8 +164,8 @@ python tools/forge.py edit --shell none
 python tools/forge.py build --output dist/Game
 ```
 
-CMake: `-DFORGE_WITH_EDITOR=OFF`. ImGui не скачивается bootstrap с этим флагом и не участвует в такой сборке; `editor.cpp`/`animation_editor.cpp` не компилируются. JSON service, runtime editing, сцены, renderer, animation API, CLI validate/build/run остаются доступны. `capabilities.base_shell`/`forge.capabilities().base_editor` отражают фактическую сборку. `edit --shell builtin` без неё в оконном режиме сообщает понятную ошибку; выбирайте none/свою оболочку. Headless edit допускается без UI. Обычный `compile` возвращает ON. Собранная игра не загружает SDK/plugins и не требует установленного редактора.
+CMake: -DFORGE_WITH_EDITOR=OFF. Bootstrap with --without-editor does not download ImGui; editor.cpp/animation_editor.cpp are excluded. Document service, runtime editing, scenes, renderer, animation APIs, validate/build/run remain. capabilities.base_shell / forge.capabilities().base_editor report the actual build. Windowed edit --shell builtin without it gives a clear error; select none/custom. Headless edit needs no UI. Ordinary compile restores ON. Games do not load SDK/plugins or require an installed editor.
 
-## Проверки
+## Verification
 
-`tests/project_api.py <binary>` проверяет две оболочки, ручные правки, unknown fields, ID merge/order conflict, atomic failure, Unicode/paths/symlink, config/material/prefab validation, SDK history, общий extension adapter, CLI stdout/exit codes и native paused lifecycle/rollback. Включён в CTest и launcher test. GUI-наборы проверяют прежний viewport/ImGui/animation editor. CI собирает macOS и Windows с ON/OFF, а GPU suite использует базовый интерфейс. Один активный Python runtime, текущие renderer/physics/animation ограничения и сторонние лицензии сохранены.
+tests/project_api.py <binary> checks independent shells/manual edits/unknown fields, ID/order merging/conflicts, atomic failure, Unicode/paths/symlinks, config/material/prefab checks, SDK history, shared adapters, CLI stdout/status, and paused lifecycle/rollback. CTest/launcher include it; GPU suites cover viewport/ImGui/animation tools. CI builds macOS/Windows ON/OFF; GPU suites use builtin UI. One active Python runtime, existing subsystem limits, and dependency licenses remain.
