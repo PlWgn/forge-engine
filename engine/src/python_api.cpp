@@ -21,6 +21,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
         Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells"});
         if(FORGE_WITH_EDITOR)features.push_back("animation_editor");
         features.push_back("renderer_backends");
+        if(FORGE_WITH_METAL)features.push_back("metal");
         if(FORGE_WITH_DIRECT3D11)features.push_back("direct3d11");
         return pythonValue(Json{{"api_version",1},{"project_api_version",1},{"base_editor",bool(FORGE_WITH_EDITOR)},{"features",features},{"graphics_backends",GraphicsDevice::backends()},{"python_runtimes_per_process",1}});
     });

@@ -68,7 +68,26 @@ int main(int argc, char** argv) {
             "#version 330 core\nin vec3 mismatch;out vec4 c;void main(){c=vec4(mismatch,1);}", "Stage mismatch"); }
         catch (const std::exception&) { rejected = true; }
         if (!rejected) throw std::runtime_error("Stage mismatch accepted");
-        std::cout << "Default/PBR/post/particle/custom GLSL translation and failure diagnostics passed\n";
+        for (auto fragment : {"default.frag", "post.frag"}) {
+            auto msl=forge::translateGlslToMsl(vertex,read(graphics/fragment),fragment);
+            if(msl.vertex.find("vertex main0_out main0")==std::string::npos || msl.fragment.find("fragment main0_out main0")==std::string::npos)
+                throw std::runtime_error("Missing Metal shader entry points");
+            if(std::string(fragment)=="default.frag" && msl.fragmentComponents.at("u_maps")!=1)
+                throw std::runtime_error("MSL padded scalar array lost logical shape");
+        }
+        for(auto shader:{"particle.vert","particle-instance.vert"})
+            forge::translateGlslToMsl(read(graphics/shader),read(graphics/"particle.frag"),shader);
+        forge::translateGlslToMsl(vertex,"#version 330 core\nvoid main(){}","Metal shadow");
+        std::string orderedVertex="#version 330 core\nout vec4 tint;out vec2 uv;void main(){tint=vec4(1);uv=vec2(1);gl_Position=vec4(0);}";
+        std::string reorderedFragment="#version 330 core\nin vec2 uv;in vec4 tint;out vec4 c;void main(){c=tint+vec4(uv,0,0);}";
+        auto ordered=forge::translateGlslToMsl(orderedVertex,reorderedFragment,"Reordered varyings");
+        if(ordered.vertex.find("float4 tint [[user(locn0)]]")==std::string::npos || ordered.fragment.find("float4 tint [[user(locn0)]]")==std::string::npos)
+            throw std::runtime_error("Metal cross-stage varying locations mismatch");
+        auto orderedHlsl=forge::translateGlsl(orderedVertex,reorderedFragment,"Reordered HLSL varyings");
+        if(orderedHlsl.vertex.find("float4 tint : TEXCOORD0")==std::string::npos || orderedHlsl.fragment.find("float4 tint : TEXCOORD0")==std::string::npos)
+            throw std::runtime_error("HLSL cross-stage varying locations mismatch");
+        verify(orderedHlsl,"Reordered HLSL varyings");
+        std::cout << "GLSL to HLSL/MSL: stock/custom shaders, logical arrays, linked varyings and diagnostics passed\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

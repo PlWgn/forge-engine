@@ -13,6 +13,7 @@ class Direct3DGraphicsTests(unittest.TestCase):
     run_scene,write_config,wait_log=base.FeatureGraphicsTests.run_scene,base.FeatureGraphicsTests.write_config,base.FeatureGraphicsTests.wait_log
     def setUp(self):
         base.FeatureGraphicsTests.setUp(self)
+        self.config['window'].update(width=640,height=480,vsync=False)
         self.config['renderer']['backend']='direct3d11'
         self.config['renderer']['direct3d11']={'driver':'warp'}
         self.write_config()

@@ -67,7 +67,7 @@ double textWorldScale(const Entity &e) {
 struct Renderer::Impl : WindowInput {
     GLFWwindow *window = nullptr;
     std::unique_ptr<GraphicsDevice> device;
-    Json deviceOptions = Json::object();
+    Json deviceOptions = Json::object(), metalDeviceOptions = Json::object();
     const Config *config = nullptr;
     fs::path screenshotPath, previousScreenshot;
     bool captured = false, previousCaptured = false, vsync = true;
@@ -227,6 +227,17 @@ struct Renderer::Impl : WindowInput {
                     auto ps = config->asset("graphics", pair.at("fragment").get<std::string>());
                     return GraphicsDevice::current().hlslProgram(textFile(vs), textFile(ps),
                         label + " (" + vs.u8string() + ", " + ps.u8string() + ")");
+                }
+            }
+            if (GraphicsDevice::current().backend() == "metal") {
+                auto shaders = options.value("metal", Json::object()).value("shaders", Json::object());
+                if (shaders.contains(kind)) {
+                    auto pair = shaders.at(kind);
+                    auto vs = config->asset("graphics", pair.at("vertex").get<std::string>());
+                    auto ps = config->asset("graphics", pair.at("fragment").get<std::string>());
+                    return GraphicsDevice::current().mslProgram(textFile(vs),textFile(ps),
+                        pair.value("vertex_entry",std::string("vertex_main")),pair.value("fragment_entry",std::string("fragment_main")),
+                        label+" ("+vs.u8string()+", "+ps.u8string()+")");
                 }
             }
             return linkProgram(vertex, fragment, label);
@@ -819,6 +830,7 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
     });
     impl->device = std::make_unique<GraphicsDevice>(impl->window, rendererOptions);
     impl->deviceOptions = rendererOptions.value("direct3d11", Json::object());
+    impl->metalDeviceOptions = rendererOptions.value("metal", Json::object());
     impl->vsync = options.value("vsync", true);
     if (backend == "opengl") glfwSwapInterval(impl->vsync ? 1 : 0);
 #ifndef __APPLE__
@@ -848,6 +860,12 @@ void Renderer::stage() {
         if (options.value("driver", std::string("auto")) != impl->deviceOptions.value("driver", std::string("auto")) ||
             options.value("debug", false) != impl->deviceOptions.value("debug", false))
             throw std::runtime_error("Changing the Direct3D driver/debug layer requires restarting the runtime");
+    }
+    if (impl->device->backend() == "metal") {
+        auto options = settings.value("metal", Json::object());
+        if (options.value("uniform_budget_bytes", size_t(64*1024*1024)) !=
+            impl->metalDeviceOptions.value("uniform_budget_bytes", size_t(64*1024*1024)))
+            throw std::runtime_error("Changing the Metal uniform budget requires restarting the runtime");
     }
     staged = std::make_unique<Impl>();
     staged->config = impl->config;
@@ -940,6 +958,7 @@ void Renderer::validateWorld(const World &world) {
     }
 }
 void Renderer::render(World &world) {
+    impl->device->renderFrame([&] {
     world.syncTransforms();
     std::vector<std::string> obsolete;for(auto& [key,model]:impl->models)if(proceduralName(key) && !geometry(world).entries.count(key))obsolete.push_back(key);for(auto& key:obsolete)impl->dropModel(key);
     auto started = std::chrono::steady_clock::now();
@@ -1091,6 +1110,7 @@ void Renderer::render(World &world) {
          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()}};
     impl->stats.update(impl->device->diagnostics());
     impl->device->present(impl->vsync);
+    });
 }
 void Renderer::poll(){pollInput(impl->window,*impl);}
 

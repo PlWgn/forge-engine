@@ -32,16 +32,17 @@ def binary():
         if path.exists(): return path
     raise RuntimeError('Engine is not compiled. Run: python tools/forge.py compile')
 
-def configure(settings, with_editor=True, with_directx=True, shader_tools=False):
+def configure(settings, with_editor=True, with_directx=True, shader_tools=False, with_metal=True):
     directx = sys.platform == 'win32' and with_directx
-    translator = directx or shader_tools
+    metal = sys.platform == 'darwin' and with_metal
+    translator = directx or metal or shader_tools
     required = ['glfw', 'assimp', 'bullet'] + (['glslang', 'spirv_cross'] if translator else [])
     missing=any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in required)
     if missing or (with_editor and not (ROOT/'vendor/imgui/imgui.cpp').exists()):
         execute([sys.executable, ROOT/'tools/dependencies.py', *([] if with_editor else ['--without-editor']),
-                 *([] if with_directx else ['--without-directx']), *(['--shader-tools'] if translator else [])])
+                 *([] if with_directx else ['--without-directx']), *([] if with_metal else ['--without-metal']), *(['--shader-tools'] if translator else [])])
     args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}', f'-DFORGE_WITH_EDITOR={"ON" if with_editor else "OFF"}']
-    args += [f'-DFORGE_WITH_DIRECT3D11={"ON" if directx else "OFF"}', f'-DFORGE_WITH_SHADER_TRANSLATOR={"ON" if translator else "OFF"}']
+    args += [f'-DFORGE_WITH_METAL={"ON" if metal else "OFF"}', f'-DFORGE_WITH_DIRECT3D11={"ON" if directx else "OFF"}', f'-DFORGE_WITH_SHADER_TRANSLATOR={"ON" if translator else "OFF"}']
     data = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else {}
     native = []
     for path in data.get('native_modules', []):
@@ -63,7 +64,7 @@ def scaffold(destination):
         shutil.copy2(ROOT / filename, destination / filename)
     shutil.copytree(ROOT/'schemas',destination/'schemas')
     (destination/'docs').mkdir()
-    for name in ('PROJECT_API.md','FORGE_2.md','DIRECT3D11.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
+    for name in ('PROJECT_API.md','FORGE_2.md','DIRECT3D11.md','METAL.md'): shutil.copy2(ROOT/'docs'/name,destination/'docs'/name)
     shutil.copytree(ROOT/'examples/editor',destination/'examples/editor',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md', 'THIRD_PARTY.md'):
         shutil.copy2(ROOT / filename, destination / filename)
@@ -81,8 +82,9 @@ def main():
     parser.add_argument('--request', type=Path, help='JSON request file (project command; otherwise stdin)')
     parser.add_argument('--serve', action='store_true', help='JSON-lines project service')
     parser.add_argument('--without-editor', action='store_true', help='Compile without the builtin ImGui shell')
+    parser.add_argument('--without-metal', action='store_true', help='Build without the optional macOS Metal backend')
     parser.add_argument('--without-directx', action='store_true', help='Compile Windows with OpenGL only')
-    parser.add_argument('--shader-tools', action='store_true', help='Compile cross-platform GLSL/HLSL translator tests')
+    parser.add_argument('--shader-tools', action='store_true', help='Compile cross-platform GLSL/HLSL/MSL translator tests')
     parser.add_argument('--headless' , action='store_true')
     parser.add_argument('--silent-audio', action='store_true', help='Use PCM audio without opening a hardware device')
     parser.add_argument('--frames', type=int)
@@ -121,7 +123,7 @@ def main():
         if not args.output: parser.error('init requires --output')
         scaffold(args.output); return
     if args.command in ('configure', 'compile'):
-        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools)
+        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools, not args.without_metal)
         if args.command == 'compile': execute([cmake_path(), '--build', ROOT / 'build', '--config', 'Release', '--parallel', str(min(os.cpu_count() or 2, 4))])
         return
     if args.command == 'project':

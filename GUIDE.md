@@ -1579,3 +1579,10 @@ Editor candidates isolate procedural registries/listener membership; remaining r
 OpenGL remains the default. Windows builds additionally include optional Direct3D 11; renderer.backend selects opengl/direct3d11/auto. Existing GLSL shaders keep their file/uniform API and are compiled through glslang/SPIRV-Cross on Direct3D. Native HLSL stage-pair overrides are optional; the two backends can share one project without platform rules in scenes.
 
 See [docs/DIRECT3D11.md](docs/DIRECT3D11.md) for backend defaults, optional dependencies/build switches, all editable shader pipelines, native HLSL coordinates/semantics, budgets, and Windows verification limits. Backend/driver/debug changes require restart; rejected development changes retain the current device. forge.graphics_backends() and project capabilities expose compiled support; renderer_stats() exposes the actual backend after rendering. --silent-audio is independent of graphics and headless mode. Project/shell API stays version 1.
+
+
+## 26. Forge 2.7: Native Metal on Apple Silicon
+
+OpenGL remains default; macOS builds now include optional Metal alongside it. renderer.backend accepts metal/opengl/direct3d11/auto. Auto prefers Metal on macOS when compiled; explicit opengl retains the previous path. GLSL remains portable/editable, with native MSL stage pairs and configurable entry points available per pipeline. Game/shell API remains version 1. Backend changes require restart; shaders retain transactional reload.
+
+See [docs/METAL.md](docs/METAL.md) for build switches, shader examples/contracts, coordinates, bounded uniform uploads, command synchronization, and actual verification limits. --without-metal excludes the backend; --without-editor is independent. The same project can preserve GLSL/HLSL/MSL settings and unknown fields across shells.

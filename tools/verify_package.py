@@ -26,7 +26,8 @@ def verify(folder, graphics_backend=None):
             config.setdefault('renderer',{})['backend']=graphics_backend
             if graphics_backend=='direct3d11':
                 config['renderer'].setdefault('direct3d11',{})['driver']='warp'
-                for notice in ('glslang.txt','spirv_cross.txt'):
+            if graphics_backend in ('direct3d11','metal'):
+                for notice in ('glslang.txt','spirv_cross.txt','Shader-NOTICE.txt'):
                     if not (package_data/'licenses'/notice).is_file():raise RuntimeError(f'Missing shader compiler notice: {notice}')
             probe=package_data/config['paths']['scripts']/'_forge_backend_probe.py'
             probe.write_text("import forge\nframes=0\ndef on_start(): forge.on_frame(tick,persistent=True)\ndef tick(dt):\n    global frames\n    frames+=1\n    if frames==3:\n        actual=forge.renderer_stats()['backend']\n        assert actual=="+repr(graphics_backend)+",actual\n        forge.log('VERIFIED_GRAPHICS_BACKEND '+actual)\n",encoding='utf-8')
@@ -43,5 +44,5 @@ def verify(folder, graphics_backend=None):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('folder')
-    parser.add_argument('--graphics-backend',choices=('opengl','direct3d11'),help='Also launch actual graphical scenes (Direct3D uses WARP; audio is silent)')
+    parser.add_argument('--graphics-backend',choices=('opengl','direct3d11','metal'),help='Also launch actual graphical scenes (Direct3D uses WARP; audio is silent)')
     args=parser.parse_args();verify(args.folder,args.graphics_backend)

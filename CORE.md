@@ -65,3 +65,6 @@ Bugfix 2.5.1 adjusts Core-origin configuration/Python validation, listener membe
 
 
 In 2.6, graphics_device, graphics_settings, direct3d11, and shader_compiler are independent adaptable implementations outside the Core list, as are all GLSL/HLSL shaders and editor-backend integration. Core-origin config/main/python_api changes validate renderer choices, expose additive backend capabilities, and provide silent audio for graphical runs. No additional files become Core. Game/shell APIs remain version 1; device changes require restart and shader reload remains transactional.
+
+
+In 2.7, metal.hpp/metal.mm and native MSL examples are independent adaptable modules outside the Core list. Shared graphics/compiler/configuration implementations add Metal device selection, shader validation/reflection, and capability reporting. Core-origin Python capabilities gain the additive metal feature; Core boundaries and game/shell API versions remain unchanged.

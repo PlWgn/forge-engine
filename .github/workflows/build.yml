@@ -42,12 +42,45 @@ jobs:
           python tests/features_graphics.py build/bin/Release/forge.exe
           python tests/simulation_graphics.py build/bin/Release/forge.exe
           python tests/rendering_graphics.py build/bin/Release/forge.exe
+      - name: Check macOS Metal device availability
+        if: runner.os == 'macOS'
+        id: metal_device
+        shell: bash
+        run: |
+          if build/metal_device_probe; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            result=$?
+            if [ "$result" != 77 ]; then exit "$result"; fi
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Metal GPU checks skipped: this runner has no Metal device. Use a physical/GPU-enabled macOS runner."
+          fi
+      - name: Native Metal shaders and reload on macOS
+        if: runner.os == 'macOS' && steps.metal_device.outputs.available == 'true'
+        env:
+          FORGE_TEST_BACKEND: metal
+          FORGE_TEST_SILENT_AUDIO: '1'
+          MTL_DEBUG_LAYER: '1'
+        run: python tests/metal_graphics.py build/bin/forge
+      - name: Metal shared GPU regressions
+        if: runner.os == 'macOS' && matrix.editor == 'ON' && steps.metal_device.outputs.available == 'true'
+        env:
+          FORGE_TEST_BACKEND: metal
+          FORGE_TEST_SILENT_AUDIO: '1'
+        run: |
+          python tests/graphics.py build/bin/forge
+          python tests/features_graphics.py build/bin/forge
+          python tests/simulation_graphics.py build/bin/forge
+          python tests/rendering_graphics.py build/bin/forge
       - run: python tools/forge.py build --output dist/Game
       - name: Verify standalone hashes and launch outside checkout
         run: python tools/verify_package.py dist/Game
       - name: Verify standalone Direct3D GLSL compilation and launch
         if: runner.os == 'Windows'
         run: python tools/verify_package.py dist/Game --graphics-backend direct3d11
+      - name: Verify standalone Metal GLSL compilation and launch
+        if: runner.os == 'macOS' && steps.metal_device.outputs.available == 'true'
+        run: python tools/verify_package.py dist/Game --graphics-backend metal
       - uses: actions/upload-artifact@v4
         with:
           name: Forge-${{ matrix.os }}-editor-${{ matrix.editor }}
@@ -77,3 +110,19 @@ jobs:
           xvfb-run -a python tests/features_graphics.py build/bin/forge
           xvfb-run -a python tests/simulation_graphics.py build/bin/forge
           xvfb-run -a python tests/rendering_graphics.py build/bin/forge
+
+  opengl-only:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==3.31.6
+      - run: python tools/dependencies.py --without-metal --without-directx --without-editor
+      - run: python tools/forge.py compile --without-metal --without-directx --without-editor
+      - run: ctest --test-dir build -C Release --output-on-failure

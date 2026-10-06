@@ -114,3 +114,14 @@ Release validation on macOS arm64 passed eight CTest suites with editor ON/OFF, 
 | OpenGL-only delivery / compiler notices | Optional build/bootstrap flags, static compiler linkage, complete source assets | Packaging/manifest/standalone graphical verifier, ON/OFF editor CI |
 
 There are eight base CTest suites and one additional shader_compiler suite when enabled. Direct3D is Windows-only, feature level 11_0/SM5, without DX12/DXR, compute/geometry/tessellation extensions, or automatic device-loss recovery. OpenGL defaults and game APIs remain. Changing devices requires restart; shader edits retain transactional reload. One graphics/Python runtime remains. Hardware performance and audio are not established by WARP. [Contracts and actual verification limits](DIRECT3D11.md).
+
+
+## Forge 2.7
+
+| Capability | Implementation | Verification |
+| --- | --- | --- |
+| Optional native macOS Metal | Independent metal.mm device/resources/pipelines/readback and optional ImGui backend | Shared GPU suites and Metal-specific pixels on Apple M2 |
+| Editable portable/native shaders | Linked GLSL to MSL, retained public names/logical array shapes, MSL pairs/entry points | Real device compilation, custom uniforms, rollback/recovery; HLSL varying-order regression |
+| Platform/shell independence | OpenGL default; macOS Metal/Windows Direct3D selectable; editor-free builds | Configuration/native suites, custom shell, standalone verifier |
+
+Auto selects compiled Metal on macOS in 2.7; explicit OpenGL retains previous behavior. Format/shell API stays 1. Uniform snapshots have a separate bounded arena; presentation is synchronized, without async-throughput/performance claims. No compute/HDR/IBL/device-recovery/multi-runtime feature is implied. [Metal contracts and limitations](METAL.md).

@@ -14,7 +14,7 @@ def on_start():
     assert 'renderer_backends' in forge.capabilities()['features']
     forge.log('BACKEND_API_OK');forge.quit()
 """)
-        for backend in ('opengl','auto','direct3d11'):
+        for backend in ('opengl','auto','direct3d11','metal'):
             self.config['renderer']['backend']=backend;self.write_config()
             self.assertIn('BACKEND_API_OK',self.run_engine())  # Headless needs no device.
         original=json.loads(json.dumps(self.config['renderer']))
@@ -33,6 +33,20 @@ def on_start():
             'vertex':'direct3d11/unlit.vert.hlsl','fragment':'direct3d11/unlit.frag.hlsl'}}}
         self.write_config();self.run_engine('validate')
         self.config['renderer']['direct3d11']['shaders']['scene']['vertex']='../../outside.hlsl'
+        self.write_config();self.assertIn('escapes',self.run_engine('validate',expected=1))
+    def test_metal_shader_configuration_validation(self):
+        self.script_scene("def on_start():pass\n")
+        self.config['renderer']['metal']={'shaders':{'scene':{
+            'vertex':'metal/unlit.vert.metal','fragment':'metal/unlit.frag.metal'}}}
+        self.write_config();self.run_engine('validate')
+        original=json.loads(json.dumps(self.config['renderer']['metal']))
+        for value in ([],{'uniform_budget_bytes':0},{'uniform_budget_bytes':True},{'uniform_budget_bytes':1.5},{'uniform_budget_bytes':536870913},{'shaders':[]},{'shaders':{'scene':{}}},
+                      {'shaders':{'scene':{'vertex':'missing.metal','fragment':'missing.metal'}}},
+                      {'shaders':{'scene':dict(original['shaders']['scene'],vertex_entry=1)}}):
+            self.config['renderer']['metal']=value;self.write_config()
+            self.run_engine('validate',expected=1)
+        self.config['renderer']['metal']=original
+        self.config['renderer']['metal']['shaders']['scene']['vertex']='../../outside.metal'
         self.write_config();self.assertIn('escapes',self.run_engine('validate',expected=1))
     def test_incremental_and_atomic_bulk_transforms(self):
         self.script_scene("""import forge

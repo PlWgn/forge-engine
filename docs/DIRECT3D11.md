@@ -1,6 +1,6 @@
-# Graphics Backends and Editable Shaders (Forge 2.6)
+# Direct3D 11 and Editable Shaders (Forge 2.6+)
 
-Forge keeps OpenGL 3.3 and adds an optional Direct3D 11 backend on Windows. Game scenes, Python modules, materials, geometry, animation, text, particles, cameras, and editor commands keep the same API. Select the device in `engine.json`; do not put platform-specific drawing rules in game scripts.
+Forge keeps OpenGL 3.3 and adds an optional Direct3D 11 backend on Windows. Forge 2.7 also adds [Metal on macOS](METAL.md); auto prefers it on builds with Metal enabled. Game scenes, Python modules, materials, geometry, animation, text, particles, cameras, and editor commands keep the same API. Select the device in `engine.json`; do not put platform-specific drawing rules in game scripts.
 
 ## Selecting a Backend
 
@@ -22,7 +22,7 @@ This is a configuration fragment, not a complete project. Preserve the other ren
 | --- | --- |
 | Omitted `backend`, or `opengl` | Existing OpenGL 3.3 path on macOS/Windows; previous default is unchanged |
 | `direct3d11` | Direct3D 11; an unavailable platform/build fails with a clear error |
-| `auto` | Direct3D when compiled in; otherwise OpenGL. This selects by build capabilities, not by benchmarking drivers |
+| `auto` | Direct3D when compiled in; Metal on macOS when compiled in; otherwise OpenGL. This selects by build capabilities, not by benchmarking drivers |
 | `direct3d11.driver: auto` | Try hardware, then WARP with a warning and driver diagnostics |
 | `hardware` | Require a hardware Direct3D device; no software fallback |
 | `warp` | Windows software Direct3D; useful for tests and machines without a suitable GPU |
@@ -62,7 +62,7 @@ python tools/forge.py compile --without-directx
 
 `--without-editor` is independent: Direct3D run/dev/build and custom shells work without ImGui. CMake exposes `FORGE_WITH_DIRECT3D11` and `FORGE_WITH_SHADER_TRANSLATOR`. Explicitly enabling Direct3D on a non-Windows target fails configuration. Disabling its translator while retaining Direct3D also fails rather than silently losing GLSL support.
 
-On macOS, ordinary bootstrap/compile remains OpenGL-only. The optional shader compiler can be tested without a Direct3D device:
+On macOS in Forge 2.7, ordinary bootstrap/compile includes OpenGL and Metal. Use --without-metal for OpenGL-only; the optional shader compiler can be tested without a Direct3D device:
 
 ```sh
 python tools/dependencies.py --shader-tools

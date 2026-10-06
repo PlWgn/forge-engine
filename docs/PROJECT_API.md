@@ -174,3 +174,8 @@ tests/project_api.py <binary> checks independent shells/manual edits/unknown fie
 ## Graphics Backends in Forge 2.6
 
 The document capabilities response includes graphics_backends (compiled support). Renderer fields are documented in [DIRECT3D11.md](DIRECT3D11.md) and schemas/project.schema.json. Every shell may edit backend/shader settings through the same document API, preserving unknown fields. Backend/driver/debug changes take effect after runtime restart; live shader candidates retain rollback. SDK Client.launch(silent_audio=True) disables hardware audio independently of graphics. Project and shell protocol versions remain 1.
+
+
+## Metal in Forge 2.7
+
+Compiled graphics_backends may include metal on macOS. Shells use the same document operations to preserve/edit renderer.metal shader pairs, entry points, and uniform_budget_bytes. Changes to backend or Metal uniform budget require runtime restart; shader candidates retain rollback. No shell/API/schema version increase or builtin-editor dependency is introduced. [Metal configuration and native shaders](METAL.md).

@@ -23,6 +23,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--without-editor",action="store_true")
     parser.add_argument("--without-directx",action="store_true",help="Skip optional Windows shader compiler dependencies")
+    parser.add_argument("--without-metal",action="store_true",help="Skip optional macOS shader compiler dependencies")
     parser.add_argument("--shader-tools",action="store_true",help="Fetch shader compiler dependencies on any platform")
     args=parser.parse_args()
     vendor = ROOT / 'vendor'; vendor.mkdir(exist_ok=True)
@@ -30,7 +31,7 @@ def main():
     lock = json.loads(lock_path.read_text()) if lock_path.exists() else {}
     for name, (url, filename) in PACKAGES.items():
         if args.without_editor and name=="imgui": continue
-        if name in ('glslang', 'spirv_cross') and not args.shader_tools and (sys.platform != 'win32' or args.without_directx): continue
+        if name in ('glslang', 'spirv_cross') and not args.shader_tools and not ((sys.platform == 'win32' and not args.without_directx) or (sys.platform == 'darwin' and not args.without_metal)): continue
         target = vendor / (name if filename == 'archive' else filename)
         if target.exists(): continue
         # The distributable project already contains the exact default font snapshot.
