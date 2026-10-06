@@ -1,5 +1,9 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.9.1
+
+The stability release fixes pending-packet accounting and empty-message backpressure in ENet, bounds network lifetime records, and compacts retired hosts in one pass. Bullet backend switching validates world poses/gravity before mutation. Font header/table checks reject empty/truncated inputs; font generations include file size, and failed glyph allocation releases bitmap memory. Replay writes use unique atomic temporary files; failed input-map construction retains no frame listener. Whole-project JSON/Python/media validation enforces the existing project path boundary. Procedural LOD references block mesh removal, and scene preloading discovers LOD/emitter resources. Asset worker startup cleans up on partial failure; the Windows Protobuf bootstrap matches Forge's dynamic MSVC runtime. Formats and API versions remain unchanged. [Fixes, regression checks and platform limits](BUGFIX_2_9_1.md).
+
 ## Forge 2.8
 
 Native optional rendering optimization provides static model/texture distance LOD with per-camera hysteresis, frustum/distance culling, cached transformed bounds, and bounded conservative solid-proxy occlusion. Gameplay/physics remain active; screen UI/text/particles retain existing paths. The independent `RenderOptimizationPolicy` is replaceable through the public renderer API; `optimization.py` and `render_optimization_example.cpp` demonstrate configuration and native composition. See [settings and limitations](RENDER_OPTIMIZATION.md). Native `render_optimization`, rendering API, and shared rendering GPU tests cover geometry, validation, pixels, counters, cameras, and 2D texture LOD. The base CTest set now has nine suites; optional shader compiler makes ten. Existing launcher test selection remains six integration suites.

@@ -25,7 +25,10 @@ def main():
         run(['perl','Configure',*flags],source)
         run(['make','-j',str(min(os.cpu_count() or 2,4))],source)
         run(['make','install_sw'],source)
-    flags=['-DCMAKE_BUILD_TYPE=Release','-Dprotobuf_BUILD_TESTS=OFF','-Dprotobuf_BUILD_SHARED_LIBS=OFF','-Dprotobuf_WITH_ZLIB=OFF',f'-DCMAKE_INSTALL_PREFIX={prefix}']
+    # A static protobuf library still needs Forge/GNS's dynamic MSVC CRT (/MD).
+    # Protobuf defaults to /MT for static libraries, which otherwise produces
+    # LNK2038 RuntimeLibrary mismatches in the Windows socket build.
+    flags=['-DCMAKE_BUILD_TYPE=Release','-Dprotobuf_BUILD_TESTS=OFF','-Dprotobuf_BUILD_SHARED_LIBS=OFF','-Dprotobuf_MSVC_STATIC_RUNTIME=OFF','-Dprotobuf_WITH_ZLIB=OFF',f'-DCMAKE_INSTALL_PREFIX={prefix}']
     if sys.platform=='darwin':flags += [f'-DCMAKE_OSX_DEPLOYMENT_TARGET={args.deployment_target}']
     build=ROOT/'build/network-protobuf'
     run([cmake,'-S',ROOT/'vendor/protobuf/cmake','-B',build,*flags])

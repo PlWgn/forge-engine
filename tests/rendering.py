@@ -5,6 +5,20 @@ ROOT,ENGINE=base.ROOT,base.ENGINE
 class RenderingTests(unittest.TestCase):
     setUp,tearDown=base.EngineTests.setUp,base.EngineTests.tearDown
     write_config,script_scene,run_engine=base.EngineTests.write_config,base.EngineTests.script_scene,base.EngineTests.run_engine
+    def test_procedural_lod_references_block_mesh_removal(self):
+        self.script_scene('''import forge
+def on_start():
+    mesh=forge.set_mesh('low',{'positions':[[0,0,0],[1,0,0],[0,1,0]]})
+    entity=forge.spawn({'kind':'mesh','model':'crystal.obj','optimization':{'levels':[{'distance':10,'model':mesh}]}})
+    before=forge.geometry_stats()
+    try:forge.remove_mesh(mesh)
+    except RuntimeError:pass
+    else:raise AssertionError('Procedural LOD mesh removed while referenced')
+    assert forge.geometry_stats()==before
+    entity.optimization={};forge.remove_mesh(mesh);assert forge.geometry_stats()['meshes']==0
+    forge.log('LOD_RESOURCE_LIFETIME_OK');forge.quit()
+''')
+        self.assertIn('LOD_RESOURCE_LIFETIME_OK',self.run_engine())
     def test_render_optimization_configuration_and_entity_roundtrip(self):
         self.script_scene("""import forge
 from engine_api import require_api

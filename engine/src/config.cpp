@@ -129,12 +129,12 @@ void Config::validate(bool media) const {
     if(graphics.contains("post_shader"))requireFile(asset("graphics",graphics["post_shader"]));
     if(data["project"].contains("icon")) requireFile(resolve(data["project"]["icon"]));
     // Validate every reusable object and every declarative scene, not only the first one.
-    for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.path().extension()==".json"){auto object=readJson(item.path());if(object.contains("entities") || object.contains("extends"))prefabDocument(*this,item.path().lexically_relative(paths.at("objects")).generic_u8string());else validateEntity(*this,std::move(object));}
-    for(auto& item:fs::recursive_directory_iterator(paths.at("materials"))) if(item.path().extension()==".json") {
-        validateMaterial(*this,readJson(item.path()));
+    for(auto& item:fs::recursive_directory_iterator(paths.at("objects"))) if(item.is_regular_file() && item.path().extension()==".json"){auto name=item.path().lexically_relative(paths.at("objects")).generic_u8string();auto object=readJson(asset("objects",name));if(object.contains("entities") || object.contains("extends"))prefabDocument(*this,name);else validateEntity(*this,std::move(object));}
+    for(auto& item:fs::recursive_directory_iterator(paths.at("materials"))) if(item.is_regular_file() && item.path().extension()==".json") {
+        validateMaterial(*this,readJson(asset("materials",item.path().lexically_relative(paths.at("materials")).generic_u8string())));
     }
-    for(auto& item:fs::recursive_directory_iterator(paths.at("scenes"))) if(item.path().extension()==".json") {
-        auto scene=readJson(item.path()); auto mode=scene.value("mode","2d"); if(mode!="2d" && mode!="3d") throw std::runtime_error("Scene mode must be 2d or 3d");
+    for(auto& item:fs::recursive_directory_iterator(paths.at("scenes"))) if(item.is_regular_file() && item.path().extension()==".json") {
+        auto scene=readJson(asset("scenes",item.path().lexically_relative(paths.at("scenes")).generic_u8string())); auto mode=scene.value("mode","2d"); if(mode!="2d" && mode!="3d") throw std::runtime_error("Scene mode must be 2d or 3d");
         validateRenderSettings(scene.value("rendering",Json::object()));if(scene.contains("physics_enabled") && !scene["physics_enabled"].is_boolean())throw std::runtime_error("physics_enabled must be boolean");
         if(scene.contains("script")) requireFile(asset("scenes",scene["script"]));
         if(!scene.value("entities",Json::array()).is_array()) throw std::runtime_error("Scene.entities must be array");

@@ -13,12 +13,26 @@ struct EnetLifetime {
     }
 };
 class LanTransport final : public NetworkTransport {
+    struct Pending {
+        size_t bytes = 0, messages = 0;
+    };
+    struct PacketOwner {
+        std::shared_ptr<Pending> pending;
+        size_t bytes;
+    };
+    static void released(ENetPacket *packet) noexcept {
+        auto owner = static_cast<PacketOwner *>(packet->userData);
+        owner->pending->bytes -= owner->bytes;
+        --owner->pending->messages;
+        delete owner;
+    }
     std::shared_ptr<EnetLifetime> lifetime;
     ENetHost *host = nullptr;
     NetworkOptions options;
     uint64_t nextPeer = 1;
     std::unordered_map<uint64_t, ENetPeer *> peers;
     std::unordered_map<ENetPeer *, uint64_t> ids;
+    std::unordered_map<uint64_t, std::shared_ptr<Pending>> pending;
     uint64_t identify(ENetPeer *peer) {
         auto it = ids.find(peer);
         if (it != ids.end())
@@ -26,6 +40,7 @@ class LanTransport final : public NetworkTransport {
         auto id = nextPeer++;
         ids[peer] = id;
         peers[id] = peer;
+        pending[id] = std::make_shared<Pending>();
         enet_peer_timeout(peer, 32, options.timeoutMs / 2, options.timeoutMs);
         return id;
     }
@@ -73,12 +88,19 @@ class LanTransport final : public NetworkTransport {
         auto it = peers.find(id);
         if (it == peers.end() || it->second->state != ENET_PEER_STATE_CONNECTED)
             throw std::runtime_error("LAN peer is not connected");
-        if (it->second->outgoingDataTotal + bytes.size() > options.queueBytes)
+        auto queue = pending.at(id);
+        if (bytes.size() > options.queueBytes - queue->bytes ||
+            queue->messages >= options.queueEvents)
             return false;
+        auto owner = std::make_unique<PacketOwner>(PacketOwner{queue, bytes.size()});
         auto packet = enet_packet_create(bytes.data(), bytes.size(),
                                          reliable ? ENET_PACKET_FLAG_RELIABLE : 0);
         if (!packet)
             throw std::runtime_error("Cannot allocate LAN packet");
+        queue->bytes += bytes.size();
+        ++queue->messages;
+        packet->userData = owner.release();
+        packet->freeCallback = released;
         if (enet_peer_send(it->second, uint8_t(channel), packet)) {
             enet_packet_destroy(packet);
             return false;
@@ -100,6 +122,9 @@ class LanTransport final : public NetworkTransport {
                 throw std::runtime_error("LAN service failed");
             if (!result)
                 break;
+            std::unique_ptr<ENetPacket, decltype(&enet_packet_destroy)> received(
+                event.type == ENET_EVENT_TYPE_RECEIVE ? event.packet : nullptr,
+                enet_packet_destroy);
             NetworkEvent e;
             e.peer = identify(event.peer);
             char ip[64]{};
@@ -111,20 +136,15 @@ class LanTransport final : public NetworkTransport {
                 e.type = "disconnected";
                 e.reason = event.data;
                 peers.erase(e.peer);
+                pending.erase(e.peer);
                 ids.erase(event.peer);
             } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
                 e.type = "message";
                 e.channel = event.channelID;
                 e.reliable = (event.packet->flags & ENET_PACKET_FLAG_RELIABLE) != 0;
-                try {
-                    if (event.packet->dataLength)
-                        e.data.assign(reinterpret_cast<char *>(event.packet->data),
-                                      event.packet->dataLength);
-                } catch (...) {
-                    enet_packet_destroy(event.packet);
-                    throw;
-                }
-                enet_packet_destroy(event.packet);
+                if (event.packet->dataLength)
+                    e.data.assign(reinterpret_cast<char *>(event.packet->data),
+                                  event.packet->dataLength);
             } else
                 continue;
             out.push_back(std::move(e));
@@ -140,7 +160,8 @@ class LanTransport final : public NetworkTransport {
                             {"connected", p->state == ENET_PEER_STATE_CONNECTED},
                             {"rtt_ms", p->roundTripTime},
                             {"packet_loss", p->packetLoss},
-                            {"pending_bytes", p->outgoingDataTotal}});
+                            {"pending_bytes", pending.at(id)->bytes},
+                            {"pending_messages", pending.at(id)->messages}});
         return {{"port", host->address.port},
                 {"peers", list},
                 {"wire_sent_bytes", host->totalSentData},

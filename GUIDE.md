@@ -1,6 +1,6 @@
 # Forge Engine Wiki
 
-The current manual for **Forge 2.9.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately.
+The current manual for **Forge 2.9.1**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see the [current stability fixes](docs/BUGFIX_2_9_1.md).
 
 ## Start here
 

@@ -9,6 +9,28 @@ class SimulationTests(unittest.TestCase):
     setUp, tearDown = base.EngineTests.setUp, base.EngineTests.tearDown
     write_config, script_scene, run_engine = base.EngineTests.write_config, base.EngineTests.script_scene, base.EngineTests.run_engine
 
+    def test_backend_switch_checks_world_poses_and_gravity_before_commit(self):
+        self.script_scene('''import forge
+def build():return {'mode':'3d','physics_enabled':False,'gravity':[0,0,0]}
+def on_start():
+    parent=forge.spawn({'id':'parent','kind':'empty','position':[600000,0,0]})
+    child=forge.spawn({'id':'child','kind':'empty','parent':'parent','position':[600000,0,0],'collider':[1,1,1]})
+    before=forge.physics_settings()
+    try:forge.configure_physics({'backend':'bullet'})
+    except RuntimeError:pass
+    else:raise AssertionError('Out-of-range world pose accepted')
+    assert forge.physics_settings()==before
+    child.position=(0,0,0);forge.set_gravity((0,2000000,0))
+    try:forge.configure_physics({'backend':'bullet'})
+    except RuntimeError:pass
+    else:raise AssertionError('Out-of-range gravity accepted')
+    assert forge.physics_settings()==before
+    forge.set_gravity((0,0,0));forge.configure_physics({'backend':'bullet'});forge.physics_step(0)
+    assert forge.raycast((600000,0,5),(0,0,-1),10) is child
+    forge.log('BACKEND_SWITCH_TRANSACTION_OK');forge.quit()
+''')
+        self.assertIn('BACKEND_SWITCH_TRANSACTION_OK',self.run_engine())
+
     def native(self, source, *, rigid=True):
         build = "def build(): return {'mode':'3d','gravity':[0,0,0],'physics':{'backend':'bullet'},'physics_enabled':False}\n" if rigid else ""
         self.script_scene(build + source)

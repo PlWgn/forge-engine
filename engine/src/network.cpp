@@ -249,6 +249,8 @@ std::shared_ptr<NetworkHost> NetworkService::create(const NetworkOptions &option
     checkThread();
     if (name.size() > 128 || (application && name.empty()))
         throw std::invalid_argument("Persistent host requires a name (1..128 chars)");
+    if (!application && !scene)
+        throw std::invalid_argument("Scene scope required");
     if (application) {
         auto found = persistent.find(name);
         if (found != persistent.end() && !found->second->closed()) {
@@ -266,9 +268,10 @@ std::shared_ptr<NetworkHost> NetworkService::create(const NetworkOptions &option
                                }),
                 hosts.end());
     for (auto it = persistent.begin(); it != persistent.end();)
-        if (it->second->closed())
+        if (it->second->closed()) {
+            candidate.erase(it->first);
             it = persistent.erase(it);
-        else
+        } else
             ++it;
     if (hosts.size() >= 1024)
         throw std::runtime_error("Runtime network host budget reached (1024)");
@@ -276,10 +279,18 @@ std::shared_ptr<NetworkHost> NetworkService::create(const NetworkOptions &option
     hosts.push_back(host);
     if (application) {
         persistent[name] = host;
-        candidate.push_back(name);
+        if (preparing)
+            candidate.insert(name);
     } else {
-        if (!scene)
-            throw std::invalid_argument("Scene scope required");
+        // Compact weak lifetime records in batches; closed-host churn must not
+        // retain an unbounded list or scan that list on every creation.
+        if (scene->hosts.size() >= 64)
+            scene->hosts.erase(std::remove_if(scene->hosts.begin(), scene->hosts.end(),
+                                              [](auto &weak) {
+                                                  auto h = weak.lock();
+                                                  return !h || h->closed();
+                                              }),
+                               scene->hosts.end());
         scene->hosts.push_back(host);
     }
     return host;
@@ -287,6 +298,7 @@ std::shared_ptr<NetworkHost> NetworkService::create(const NetworkOptions &option
 void NetworkService::checkpoint() {
     checkThread();
     candidate.clear();
+    preparing = true;
 }
 void NetworkService::rollback() {
     checkThread();
@@ -298,25 +310,24 @@ void NetworkService::rollback() {
         }
     }
     candidate.clear();
+    preparing = false;
 }
 void NetworkService::commit() {
     checkThread();
     candidate.clear();
+    preparing = false;
 }
 void NetworkService::pump() {
     checkThread();
-    auto it = hosts.begin();
-    while (it != hosts.end()) {
-        auto &host = *it;
+    for (auto &host : hosts) {
         if (host.use_count() == 1)
             host->close();
-        if (host->closed())
-            it = hosts.erase(it);
-        else {
+        if (!host->closed())
             host->pump();
-            ++it;
-        }
     }
+    hosts.erase(
+        std::remove_if(hosts.begin(), hosts.end(), [](auto &host) { return host->closed(); }),
+        hosts.end());
 }
 void NetworkService::close() {
     checkThread();
@@ -325,5 +336,6 @@ void NetworkService::close() {
     hosts.clear();
     persistent.clear();
     candidate.clear();
+    preparing = false;
 }
 } // namespace forge

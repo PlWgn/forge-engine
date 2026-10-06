@@ -399,7 +399,9 @@ void bindPhysics(py::module_ &m) {
         if (next["backend"] == "bullet" && !runtime().world.is3d) throw std::runtime_error("Bullet backend requires a 3D scene");
         auto &world = runtime().world;
         if (next["backend"] == "bullet") {
-            size_t count=0;for(auto& e:world.entities)if(world.activeCollider(*e)){validatePhysicsEntity(*e);++count;}
+            world.syncTransforms();
+            vector(Json::array({world.gravity.x,world.gravity.y,world.gravity.z}),"physics gravity");
+            size_t count=0;for(auto& e:world.entities)if(world.activeCollider(*e)){validatePhysicsEntity(bodyPose(world,*e));++count;}
             if(count>next.value("max_bodies",10000u))throw std::runtime_error("physics.max_bodies exceeded");
         }
         world.physicsSettings = std::move(next); world.physics3d.reset();

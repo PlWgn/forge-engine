@@ -98,7 +98,7 @@ void validateMedia(const Config &c) {
     for (auto &entry : fs::recursive_directory_iterator(c.paths.at("textures")))
         if (entry.is_regular_file() && extensions.count(entry.path().extension().u8string())) {
             int w, h, n;
-            auto filename = entry.path().u8string();
+            auto filename = c.asset("textures",entry.path().lexically_relative(c.paths.at("textures")).generic_u8string()).u8string();
             if (!stbi_info(filename.c_str(), &w, &h, &n))
                 throw std::runtime_error("Invalid texture " + filename + ": " + stbi_failure_reason());
             auto *bytes = stbi_load(filename.c_str(), &w, &h, &n, 4);
@@ -109,10 +109,11 @@ void validateMedia(const Config &c) {
     for (auto &entry : fs::recursive_directory_iterator(c.paths.at("models")))
         if (entry.is_regular_file()) {
             auto ext = entry.path().extension().u8string();
+            auto path=c.asset("models",entry.path().lexically_relative(c.paths.at("models")).generic_u8string());
             if (ext == ".obj")
-                obj(entry.path());
+                obj(path);
             if (ext == ".obj" || ext == ".gltf" || ext == ".glb" || ext == ".fbx" || ext == ".dae") {
-                auto model = loadModel(entry.path(), c.root);
+                auto model = loadModel(path, c.root);
                 std::set<fs::path> maps;
                 for (auto &part : model->parts) {
                     if (!part.texture.empty()) maps.insert(part.texture);

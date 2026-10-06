@@ -158,6 +158,35 @@ def on_update(dt):
             (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def test_invalid_font_reload_preserves_frame_and_recovers(self):
+        source="""import forge
+from pathlib import Path
+def on_start():
+    forge.spawn({'id':'stable-text','kind':'text','screen':True,'text':'Stable font',
+                 'font_size':60,'position':[40,40,0]})
+    forge.screenshot('font-before.ppm')
+def on_reload_failed(error):
+    assert 'TrueType font' in error,error
+    assert forge.find('stable-text').alive
+    forge.screenshot('font-rollback.ppm')
+def on_update(dt):
+    if Path(forge.project_path('stop')).exists():forge.quit()
+"""
+        (self.root/'scenes/font_reload.py').write_text(source,encoding='utf-8')
+        self.config['entry_scene']='font_reload.py';self.write_config()
+        font=self.root/self.config['paths']['graphics']/self.config['renderer']['font']
+        original=font.read_bytes()
+        process=subprocess.Popen([*engine_command('dev'),'--project',str(self.root/'engine.json'),'--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            self.wait_log('font-before.ppm',process)
+            font.write_bytes(b'')
+            self.wait_log('font-rollback.ppm',process)
+            self.assertEqual((self.root/'font-before.ppm').read_bytes(),(self.root/'font-rollback.ppm').read_bytes())
+            font.write_bytes(original);self.wait_log('Hot reload complete',process)
+            (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+
     def test_shader_error_recovers_without_closing_window(self):
         (self.root/'scenes/control.py').write_text("import forge\ndef on_update(dt):\n    if __import__('pathlib').Path(forge.project_path('stop')).exists(): forge.quit()\n")
         scene=self.root/'scenes/welcome.json';data=json.loads(scene.read_text());data['script']='control.py';scene.write_text(json.dumps(data))

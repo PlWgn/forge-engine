@@ -1,5 +1,5 @@
 """Forge 2.0 public APIs, exercised inside the real native runtime."""
-import json, os, shutil, subprocess, sys, time, unittest
+import json, os, shutil, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
 import integration as base
 from model_fixture import animated_triangle
@@ -8,6 +8,86 @@ ROOT, ENGINE = base.ROOT, base.ENGINE
 class FeatureTests(unittest.TestCase):
     setUp, tearDown = base.EngineTests.setUp, base.EngineTests.tearDown
     write_config, run_engine, script_scene = base.EngineTests.write_config, base.EngineTests.run_engine, base.EngineTests.script_scene
+
+    def test_invalid_fonts_report_errors_instead_of_native_crashes(self):
+        font=self.root/'graphics/broken.ttf'
+        self.config['renderer']['font']='broken.ttf';self.write_config()
+        for content in (b'',b'not a font',b'\x00\x01\x00\x00'+b'\x00'*8,
+                        b'ttcf'+b'\x00'*12,(self.root/'graphics/font.ttf').read_bytes()[:128]):
+            with self.subTest(content=content):
+                font.write_bytes(content)
+                self.assertIn('Invalid TrueType font',self.run_engine('validate',expected=1))
+
+    def test_replay_atomic_write_does_not_follow_existing_temp_symlink(self):
+        outside=self.root.parent/(self.root.name+'-outside.json')
+        try:
+            outside.write_text('untouched',encoding='utf-8')
+            folder=self.root/'replay';folder.mkdir()
+            try:(folder/'session.json.tmp').symlink_to(outside)
+            except OSError:self.skipTest('Symlink creation unavailable')
+            self.script_scene('''import forge
+from input_actions import InputRecorder
+def on_start():
+    record=InputRecorder(automatic=False);record.update();record.save('replay/session.json')
+    forge.log('REPLAY_ATOMIC_OK');forge.quit()
+''')
+            self.assertIn('REPLAY_ATOMIC_OK',self.run_engine())
+            self.assertEqual(outside.read_text(encoding='utf-8'),'untouched')
+            self.assertEqual(json.loads((folder/'session.json').read_text())['format'],'forge.input/1')
+        finally:outside.unlink(missing_ok=True)
+
+    def test_whole_project_validation_rejects_resource_symlink_escapes(self):
+        with tempfile.TemporaryDirectory(prefix='forge-outside-') as directory:
+            for group,name,content in [('materials','external.json',b'{"color":[1,1,1,1]}'),
+                                       ('modules','external.py',b'VALUE=1\n'),
+                                       ('textures','external.png',(self.root/'textures/icon.png').read_bytes())]:
+                with self.subTest(group=group):
+                    source=Path(directory)/name;source.write_bytes(content)
+                    alias=self.root/self.config['paths'][group]/name
+                    try:alias.symlink_to(source)
+                    except OSError:self.skipTest('Symlink creation unavailable')
+                    try:self.assertIn('escapes project root',self.run_engine('validate',expected=1))
+                    finally:alias.unlink()
+
+    def test_failed_action_map_construction_releases_frame_listener(self):
+        self.script_scene('''import forge,gc,weakref
+from input_actions import ActionMap,InputRecorder
+reference=None
+class InvalidActionMap(ActionMap):
+    def __init__(self):
+        global reference
+        reference=weakref.ref(self)
+        super().__init__({'bad':'not-a-binding'})
+def on_start():
+    try:InvalidActionMap()
+    except ValueError:pass
+    else:raise AssertionError('Invalid binding accepted')
+    gc.collect();assert reference() is None,'Failed ActionMap retained by frame listener'
+    for limit in (0,-1,True,.5,float('nan'),float('inf')):
+        try:InputRecorder(max_frames=limit)
+        except ValueError:pass
+        else:raise AssertionError('Invalid recording capacity accepted')
+    forge.log('INPUT_CONSTRUCTION_OK');forge.quit()
+''')
+        self.assertIn('INPUT_CONSTRUCTION_OK',self.run_engine())
+
+    def test_scene_preloader_includes_lod_emitters_and_skips_render_targets(self):
+        (self.root/'scenes/preload-lod.json').write_text(json.dumps({'emitters':[{'texture':'icon.png'}],'entities':[
+            {'kind':'mesh','model':'crystal.obj','texture':'@target:screen','optimization':{'levels':[{'distance':10,'model':'sphere.obj','texture':'particle.png'}]},
+             'material_properties':{'normal_texture':'pbr-normal.png'}}]}),encoding='utf-8')
+        self.script_scene('''import forge
+from assets import ScenePreloader
+def on_start():
+    with ScenePreloader.scene('preload-lod.json') as loader:
+        loader.wait()
+        assert ('textures','particle.png') in loader.handles
+        assert ('textures','icon.png') in loader.handles
+        assert ('models','sphere.obj') in loader.handles
+        assert ('textures','pbr-normal.png') in loader.handles
+        assert not any(name.startswith('@') for group,name in loader.handles)
+    forge.log('LOD_PRELOAD_OK');forge.quit()
+''')
+        self.assertIn('LOD_PRELOAD_OK',self.run_engine())
     def test_event_unsubscribe_is_idempotent_and_releases_callbacks(self):
         self.script_scene("""import forge,gc,weakref
 from events import EventBus

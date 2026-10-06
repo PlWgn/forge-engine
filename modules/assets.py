@@ -52,6 +52,9 @@ class ScenePreloader:
     def scene(cls, file):
         data = json.loads(Path(forge.asset_path('scenes', file)).read_text(encoding='utf-8'))
         result = cls((entry['group'], entry['file']) for entry in data.get('preload', []))
+        def add(group, name):
+            if name and not name.startswith(('@target:', '@mesh:')): result.add(group, name)
+        for emitter in data.get('emitters', []): add('textures', emitter.get('texture'))
         for original in data.get('entities', []):
             entity = dict(original)
             if 'prefab' in entity:
@@ -66,13 +69,16 @@ class ScenePreloader:
                     return value
                 entity = overlay(prefab[0], entity)
             for field, group in [('texture','textures'),('model','models'),('material','materials')]:
-                if entity.get(field) and not entity[field].startswith(('@target:', '@mesh:')): result.add(group, entity[field])
+                add(group, entity.get(field))
+            for level in entity.get('optimization', {}).get('levels', []):
+                add('models', level.get('model'))
+                add('textures', level.get('texture'))
             materials = [entity.get('material_properties', {})]
             if entity.get('material'):
                 materials.append(json.loads(Path(forge.asset_path('materials',entity['material'])).read_text(encoding='utf-8')))
             for material in materials:
                 for field in ('texture','albedo_texture','normal_texture','metallic_texture','roughness_texture','metallic_roughness_texture','occlusion_texture','emissive_texture'):
-                    if material.get(field): result.add('textures', material[field])
+                    add('textures', material.get(field))
         return result
     def _expand(self):
         for key, handle in list(self.handles.items()):

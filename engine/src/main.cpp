@@ -22,7 +22,12 @@ static void syntax(const Config& c) {
     auto compile=py::module_::import("builtins").attr("compile");std::set<fs::path> seen;
     std::set<fs::path> roots;for(const auto &[group,folder]:c.paths)roots.insert(folder);
     for(const auto &path:c.data.value("python_paths",Json::array()))roots.insert(c.resolve(path.get<std::string>()));
-    for(const auto &folder:roots)for(auto& item:fs::recursive_directory_iterator(folder))if(item.is_regular_file() && item.path().extension()==".py" && seen.insert(item.path()).second){std::ifstream input(item.path(),std::ios::binary);std::string code{std::istreambuf_iterator<char>(input),{}};compile(py::bytes(code),item.path().u8string(),"exec");}
+    for(const auto &folder:roots)for(auto& item:fs::recursive_directory_iterator(folder))if(item.is_regular_file() && item.path().extension()==".py"){
+        auto path=c.resolve(item.path().lexically_relative(c.root).generic_u8string());
+        if(!seen.insert(path).second)continue;
+        std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("Cannot read Python source: "+path.u8string());
+        std::string code{std::istreambuf_iterator<char>(input),{}};compile(py::bytes(code),path.u8string(),"exec");
+    }
 }
 }
 int main(int argc,char** argv) {

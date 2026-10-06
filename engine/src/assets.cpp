@@ -31,8 +31,19 @@ struct Assets::Impl {
     uint64_t clock = 0;
     uint64_t retiredModels = 0;
     explicit Impl(Config &c) : config(c) {
-        for (int i = 0; i < 4; ++i)
-            workers.emplace_back([this] { work(); });
+        try {
+            for (int i = 0; i < 4; ++i)
+                workers.emplace_back([this] { work(); });
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                stopping = true;
+            }
+            changed.notify_all();
+            for (auto &worker : workers)
+                worker.join();
+            throw;
+        }
     }
     ~Impl() {
         {
@@ -91,14 +102,14 @@ struct Assets::Impl {
                         if (size_t(w) * h * 4 > limit)
                             throw std::runtime_error("Texture exceeds asset memory budget");
                     }
-                    auto pixels = stbi_load(name.c_str(), &w, &h, &n, 4);
+                    std::unique_ptr<unsigned char, decltype(&stbi_image_free)> pixels(
+                        stbi_load(name.c_str(), &w, &h, &n, 4), stbi_image_free);
                     if (!pixels)
                         throw std::runtime_error("Cannot decode texture: " + name);
                     image = std::make_shared<ImageData>();
                     image->width = w;
                     image->height = h;
-                    image->pixels.assign(pixels, pixels + size_t(w) * h * 4);
-                    stbi_image_free(pixels);
+                    image->pixels.assign(pixels.get(), pixels.get() + size_t(w) * h * 4);
                     bytes = image->pixels.size();
                 } else if (entry->kind == "models") {
                     model = loadModel(entry->path, entry->root);

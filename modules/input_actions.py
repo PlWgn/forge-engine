@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 import forge
-from saves import SaveManager
+from saves import SaveManager, _atomic
 
 PAD_BUTTONS = dict(zip(('a','b','x','y','left_bumper','right_bumper','back','start','guide','left_stick','right_stick','up','right','down','left'),range(15)))
 PAD_AXES = dict(zip(('left_x','left_y','right_x','right_y','left_trigger','right_trigger'),range(6)))
@@ -14,9 +14,9 @@ class ActionMap:
         if not math.isfinite(deadzone) or not 0<=deadzone<1: raise ValueError('Invalid deadzone')
         self.bindings, self.deadzone = {}, deadzone
         self.values, self.previous, self.contexts = {}, {}, ['default']
-        self._listener = forge.on_frame(self.update) if automatic else None
         self.store = SaveManager(directory=directory or forge.settings().get('save_directory','saves')+'/preferences')
         for name, value in (bindings or {}).items(): self.bind(name, value)
+        self._listener = forge.on_frame(self.update) if automatic else None
     @staticmethod
     def _binding(value):
         value = {'input':value} if isinstance(value,str) else dict(value)
@@ -72,6 +72,7 @@ class ActionMap:
 
 class InputRecorder:
     def __init__(self, *, max_frames=360000, automatic=True):
+        if type(max_frames) is not int or max_frames < 1: raise ValueError('max_frames must be a positive integer')
         self.frames=[];self.max_frames=max_frames
         self._listener=forge.on_frame(self.update) if automatic else None
     def update(self, dt=0):
@@ -81,7 +82,7 @@ class InputRecorder:
         payload=dict(format='forge.input/1',frames=copy.deepcopy(self.frames))
         def write():
             path=Path(forge.storage_path(file));path.parent.mkdir(parents=True,exist_ok=True)
-            temp=path.with_name(path.name+'.tmp');temp.write_text(json.dumps(payload,allow_nan=False),encoding='utf-8');temp.replace(path)
+            _atomic(path,json.dumps(payload,allow_nan=False).encode('utf-8'))
         forge.defer_persistence(write)
     def close(self):
         if self._listener is not None: forge.remove_listener(self._listener);self._listener=None

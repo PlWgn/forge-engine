@@ -559,6 +559,8 @@ void main(){
         stbtt_GetCodepointHMetrics(&font, code, &glyph.advance, &bearing);
         float scale = stbtt_ScaleForPixelHeight(&font, float(raster));
         auto pixels = stbtt_GetCodepointBitmap(&font, 0, scale, code, &glyph.w, &glyph.h, &glyph.x, &glyph.y);
+        auto freeBitmap=[](unsigned char* value){stbtt_FreeBitmap(value,nullptr);};
+        std::unique_ptr<unsigned char,decltype(freeBitmap)> bitmap(pixels,freeBitmap);
         if (pixels && glyph.w > 0 && glyph.h > 0) {
             Page *page = nullptr;
             unsigned index = 0;
@@ -585,7 +587,6 @@ void main(){
                 int maximum;
                 gl::GetIntegerv(gl::MAX_TEXTURE_SIZE, &maximum);
                 if (size > maximum) {
-                    stbtt_FreeBitmap(pixels, nullptr);
                     throw std::runtime_error("Glyph atlas exceeds GPU texture limit");
                 }
                 reserve(size_t(size) * size * 4);
@@ -607,7 +608,6 @@ void main(){
             page->x += glyph.w + 2;
             page->row = std::max(page->row, glyph.h);
         }
-        stbtt_FreeBitmap(pixels, nullptr);
         return glyphs.emplace(key, glyph).first->second;
     }
     void text(const Entity &e, const glm::mat4 &projection) {

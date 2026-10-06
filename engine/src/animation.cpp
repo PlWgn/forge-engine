@@ -242,13 +242,13 @@ void validateAnimationAssets(const Config& config){
         validateMorphWeights(*model,weights);if(!name.empty())model->pose(name,0,true);
         if(!options.empty())prepareAnimator(config,assets,entity,options);
     };
-    for(auto& entry:fs::recursive_directory_iterator(config.paths.at("objects")))if(entry.path().extension()==".json"){
+    for(auto& entry:fs::recursive_directory_iterator(config.paths.at("objects")))if(entry.is_regular_file() && entry.path().extension()==".json"){
         auto file=entry.path().lexically_relative(config.paths.at("objects")).generic_u8string();
         auto document=prefabDocument(config,file);
         for(auto& data:document["entities"])check(data);
     }
-    for(auto& entry:fs::recursive_directory_iterator(config.paths.at("scenes")))if(entry.path().extension()==".json")
-        for(auto& data:readJson(entry.path()).value("entities",Json::array()))check(data);
+    for(auto& entry:fs::recursive_directory_iterator(config.paths.at("scenes")))if(entry.is_regular_file() && entry.path().extension()==".json")
+        for(auto& data:readJson(config.asset("scenes",entry.path().lexically_relative(config.paths.at("scenes")).generic_u8string())).value("entities",Json::array()))check(data);
 }
 void transitionAnimator(Runtime& runtime,Entity& entity,Json options,double seconds){
     if(!std::isfinite(seconds) || seconds<0 || seconds>60)throw std::runtime_error("Animation fade must be 0..60 seconds");

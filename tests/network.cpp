@@ -22,12 +22,15 @@ template <class F> void rejects(F f) {
 struct QueueState {
     std::vector<NetworkEvent> packets;
     bool disconnected = false;
+    size_t created = 0;
 };
 class QueueTransport final : public NetworkTransport {
     std::shared_ptr<QueueState> state;
 
   public:
-    explicit QueueTransport(std::shared_ptr<QueueState> s) : state(std::move(s)) {}
+    explicit QueueTransport(std::shared_ptr<QueueState> s) : state(std::move(s)) {
+        ++state->created;
+    }
     uint64_t connect(const std::string &, uint16_t) override {
         return 1;
     }
@@ -100,6 +103,30 @@ void bounds() {
         require(host.poll().size() == 2 && host.stats()["queued_bytes"] == 0,
                 "Draining queue retained bytes");
     }
+    NetworkService service;
+    auto options = networkOptions({{"backend", "test_queue"}});
+    auto created = state->created;
+    rejects([&] { service.create(options, "", nullptr, false); });
+    require(state->created == created, "Rejected host creation opened a transport");
+    auto scope = std::make_shared<NetworkScope>();
+    for (unsigned i = 0; i < 2048; ++i) {
+        auto h = service.create(options, "", scope, false);
+        h->close();
+    }
+    require(scope->hosts.size() <= 64, "Closed hosts accumulated scene lifetime records");
+    auto ordinary = service.create(options, "ordinary", scope, true);
+    service.rollback();
+    require(!ordinary->closed(), "Rollback closed a session created outside preparation");
+    service.checkpoint();
+    for (unsigned i = 0; i < 128; ++i) {
+        auto h = service.create(options, "retry", scope, true);
+        h->close();
+    }
+    auto final = service.create(options, "retry", scope, true);
+    service.rollback();
+    require(final->closed() && !ordinary->closed(),
+            "Recreated candidate ownership changed committed session");
+    service.close();
 }
 void transport(const std::string &backend) {
     auto o =
@@ -204,6 +231,52 @@ void transport(const std::string &backend) {
     require(named->closed(), "Application shutdown leaked host");
     std::cout << backend << " real LAN exchange and lifetime checks passed\n";
 }
+void lanPendingBudget() {
+    auto o = networkOptions({{"bind", "127.0.0.1"},
+                             {"max_message_bytes", 64},
+                             {"queue_bytes", 1024},
+                             {"queue_events", 8}});
+    NetworkHost server(o);
+    o.bind = "";
+    NetworkHost client(o);
+    auto peer = client.connect("127.0.0.1", server.stats()["port"].get<unsigned>());
+    auto until = [&](auto ready) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!ready()) {
+            require(std::chrono::steady_clock::now() < deadline, "LAN pending queue did not drain");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    bool connected = false, accepted = false;
+    until([&] {
+        for (auto &event : server.poll())
+            if (event.type == "connected")
+                accepted = true;
+        for (auto &event : client.poll())
+            if (event.type == "connected")
+                connected = true;
+        return connected && accepted;
+    });
+    for (unsigned i = 0; i < 8; ++i)
+        require(client.send(peer, ""), "Empty packet refused below packet budget");
+    require(!client.send(peer, ""), "Zero-byte packets bypassed outgoing message budget");
+    until([&] {
+        server.poll();
+        client.poll();
+        return client.stats()["peers"][0]["pending_messages"] == 0;
+    });
+    for (unsigned cycle = 0; cycle < 32; ++cycle) {
+        require(client.send(peer, std::string(64, 'x')), "Drained packets retained queue capacity");
+        until([&] {
+            server.poll();
+            client.poll();
+            return client.stats()["peers"][0]["pending_messages"] == 0;
+        });
+        require(client.stats()["peers"][0]["pending_bytes"] == 0,
+                "Acknowledged payload remained pending");
+    }
+    std::cout << "LAN pending byte/message budgets passed\n";
+}
 int main() {
     try {
         for (auto j : {NetworkJson{{"transport_settings", false}},
@@ -220,8 +293,11 @@ int main() {
         require(!disabled.info()["enabled"].get<bool>(), "Steam initialized implicitly");
         bounds();
         for (auto &backend : networkBackends())
-            if (backend == "lan" || backend == "sockets")
+            if (backend == "lan" || backend == "sockets") {
                 transport(backend);
+                if (backend == "lan")
+                    lanPendingBudget();
+            }
         std::cout << "Network checks passed\n";
         return 0;
     } catch (const std::exception &e) {

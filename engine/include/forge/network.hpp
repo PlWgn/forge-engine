@@ -8,6 +8,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 namespace forge {
 using NetworkJson = nlohmann::json;
@@ -90,7 +91,8 @@ class NetworkService {
     std::unordered_map<std::string, std::shared_ptr<NetworkHost>> persistent;
     // Keep transports alive until servicing can release them on this thread.
     std::vector<std::shared_ptr<NetworkHost>> hosts;
-    std::vector<std::string> candidate;
+    std::unordered_set<std::string> candidate;
+    bool preparing = false;
 };
 uint16_t networkEphemeralPort(const std::string &bind);
 std::unique_ptr<NetworkTransport> makeLanTransport(const NetworkOptions &);

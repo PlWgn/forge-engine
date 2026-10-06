@@ -1,5 +1,6 @@
 #include <forge/engine.hpp>
 #include <forge/geometry.hpp>
+#include <forge/render_optimization.hpp>
 #include <pybind11/stl.h>
 namespace forge {
 namespace {
@@ -34,7 +35,15 @@ void Geometry::remove(const std::string& name){auto found=entries.find(key(name)
 Json Geometry::info()const{return {{"meshes",entries.size()},{"resident_bytes",bytes},{"budget_bytes",limit},{"revision",version}};}
 void bindGeometry(py::module_& m){
     m.def("set_mesh",[](const std::string& name,py::dict data){if(rt().tearingDown)throw std::runtime_error("Cannot create geometry during teardown");return geometry(rt().world).set(name,fromPython(data));});
-    m.def("remove_mesh",[](const std::string& name){auto id=key(name);for(auto& e:rt().world.entities)if(e->alive && e->model==id)throw std::runtime_error("Mesh is still used by entity: "+e->id);geometry(rt().world).remove(name);});
+    m.def("remove_mesh",[](const std::string& name){
+        auto id=key(name);
+        for(auto& e:rt().world.entities)if(e->alive){
+            bool used=e->model==id;
+            if(e->optimization)for(const auto& level:e->optimization->levels)used=used || level.model==id;
+            if(used)throw std::runtime_error("Mesh is still used by entity: "+e->id);
+        }
+        geometry(rt().world).remove(name);
+    });
     m.def("mesh_info",[](const std::string& name){auto& store=geometry(rt().world);auto found=store.entries.find(key(name));if(found==store.entries.end())throw std::runtime_error("Unknown procedural mesh: "+name);auto info=found->second.model->info();info["revision"]=found->second.revision;info["bytes"]=found->second.model->memoryBytes;return python(info);});
     m.def("set_geometry_budget",[](size_t bytes){auto& store=geometry(rt().world);if(bytes<1 || bytes>1024ull*1024*1024 || bytes<store.bytes)throw std::runtime_error("Geometry budget must be 1..1GiB and cover resident meshes");store.limit=bytes;});
     m.def("geometry_stats",[](){return python(geometry(rt().world).info());});
