@@ -13,6 +13,7 @@ struct Renderer {
     void init(const Config &, World &);
     void init(const Config &, World &, Runtime &);
     void render(World &);
+    void finish();
     void setOptimizationPolicy(std::shared_ptr<RenderOptimizationPolicy>); // nullptr restores native policy
     void validateWorld(const World &);
     void invalidate();

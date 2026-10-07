@@ -107,6 +107,63 @@ def on_update(dt):
         self.assertGreater(base.point(self.root/'array-green.ppm',100,80)[1],240)
         self.assertGreater(base.point(self.root/'array-red.ppm',100,80)[0],240)
 
+    def test_procedural_replacement_reuses_layout_pipeline(self):
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'2d','background':[0,0,0,1],'physics_enabled':False}
+def on_start():
+    global actor,data
+    data={'positions':[[0,0,0],[100,0,0],[0,100,0]],'colors':[[1,0,0,1]]*3}
+    mesh=forge.set_mesh('pickup',data)
+    actor=forge.spawn({'kind':'mesh','screen':True,'model':mesh,'position':[100,100,0]})
+    other=forge.set_mesh('reference',dict(data,colors=[[0,0,1,1]]*3))
+    forge.spawn({'kind':'mesh','screen':True,'model':other,'position':[400,100,0]})
+def on_update(dt):
+    global frames,actor,warm
+    frames+=1
+    if frames==2:forge.screenshot('mesh-red.ppm')
+    if frames==4:warm=forge.renderer_stats()['draw_pipeline_builds']
+    if 4<=frames<=20:
+        data['colors']=[[0,1,0,1]]*3
+        if frames%4==0:
+            actor.destroy();forge.remove_mesh('pickup')
+            name=forge.set_mesh('pickup',data)
+            actor=forge.spawn({'kind':'mesh','screen':True,'model':name,'position':[100,100,0]})
+        else:forge.set_mesh('pickup',data)
+    if frames==21:
+        info=forge.renderer_stats()
+        assert info['draw_pipeline_builds']==warm,info
+        forge.screenshot('mesh-green.ppm')
+        forge.log('LAYOUT_PIPELINES_STABLE '+str(info['draw_pipeline_builds']))
+""",frames=23,extra=('--silent-audio',))
+        self.assertGreater(base.point(self.root/'mesh-red.ppm',120,120)[0],240)
+        self.assertGreater(base.point(self.root/'mesh-green.ppm',120,120)[1],240)
+        self.assertGreater(base.point(self.root/'mesh-green.ppm',420,120)[2],240)
+
+    def test_texture_updates_and_presentation_do_not_drain_each_frame(self):
+        self.run_scene("""import forge
+frames=0
+def build():return {'mode':'2d','background':[0,0,0,1],'physics_enabled':False}
+def on_start():
+    global label
+    label=forge.spawn({'kind':'text','screen':True,'text':'A','font_size':80,'position':[300,120,0]})
+    forge.spawn({'kind':'sprite','screen':True,'position':[100,100,0],'scale':[40,40,1],'color':[0,1,0,1]})
+def on_update(dt):
+    global frames,baseline
+    frames+=1
+    if frames==5:forge.screenshot('glyph-before.ppm')
+    if frames==6:baseline=forge.renderer_stats()['synchronous_flushes']
+    if 6<=frames<=33:label.text=chr(65+(frames-5)%26)
+    if frames==34:
+        info=forge.renderer_stats()
+        assert info['synchronous_flushes']==baseline,info
+        assert info['uniform_arena_bytes']<=info['uniform_budget_bytes'],info
+        assert info['peak_inflight_command_buffers']<=info['max_inflight_command_buffers']==3,info
+        forge.screenshot('glyph-after.ppm')
+""",frames=37,extra=('--silent-audio',))
+        self.assertNotEqual((self.root/'glyph-before.ppm').read_bytes(),(self.root/'glyph-after.ppm').read_bytes())
+        self.assertGreater(base.point(self.root/'glyph-after.ppm',100,100)[1],240)
+
     def test_uniform_budget_exhaustion_reports_a_runtime_error(self):
         self.config['renderer']['batching']=False
         self.config['renderer']['metal']['uniform_budget_bytes']=65536

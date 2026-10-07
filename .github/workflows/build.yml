@@ -61,7 +61,9 @@ jobs:
           FORGE_TEST_BACKEND: metal
           FORGE_TEST_SILENT_AUDIO: '1'
           MTL_DEBUG_LAYER: '1'
-        run: python tests/metal_graphics.py build/bin/forge
+        run: |
+          build/metal_backend_tests
+          python tests/metal_graphics.py build/bin/forge
       - name: Metal shared GPU regressions
         if: runner.os == 'macOS' && matrix.editor == 'ON' && steps.metal_device.outputs.available == 'true'
         env:

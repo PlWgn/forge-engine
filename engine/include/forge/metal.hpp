@@ -12,6 +12,7 @@ class Metal {
     void beginFrame(int width, int height);
     void renderFrame(const std::function<void()> &draw);
     void present(bool vsync);
+    void finish(); // Drain queued work and report GPU failures explicitly.
     Json diagnostics() const;
     void initializeEditor();
     void shutdownEditor();

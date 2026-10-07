@@ -1273,6 +1273,7 @@ void Renderer::render(World &world) {
 void Renderer::poll(){pollInput(impl->window,*impl);}
 
 bool Renderer::closing() const { return glfwWindowShouldClose(impl->window); }
+void Renderer::finish() { if (impl->device) impl->device->finish(); }
 bool Renderer::key(const std::string &s) const { return impl->keys.at(keyCode(s)); }
 bool Renderer::pressed(const std::string &s) const {
     auto k = keyCode(s);

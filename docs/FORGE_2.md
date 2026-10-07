@@ -1,5 +1,9 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.9.2
+
+Metal draw pipelines now cache effective vertex layout and render state, independent of mesh/VAO revisions. Presentation submits up to three command buffers without mandatory per-frame drains; uniforms stay owned until completion under the existing total arena budget. Texture subupdates use ordered staging copies, while allocation creates a separately retained resource version. Readback/resize/shutdown still drain explicitly, and shutdown reports final GPU errors through the runtime result. A native real-device probe and Metal integration regressions check layout distinctions, equivalent replacements, draw snapshots, budgets and glyph updates. Public APIs and editable GLSL/MSL remain available. [Details and actual verification](BUGFIX_2_9_2.md).
+
 ## Forge 2.9.1
 
 The stability release fixes pending-packet accounting and empty-message backpressure in ENet, bounds network lifetime records, and compacts retired hosts in one pass. Bullet backend switching validates world poses/gravity before mutation. Font header/table checks reject empty/truncated inputs; font generations include file size, and failed glyph allocation releases bitmap memory. Replay writes use unique atomic temporary files; failed input-map construction retains no frame listener. Whole-project JSON/Python/media validation enforces the existing project path boundary. Procedural LOD references block mesh removal, and scene preloading discovers LOD/emitter resources. Asset worker startup cleans up on partial failure; the Windows Protobuf bootstrap matches Forge's dynamic MSVC runtime. Formats and API versions remain unchanged. [Fixes, regression checks and platform limits](BUGFIX_2_9_1.md).

@@ -1,6 +1,6 @@
-# Forge 2.9.1
+# Forge 2.9.2
 
-The stability update corrects LAN queue accounting, bounds retired-host bookkeeping, validates Bullet backend switches before commit, rejects truncated fonts and escaped resource paths, and protects replay writes and LOD resource lifetimes. Scene preloading includes LOD assets and emitter textures. [Fixes and verification](docs/BUGFIX_2_9_1.md).
+The Metal update reuses pipelines across equivalent mesh layouts, submits bounded asynchronous GPU work, and queues texture updates without forced completion waits. Readback, resize and shutdown retain explicit synchronization and diagnostics. [Fixes and verification](docs/BUGFIX_2_9_2.md).
 
 Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows.
 

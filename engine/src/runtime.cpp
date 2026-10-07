@@ -81,7 +81,9 @@ bool Runtime::shutdown(){watcher.reset();bool failed=false;tearingDown=true;
     for(auto name:{"stdout","stderr"})try{py::module_::import("sys").attr(name).attr("flush")();}catch(...){}
     try{localization.flush();}catch(const std::exception& e){logger.error(e.what());failed=true;}
     network->close();steam.reset();
-    listeners.clear();scripts.clear();startup.clear();audio.stop();renderer.reset();tearingDown=false;return !failed;
+    listeners.clear();scripts.clear();startup.clear();audio.stop();
+    if(renderer)try{renderer->finish();}catch(const std::exception& e){logger.error(e.what());failed=true;}
+    renderer.reset();tearingDown=false;return !failed;
 }
 void Runtime::refreshLocalizedEntities(){
     std::vector<std::pair<std::shared_ptr<Entity>,std::string>> updates;

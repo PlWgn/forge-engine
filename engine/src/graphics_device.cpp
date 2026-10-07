@@ -132,6 +132,12 @@ Json GraphicsDevice::diagnostics() const {
 #endif
     return {{"backend", backend_}, {"shader_language", "glsl"}};
 }
+void GraphicsDevice::finish() {
+#if FORGE_WITH_METAL
+    if (metal_)
+        metal_->finish();
+#endif
+}
 unsigned GraphicsDevice::hlslProgram(const std::string &vertex, const std::string &fragment,
                                      const std::string &label) {
 #if FORGE_WITH_DIRECT3D11

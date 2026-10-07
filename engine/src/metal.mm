@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <tuple>
 #include <unordered_map>
@@ -60,7 +61,6 @@ struct Attribute {
 };
 struct VertexArray {
     std::array<Attribute, 16> attributes;
-    uint64_t revision = 0;
 };
 struct Texture {
     id<MTLTexture> gpu = nil;
@@ -103,8 +103,16 @@ struct Program {
     std::vector<U> shaders;
     std::vector<std::string> locations;
     std::unordered_map<std::string, I> locationIndex, textureUnits;
-    using Key = std::tuple<U, uint64_t, bool, U, U, bool>;
-    std::map<Key, id<MTLRenderPipelineState>> pipelines;
+    // Only the effective vertex descriptor participates, never VAO/buffer
+    // identity or mesh revisions. Programs own their shader-specific variants.
+    using Layout = std::array<std::array<size_t, 5>, 16>;
+    using Key = std::tuple<Layout, bool, U, U, bool>;
+    struct Pipeline {
+        id<MTLRenderPipelineState> state = nil;
+        uint64_t lastUse = 0;
+    };
+    std::map<Key, Pipeline> pipelines;
+    uint64_t pipelineClock = 0;
     std::string error;
     bool linked = false;
 };
@@ -198,6 +206,14 @@ struct Metal::Impl {
         size_t used = 0;
     };
     std::vector<Arena> arena;
+    std::vector<Arena> spareArena;
+    struct Submission {
+        id<MTLCommandBuffer> command = nil;
+        std::vector<Arena> arena;
+    };
+    std::deque<Submission> pending;
+    static constexpr size_t maxInflight = 3;
+    size_t peakInflight = 0;
     size_t uniformBudget = 64 * 1024 * 1024, uniformAllocated = 0, uniformUsed = 0;
     std::array<U, 16> boundTextures{};
     U next = 1, buffer = 0, array = 0, framebuffer = 0, program = 0, textureUnit = 0;
@@ -209,6 +225,7 @@ struct Metal::Impl {
     std::array<int64_t, 4> scissor{0, 0, 0, 0};
     float clearColor[4] = {0, 0, 0, 0};
     uint64_t translatedPrograms = 0, nativePrograms = 0;
+    uint64_t pipelineBuilds = 0, submissions = 0, gpuWaits = 0, synchronousFlushes = 0;
     U handle() {
         require(next < std::numeric_limits<U>::max(), "Metal handle space exhausted");
         return next++;
@@ -225,23 +242,63 @@ struct Metal::Impl {
     }
     void startCommand() {
         if (!command) {
+            reap();
+            if (pending.size() >= maxInflight) {
+                wait(pending.front().command);
+                reap();
+            }
             command = [queue commandBuffer];
             require(command != nil, "Cannot allocate Metal command buffer");
         }
     }
-    void flush() {
+    void wait(id<MTLCommandBuffer> buffer) {
+        if (buffer.status != MTLCommandBufferStatusCompleted &&
+            buffer.status != MTLCommandBufferStatusError) {
+            ++gpuWaits;
+            [buffer waitUntilCompleted];
+        }
+    }
+    void reap() {
+        while (!pending.empty()) {
+            auto &front = pending.front();
+            auto status = front.command.status;
+            if (status != MTLCommandBufferStatusCompleted && status != MTLCommandBufferStatusError)
+                break;
+            // Reserve before moving: allocation failure must leave the owned
+            // snapshots attached to their completed submission for cleanup.
+            spareArena.reserve(spareArena.size() + front.arena.size());
+            for (auto &chunk : front.arena) {
+                chunk.used = 0;
+                spareArena.push_back(std::move(chunk));
+            }
+            auto error = front.command.error;
+            pending.pop_front();
+            if (error)
+                throw std::runtime_error("Metal command buffer: " + message(error));
+        }
+    }
+    void submit() {
         endEncoder();
         if (!command)
             return;
+        pending.emplace_back();
+        pending.back().command = command;
+        pending.back().arena = std::move(arena);
         [command commit];
-        [command waitUntilCompleted];
-        auto error = command.error;
+        ++submissions;
         command = nil;
-        for (auto &chunk : arena)
-            chunk.used = 0;
         uniformUsed = 0;
-        if (error)
-            throw std::runtime_error("Metal command buffer: " + message(error));
+        peakInflight = std::max(peakInflight, pending.size());
+    }
+    void flush() {
+        if (!command && pending.empty())
+            return;
+        ++synchronousFlushes;
+        submit();
+        // Queue order means the last completion covers all preceding work.
+        if (!pending.empty())
+            wait(pending.back().command);
+        reap();
     }
     std::pair<id<MTLBuffer>, size_t> snapshot(const std::vector<unsigned char> &bytes) {
         size_t length = (bytes.size() + 255) & ~size_t(255);
@@ -257,11 +314,30 @@ struct Metal::Impl {
                             bytes.size());
                 return {chunk.gpu, offset};
             }
-        // Recycle retained chunks between submissions; never grow beyond the
-        // configured budget.
-        if (length > uniformBudget - uniformAllocated && uniformUsed == 0) {
-            arena.clear();
-            uniformAllocated = 0;
+        for (auto it = spareArena.begin(); it != spareArena.end(); ++it)
+            if (length <= it->gpu.length) {
+                arena.push_back(std::move(*it));
+                spareArena.erase(it);
+                return snapshot(bytes);
+            }
+        // The budget covers every retained chunk, including pending commands.
+        // Reclaim idle chunks first; wait only under capacity pressure rather
+        // than overwriting snapshots that the GPU may still be reading.
+        if (length > uniformBudget - uniformAllocated) {
+            for (const auto &chunk : spareArena)
+                uniformAllocated -= chunk.gpu.length;
+            spareArena.clear();
+            for (auto it = arena.begin(); it != arena.end();)
+                if (!it->used) {
+                    uniformAllocated -= it->gpu.length;
+                    it = arena.erase(it);
+                } else
+                    ++it;
+            if (length > uniformBudget - uniformAllocated && !pending.empty()) {
+                wait(pending.front().command);
+                reap();
+                return snapshot(bytes);
+            }
         }
         size_t capacity =
             std::min(uniformBudget - uniformAllocated, std::max(size_t(1024 * 1024), length));
@@ -269,8 +345,8 @@ struct Metal::Impl {
         Arena chunk;
         chunk.gpu = [device newBufferWithLength:capacity options:MTLResourceStorageModeShared];
         require(chunk.gpu != nil, "Cannot allocate Metal uniform arena");
-        uniformAllocated += capacity;
         arena.push_back(chunk);
+        uniformAllocated += capacity;
         return snapshot(bytes);
     }
     std::pair<Texture *, Texture *> target() {
@@ -486,10 +562,12 @@ struct Metal::Impl {
                 throw std::runtime_error("Metal argument is outside Forge's draw API");
         }
     }
-    void buildProgram(Program &p, const std::string &vertex, const std::string &fragment,
+    void buildProgram(Program &output, const std::string &vertex, const std::string &fragment,
                       const std::string &label, bool native, const std::string &ve = "main0",
                       const std::string &fe = "main0") {
         @autoreleasepool {
+            Program p;
+            p.shaders = output.shaders;
             auto translated = native ? TranslatedShaders{vertex, fragment}
                                      : translateGlslToMsl(vertex, fragment, label);
             p.vertex.function = compile(translated.vertex, ve, label + ".vertex");
@@ -515,6 +593,7 @@ struct Metal::Impl {
             reflect(p.fragment, reflection.fragmentArguments, translated.fragmentUniforms,
                     translated.fragmentComponents);
             p.linked = true;
+            output = std::move(p);
             if (native)
                 ++nativePrograms;
             else
@@ -696,6 +775,18 @@ struct Metal::Impl {
         }
         return result;
     }
+    Program::Layout vertexLayout(MTLVertexDescriptor *descriptor) {
+        Program::Layout result{};
+        for (size_t index = 0; index < result.size(); ++index) {
+            auto attr = descriptor.attributes[index];
+            if (attr.format == MTLVertexFormatInvalid)
+                continue;
+            auto layout = descriptor.layouts[attr.bufferIndex];
+            result[index] = {size_t(attr.format), attr.offset, layout.stride,
+                             size_t(layout.stepFunction), layout.stepRate};
+        }
+        return result;
+    }
     void draw(I first, I count, I instances) {
         require(first >= 0 && count >= 0 && instances >= 0, "Invalid Metal draw range");
         if (!count || !instances)
@@ -706,20 +797,33 @@ struct Metal::Impl {
         renderEncoder();
         auto targets = target();
         bool depth = targets.second != nullptr;
-        auto key = Program::Key{array, vao.revision, blend, blendSource, blendDestination, depth};
-        auto &pipeline = p.pipelines[key];
-        if (!pipeline) {
+        auto vertex = vertexDescriptor(p, vao, true);
+        auto key = Program::Key{vertexLayout(vertex), blend, blend ? blendSource : gl::SRC_ALPHA,
+                                blend ? blendDestination : gl::ONE_MINUS_SRC_ALPHA, depth};
+        auto found = p.pipelines.find(key);
+        if (found == p.pipelines.end()) {
             NSError *error = nil;
-            pipeline = [device
-                newRenderPipelineStateWithDescriptor:pipelineDescriptor(
-                                                         p, vertexDescriptor(p, vao, false), blend,
-                                                         blendSource, blendDestination, depth)
+            auto pipeline = [device
+                newRenderPipelineStateWithDescriptor:pipelineDescriptor(p, vertex, blend,
+                                                                        blendSource,
+                                                                        blendDestination, depth)
                                                error:&error];
             if (!pipeline)
                 throw std::runtime_error("Metal draw pipeline: " + message(error));
+            ++pipelineBuilds;
+            // Retain useful layouts after VAO deletion without permitting
+            // unbounded growth from extensions that continually change layout.
+            if (p.pipelines.size() >= 256) {
+                auto oldest = std::min_element(p.pipelines.begin(), p.pipelines.end(),
+                                               [](const auto &a, const auto &b) {
+                                                   return a.second.lastUse < b.second.lastUse;
+                                               });
+                p.pipelines.erase(oldest);
+            }
+            found = p.pipelines.emplace(std::move(key), Program::Pipeline{pipeline, 0}).first;
         }
-        [encoder setRenderPipelineState:pipeline];
-        vertexDescriptor(p, vao, true);
+        found->second.lastUse = ++p.pipelineClock;
+        [encoder setRenderPipelineState:found->second.state];
         unsigned depthKey = unsigned(depthTest) | (unsigned(depthWrite) << 1);
         auto &state = depthStates[depthKey];
         if (!state) {
@@ -951,12 +1055,6 @@ void DeleteVertexArrays(I count, const U *names) {
         d.arrays.erase(names[i]);
         if (d.array == names[i])
             d.array = 0;
-        for (auto &entry : d.programs)
-            for (auto it = entry.second.pipelines.begin(); it != entry.second.pipelines.end();)
-                if (std::get<0>(it->first) == names[i])
-                    it = entry.second.pipelines.erase(it);
-                else
-                    ++it;
     }
 }
 void attribute(U index, I size, U type, I stride, const void *offset) {
@@ -970,19 +1068,16 @@ void attribute(U index, I size, U type, I stride, const void *offset) {
     a.type = type;
     a.stride = stride ? size_t(stride) : size_t(size) * 4;
     a.offset = reinterpret_cast<uintptr_t>(offset);
-    ++v.revision;
 }
 void EnableVertexAttribArray(U index) {
     auto &d = Device::get();
     auto &v = d.arrays.at(d.array);
     v.attributes.at(index).enabled = true;
-    ++v.revision;
 }
 void DisableVertexAttribArray(U index) {
     auto &d = Device::get();
     auto &v = d.arrays.at(d.array);
     v.attributes.at(index).enabled = false;
-    ++v.revision;
 }
 void VertexAttribPointer(U index, I size, U type, gl::B normalized, I stride, const void *offset) {
     require(!normalized || type == gl::FLOAT,
@@ -996,7 +1091,6 @@ void VertexAttribDivisor(U index, U divisor) {
     auto &d = Device::get();
     auto &v = d.arrays.at(d.array);
     v.attributes.at(index).divisor = divisor;
-    ++v.revision;
 }
 U CreateShader(U kind) {
     auto &d = Device::get();
@@ -1134,7 +1228,9 @@ void TexImage2D(U target, I level, I, I w, I h, I border, U format, U type, cons
                 h <= 16384,
             "Invalid Metal texture allocation");
     auto &d = Device::get();
-    d.flush();
+    // Replacing storage creates a new version. Encoded/submitted commands
+    // retain the previous texture; no CPU mutation of that version occurs.
+    d.endEncoder();
     bool depth = format == gl::DEPTH_COMPONENT;
     if (depth) {
         require(!input && type == gl::UNSIGNED_INT, "Depth textures are render targets only");
@@ -1154,12 +1250,28 @@ void TexSubImage2D(U target, I level, I x, I y, I w, I h, U format, U type, cons
             "Invalid Metal texture update");
     if (!w || !h)
         return;
-    d.flush();
     auto data = pixels(input, w, h, format, d.unpack);
-    [texture.gpu replaceRegion:MTLRegionMake2D(x, y, w, h)
-                   mipmapLevel:0
-                     withBytes:data.data()
-                   bytesPerRow:size_t(w) * 4];
+    size_t stride = (size_t(w) * 4 + 255) & ~size_t(255);
+    auto staging = [d.device newBufferWithLength:stride * size_t(h)
+                                         options:MTLResourceStorageModeShared];
+    require(staging != nil, "Cannot allocate Metal texture upload buffer");
+    for (I row = 0; row < h; ++row)
+        std::memcpy(static_cast<unsigned char *>(staging.contents) + size_t(row) * stride,
+                    data.data() + size_t(row) * size_t(w) * 4, size_t(w) * 4);
+    d.endEncoder();
+    d.startCommand();
+    auto blit = [d.command blitCommandEncoder];
+    require(blit != nil, "Cannot create Metal texture upload encoder");
+    [blit copyFromBuffer:staging
+               sourceOffset:0
+          sourceBytesPerRow:stride
+        sourceBytesPerImage:stride * size_t(h)
+                 sourceSize:MTLSizeMake(w, h, 1)
+                  toTexture:texture.gpu
+           destinationSlice:0
+           destinationLevel:0
+          destinationOrigin:MTLOriginMake(x, y, 0)];
+    [blit endEncoding];
 }
 void TexParameteri(U target, U field, I value) {
     require(target == gl::TEXTURE_2D, "Metal uses Texture2D");
@@ -1465,6 +1577,7 @@ void Metal::renderFrame(const std::function<void()> &draw) {
 }
 void Metal::beginFrame(int w, int h) {
     auto &d = *impl_;
+    d.reap();
     d.composited = false;
     require(w > 0 && h > 0 && w <= 16384 && h <= 16384, "Invalid Metal framebuffer dimensions");
     if (w == d.width && h == d.height)
@@ -1498,20 +1611,36 @@ void Metal::present(bool vsync) {
             [blit endEncoding];
             [d.command presentDrawable:drawable];
         }
-        d.flush();
+        d.submit();
     }
 }
 Json Metal::diagnostics() const {
     auto &d = *impl_;
+    size_t pipelineEntries = 0;
+    for (const auto &entry : d.programs)
+        pipelineEntries += entry.second.pipelines.size();
     return {{"backend", "metal"},
             {"adapter", std::string(d.device.name.UTF8String)},
             {"unified_memory", bool(d.device.hasUnifiedMemory)},
             {"shader_language", "glsl+msl"},
             {"translated_programs", d.translatedPrograms},
             {"native_programs", d.nativePrograms},
+            {"draw_pipeline_builds", d.pipelineBuilds},
+            {"draw_pipeline_cache_entries", pipelineEntries},
+            {"command_submissions", d.submissions},
+            {"gpu_waits", d.gpuWaits},
+            {"synchronous_flushes", d.synchronousFlushes},
+            {"inflight_command_buffers", d.pending.size()},
+            {"peak_inflight_command_buffers", d.peakInflight},
+            {"max_inflight_command_buffers", Impl::maxInflight},
             {"presentation_bytes", size_t(d.width) * size_t(d.height) * 12},
             {"uniform_arena_bytes", d.uniformAllocated},
             {"uniform_budget_bytes", d.uniformBudget}};
+}
+void Metal::finish() {
+    @autoreleasepool {
+        impl_->flush();
+    }
 }
 unsigned Metal::mslProgram(const std::string &v, const std::string &f, const std::string &ve,
                            const std::string &fe, const std::string &label) {

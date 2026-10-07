@@ -20,6 +20,7 @@ class GraphicsDevice {
     void beginFrame(int width, int height);
     void renderFrame(const std::function<void()> &draw);
     void present(bool vsync);
+    void finish();
     Json diagnostics() const;
     void initializeEditor();
     void shutdownEditor();
