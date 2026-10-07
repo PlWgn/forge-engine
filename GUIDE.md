@@ -1,6 +1,6 @@
 # Forge Engine Wiki
 
-The current manual for **Forge 2.9.2**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see the [current stability fixes](docs/BUGFIX_2_9_2.md).
+The current manual for **Forge 2.10.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see the [current stability fixes](docs/BUGFIX_2_9_2.md).
 
 ## Start here
 
@@ -100,7 +100,7 @@ Run launcher commands from the engine checkout. `--project path/to/engine.json` 
 | `python tools/forge.py build --output dist/MyGame-1.0` | Validate and package into a new directory; never overwrite an existing build |
 | `python tools/forge.py init --output ../MyGame` | Copy the starter content and wiki into an empty directory |
 | `python tools/forge.py project --serve` | Local JSON-lines document service for any shell |
-| `python tools/forge.py test` | Six native integration suites; [full test commands](docs/wiki/development.md#validation-and-test-suites) include additional CTest/GPU checks |
+| `python tools/forge.py test` | Seven native integration suites; [full test commands](docs/wiki/development.md#validation-and-test-suites) include additional CTest/GPU checks |
 
 `compile` and game `build` are different operations. Headless execution uses a 1/60-second frame time; automatic physics uses fixed 1/120-second steps. Headless cannot verify graphics pixels or audible playback. `--silent-audio` retains the window and rendering while avoiding an audio device. `--no-open-log` suppresses automatic opening, not logging. Normal success exits 0; command/runtime errors exit 1, while dev can pause for recovery.
 
@@ -112,6 +112,7 @@ Use `python tools/forge.py dev --scene <file>` from the engine checkout, adding 
 | --- | --- |
 | [welcome.json](scenes/welcome.json) | 2D sprites, text, basic input and physics |
 | [world3d.py](scenes/world3d.py) | 3D objects and a free camera |
+| [input.py](scenes/input.py) | Native actions, live rebinding, conflicts, defaults and preferences |
 | [interface.py](scenes/interface.py) | Localized UI, dialogue/history, pause/settings, slots |
 | [advanced.json](scenes/advanced.json) | Lighting, cameras, animation, action maps, profiling |
 | [simulation.json](scenes/simulation.json) | Bullet shapes/controller and native particles |

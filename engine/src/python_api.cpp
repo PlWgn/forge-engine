@@ -1,5 +1,6 @@
 // Python API extracted from runtime.cpp; this code retains its licensed core status.
 #include <forge/engine.hpp>
+#include <forge/input_api.hpp>
 #include <forge/network.hpp>
 #include <forge/steam.hpp>
 #include <forge/physics.hpp>
@@ -21,7 +22,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.attr("__version__")=FORGE_VERSION;
     m.attr("api_version")=1;
     m.def("capabilities",[](){
-        Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells","render_optimization","lod","frustum_culling","occlusion_culling"});
+        Json features=Json::array({"prefabs","animation_layers","animation_events","retargeting","morph_targets","property_clips","bone_clips","background_watch","bullet","particles","pbr","project_documents","editor_sessions","custom_shells","render_optimization","lod","frustum_culling","occlusion_culling","native_input"});
         if(!networkBackends().empty())features.push_back("networking");
         if(steamCompiled())features.push_back("steamworks");
         if(FORGE_WITH_EDITOR)features.push_back("animation_editor");
@@ -148,6 +149,7 @@ PYBIND11_EMBEDDED_MODULE(forge,m) {
     m.def("settings",[](){return toPython(rt().config.data);});
     m.def("save",[](const std::string& name,py::object value){rt().save(name,value);});
     m.def("load",[](const std::string& name,py::object fallback){return rt().load(name,fallback);},py::arg("name"),py::arg("default")=py::none());
+    bindInputManager(m);
     bindFeatures(m);
     for(auto init:nativeModules())init(m);
 }

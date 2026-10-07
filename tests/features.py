@@ -9,6 +9,175 @@ class FeatureTests(unittest.TestCase):
     setUp, tearDown = base.EngineTests.setUp, base.EngineTests.tearDown
     write_config, run_engine, script_scene = base.EngineTests.write_config, base.EngineTests.run_engine, base.EngineTests.script_scene
 
+    def test_native_input_actions_capture_and_managed_profiles(self):
+        self.script_scene('''import forge
+from input_actions import InputManager
+from pathlib import Path
+from saves import SaveError
+def on_start():
+    assert 'native_input' in forge.capabilities()['features']
+    manager=InputManager({'jump':['key:SPACE','pad:any:a'],
+                          'fire':'key:F',
+                          'move':[{'input':'key:A','scale':-1},'key:D','axis:any:left_x']},automatic=False)
+    assert manager.load() is False
+    forge.inject_input({'keys':['A','SPACE']});manager.update(.1)
+    assert manager.value('move')==-1 and manager.pressed('jump')
+    forge.inject_input({'buttons':[0]})
+    manager.begin_rebind('jump')
+    manager.update(.1);assert manager.capturing,'Opening click captured'
+    forge.inject_input({});manager.update(.1)
+    forge.inject_input({'keys':['CTRL','J']});manager.update(.1)
+    assert manager.capture_state()['status']=='bound' and not manager.down('jump')
+    manager.update(.1);assert not manager.down('jump'),'Held capture activated game action'
+    forge.inject_input({});manager.update(.1)
+    forge.inject_input({'keys':['RIGHT_CTRL','J']});manager.update(.1)
+    assert manager.pressed('jump')
+    manager.save()
+    assert manager.bindings['default']['jump'][0]['modifiers']==['CTRL']
+    manager.bind('jump',[]);assert manager.load()
+    assert manager.bindings['default']['jump'][0]['input']=='key:J'
+    # Defaults are independent; backup-only recovery and corrupt profiles preserve state.
+    manager.bind('jump','key:K');manager.save()
+    path=Path(forge.storage_path('saves/preferences/native_input.json'))
+    path.unlink();assert manager.load()
+    assert manager.bindings['default']['jump'][0]['input']=='key:J'
+    before=manager.export_profile();manager.store.write(manager.slot,{'format':'broken'})
+    try:manager.load()
+    except ValueError:pass
+    else:raise AssertionError('Bad profile accepted')
+    assert manager.export_profile()==before
+    manager.reset('jump');assert manager.bindings['default']['jump'][0]['input']=='key:SPACE'
+    # Rebinding one slot must not reject a previously shared, unchanged slot.
+    manager.bind('shared','pad:any:a')
+    forge.inject_input({});manager.update(.1);manager.begin_rebind('jump')
+    forge.inject_input({'keys':['L']});manager.update(.1)
+    assert manager.capture_state()['status']=='bound'
+    manager.close();forge.log('NATIVE_INPUT_PROFILE_OK');forge.quit()
+''')
+        self.assertIn('NATIVE_INPUT_PROFILE_OK',self.run_engine())
+
+    def test_native_input_validation_and_profile_copies(self):
+        self.script_scene('''import forge,copy,gc,weakref
+from input_actions import InputManager
+reference=None
+class Invalid(InputManager):
+    def __init__(self):
+        global reference
+        reference=weakref.ref(self)
+        super().__init__({'bad':'key:NOT_A_KEY'})
+def rejects(call):
+    try:call()
+    except (ValueError,RuntimeError,TypeError):return
+    raise AssertionError('Invalid input accepted')
+def on_start():
+    rejects(Invalid);gc.collect();assert reference() is None,'Failed construction retained listener'
+    for zone in (True,False,float('nan'),float('inf'),1,-.1):
+        rejects(lambda:forge.InputManager({},deadzone=zone))
+    m=forge.InputManager({'jump':'key:SPACE','exact':{'input':'key:CTRL','exact_modifiers':True}})
+    m.update_snapshot({'keys':['CTRL']},.1);assert m.down('exact')
+    before=m.export_profile()
+    for binding in ('key:F1junk','mouse:8','pad:16:a','axis:0:wrong',
+                    {'input':'key:J','scale':True},{'input':'key:J','scale':1e20},
+                    {'input':'key:J','modifiers':['CTRL','CTRL']},
+                    {'input':'key:J','direction':1},{'input':'key:J','deadzone':1}):
+        rejects(lambda:m.bind('jump',binding));assert m.export_profile()==before
+    snapshot=m.bindings;snapshot['default']['jump'][0]['input']='key:J'
+    assert m.export_profile()==before
+    bad=copy.deepcopy(before);bad['contexts']['default']['jump']=['key:unknown']
+    m.begin_rebind('jump');rejects(lambda:m.import_profile(bad));assert m.capturing
+    for dt in (True,False,float('nan'),float('inf'),-1,2):
+        rejects(lambda:m.update_snapshot({},dt));assert m.capturing
+    rejects(lambda:m.update_snapshot({'gamepads':[{'id':0,'axes':[0,0,0,0,-1,2]}]}))
+    rejects(lambda:m.repeat('jump',interval=0));rejects(lambda:m.repeat('jump',delay=False))
+    m.cancel_rebind();m.update_snapshot({'gamepads':[{'id':0}]},.1)
+    assert not m.down('jump')
+    # Profiles merge new game defaults while keeping unknown data and explicit unbinding.
+    saved=copy.deepcopy(before);saved['custom']={'language':'en'}
+    saved['contexts']['default']['jump']=[]
+    upgraded=forge.InputManager({'jump':'key:SPACE','added':'key:N'})
+    upgraded.import_profile(saved)
+    assert upgraded.bindings['default']['jump']==[] and 'added' in upgraded.bindings['default']
+    assert upgraded.export_profile()['custom']==saved['custom']
+    forge.log('NATIVE_INPUT_VALIDATION_OK');forge.quit()
+''')
+        self.assertIn('NATIVE_INPUT_VALIDATION_OK',self.run_engine())
+
+    def test_native_input_automatic_updates_follow_replay_and_continue_paused(self):
+        self.script_scene('''import forge
+from input_actions import InputManager,InputReplay
+count=0
+def on_start():
+    global manager,replay
+    replay=InputReplay({'format':'forge.input/1','frames':[{'keys':['J'],'dt':.1},{'keys':[],'dt':.1}]})
+    manager=InputManager({'jump':'key:J'})
+    forge.on_frame(check)
+    forge.set_paused(True)
+def check(dt):
+    global count
+    count+=1
+    if count==1:assert manager.pressed('jump')
+    if count==2:
+        assert manager.released('jump')
+        manager.close();replay.close();forge.log('NATIVE_INPUT_PAUSED_OK');forge.quit()
+''')
+        self.assertIn('NATIVE_INPUT_PAUSED_OK',self.run_engine())
+
+    def test_native_input_preferences_rollback_on_failed_reload(self):
+        self.script_scene('''import forge
+from input_actions import InputManager
+from pathlib import Path
+import weakref,gc
+references=[]
+def on_start():
+    global manager
+    stage=forge.settings().get('stage',0)
+    manager=InputManager({'jump':'key:SPACE'})
+    manager.bind('jump','key:'+('K' if stage==1 else 'J' if stage==0 else 'L'))
+    manager.save()
+    if stage==1:
+        # Share only a weak reference with the old scene to check abandoned listener release.
+        import builtins
+        builtins.forge_input_candidate=weakref.ref(manager)
+        raise RuntimeError('INPUT_REJECT_CANDIDATE')
+    if stage==2:
+        import builtins
+        gc.collect();assert builtins.forge_input_candidate() is None,'Candidate listener retained after reload'
+    forge.log('INPUT_STAGE_'+str(stage))
+def on_reload_failed(error):
+    import builtins
+    # The exception traceback is still alive during this callback; inspect its
+    # weak reference only after the next successful reload.
+    assert manager.bindings['default']['jump'][0]['input']=='key:J'
+    assert manager.store.read(manager.slot)['contexts']['default']['jump'][0]['input']=='key:J'
+    forge.log('INPUT_REJECTED')
+def on_update(dt):
+    if Path(forge.project_path('stop')).exists():forge.quit()
+def on_destroy():manager.close()
+''')
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def wait(marker):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                log=self.root/'forge.log'
+                if log.exists() and marker in log.read_text():return
+                if process.poll() is not None:self.fail(log.read_text() if log.exists() else 'Engine exited')
+                time.sleep(.03)
+            self.fail('Timeout '+marker+(log.read_text() if log.exists() else ''))
+        try:
+            wait('INPUT_STAGE_0')
+            self.config['stage']=1;self.write_config();wait('INPUT_REJECTED')
+            file=self.root/'saves/preferences/native_input.json'
+            self.assertEqual(json.loads(file.read_text())['data']['contexts']['default']['jump'][0]['input'],'key:J')
+            self.config['stage']=2;self.write_config();wait('INPUT_STAGE_2')
+            wait('Hot reload complete')
+            deadline=time.monotonic()+15
+            while json.loads(file.read_text())['data']['contexts']['default']['jump'][0]['input']!='key:L':
+                if time.monotonic()>deadline:self.fail('Preferences not committed')
+                time.sleep(.03)
+            (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+
     def test_invalid_fonts_report_errors_instead_of_native_crashes(self):
         font=self.root/'graphics/broken.ttf'
         self.config['renderer']['font']='broken.ttf';self.write_config()

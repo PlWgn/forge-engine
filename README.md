@@ -1,4 +1,6 @@
-# Forge 2.9.2
+# Forge 2.10.0
+
+Forge 2.10 adds a native action input manager: in-game key/chord/gamepad rebinding, conflict handling, contexts, repeat/held state and recoverable user preferences. The controls screen is optional and editable; raw input and existing action maps stay compatible. [API, profiles and customization](docs/wiki/input.md). Try `python tools/forge.py dev --scene input.py`.
 
 The Metal update reuses pipelines across equivalent mesh layouts, submits bounded asynchronous GPU work, and queues texture updates without forced completion waits. Readback, resize and shutdown retain explicit synchronization and diagnostics. [Fixes and verification](docs/BUGFIX_2_9_2.md).
 
@@ -86,7 +88,7 @@ macOS build --output dist/MyGame.app creates an app with private Python, icon, a
 
 Git contains C++ source, adaptable Python modules, tools, built-in examples/assets, tests, documentation, licenses, and dependency lock. Builds, environments, downloads, saves, logs, screenshots, and local reports are ignored through [.gitignore](.gitignore). Fonts, OBJ/glTF models, images, and example WAVs are required source assets and remain tracked.
 
-After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs eleven base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [validation and test suites](docs/wiki/development.md#validation-and-test-suites).
+After compilation, python tools/forge.py validate checks resources/syntax and python tools/forge.py test runs integration suites. Full CTest runs twelve base suites plus the optional shader_compiler suite (enabled by default on macOS/Windows), including numeric, packager_paths, rendering, authoring, and project API: ctest --test-dir build -C Release --output-on-failure. macOS/Windows CI builds with/without the builtin editor; Windows additionally runs Direct3D WARP regressions and standalone graphics with silent audio; macOS has Metal-specific/shared GPU and standalone checks. Linux runs four OpenGL GPU suites on Mesa/Xvfb. Software OpenGL does not validate physical GPU/audio hardware. See [validation and test suites](docs/wiki/development.md#validation-and-test-suites).
 
 ## License and Modifications
 

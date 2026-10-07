@@ -29,6 +29,66 @@ class FeatureGraphicsTests(unittest.TestCase):
         result=subprocess.run([*base.engine_command(command),'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log',*extra],capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result.stdout+result.stderr
+    def test_native_controls_ui_rebinding_and_preference_pixels(self):
+        # Use the shipped shell and real renderer, feeding reproducible native input.
+        source=(ROOT/'scenes/input.py').read_text(encoding='utf-8')
+        source+='''
+start_controls=on_start
+probe_frame=0
+probe_pointer=(0,0)
+def on_start():
+    forge.on_frame(probe)
+    start_controls()
+def probe(dt):
+    global probe_frame,probe_pointer
+    probe_frame+=1
+    if probe_frame==1:
+        forge.inject_input({})
+    elif probe_frame==2:
+        button=controls[1]  # Jump's Rebind button
+        x,y,w,h=canvas.to_screen(button.bounds)
+        probe_pointer=(x+w/2,y+h/2)
+        forge.inject_input({'buttons':[0],'position':probe_pointer})
+    elif probe_frame==3:
+        forge.inject_input({'position':probe_pointer})
+    elif probe_frame==4:
+        assert actions.capturing,'Controls button did not begin capture'
+        forge.inject_input({'keys':['E'],'pressed':['E']})
+    elif probe_frame==5:
+        assert actions.capture_state()['status']=='conflict'
+        assert 'interact' in status.value
+        forge.inject_input({})
+    elif probe_frame==6:
+        forge.inject_input({'keys':['D'],'pressed':['D']})
+    elif probe_frame==7:
+        assert actions.capture_state()['status']=='conflict'
+        assert 'move' in status.value and 'interact' not in status.value,'Stale conflict message'
+        forge.inject_input({})
+    elif probe_frame==8:
+        forge.inject_input({'keys':['RIGHT_CTRL','J'],'pressed':['RIGHT_CTRL','J']})
+    elif probe_frame==9:
+        assert actions.capture_state()['status']=='bound'
+        assert 'key:J' in rows['jump'].value
+        assert not actions.down('jump')
+        forge.inject_input({'keys':['RIGHT_CTRL','J']})
+    elif probe_frame==10:
+        assert not actions.down('jump')
+        forge.inject_input({})
+    elif probe_frame==11:
+        forge.inject_input({'keys':['RIGHT_CTRL','J'],'pressed':['RIGHT_CTRL','J']})
+    elif probe_frame==12:
+        assert jumps==1,'New binding did not trigger action'
+        persist()
+        actions.bind('jump',[]);assert actions.load()
+        assert actions.bindings['default']['jump'][0]['input']=='key:J'
+        forge.screenshot('input.ppm')
+        forge.log('NATIVE_INPUT_UI_OK')
+        forge.inject_input({})
+'''
+        self.assertIn('NATIVE_INPUT_UI_OK',self.run_scene(source,frames=13))
+        image=self.root/'input.ppm'
+        self.assertGreater(len(set(image.read_bytes()[100:])),30)
+
     def test_batching_and_uv_regions(self):
         sheet(self.root/'textures/sheet.bmp')
         self.run_scene('''import forge

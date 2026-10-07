@@ -1,5 +1,11 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.10 Native Input
+
+Independent `input_manager`/`input_keys` implement compiled native actions with keyboard chords, physical/generic modifier keys, mouse/wheel controls, fixed/wildcard gamepads, per-binding deadzones and half axes. Contexts, press/release/held/repeat state, conflict inspection/policies and capture/cancel/timeout are public APIs. Capture ignores opening controls and suppresses gameplay actions until release. The facade supplies optional scene subscriptions and SaveManager preferences, preserving rejected reload candidates and new game defaults on profile import. Editable `input.py` demonstrates a localized controls screen; no UI or configuration layout is mandatory.
+
+Raw input and existing Python ActionMap/recordings keep their contracts. Binding profiles use a separate open `forge.input.bindings/1` format, schema and unknown-field preservation; API/project versions remain 1. Native evaluation consumes one typed frame without a Python snapshot round trip. `input_native`, embedded features and shared GPU controls tests cover state/capture/numerics/profiles/reload/UI; optional benchmarks measure native versus Python evaluation without timing gates. The current CTest set is twelve base suites plus optional shader_compiler; launcher tests remain seven integration suites. [API, examples, limits and replacement](wiki/input.md).
+
 ## Forge 2.9.2
 
 Metal draw pipelines now cache effective vertex layout and render state, independent of mesh/VAO revisions. Presentation submits up to three command buffers without mandatory per-frame drains; uniforms stay owned until completion under the existing total arena budget. Texture subupdates use ordered staging copies, while allocation creates a separately retained resource version. Readback/resize/shutdown still drain explicitly, and shutdown reports final GPU errors through the runtime result. A native real-device probe and Metal integration regressions check layout distinctions, equivalent replacements, draw snapshots, budgets and glyph updates. Public APIs and editable GLSL/MSL remain available. [Details and actual verification](BUGFIX_2_9_2.md).

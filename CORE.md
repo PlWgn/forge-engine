@@ -78,3 +78,7 @@ The independent `render_optimization.hpp`, `render_optimization.cpp`, and `rende
 ## Forge 2.9 networking boundary
 
 `network.hpp`, `network.cpp`, transport adapters, `network_port.cpp`, `network_api.cpp`, `steam.hpp`/`steam.cpp`, facades and dependency helper are independent adaptable implementations. They are not added to the exhaustive Core list. Core-origin changes add optional configuration validation, capability reporting, runtime/scene ownership and rejected-candidate cleanup, restart checks, and Steam redistributable packaging. Runtime closes sockets before Steam shutdown; already transmitted network effects are not a rollback contract. Public transport factories permit replacement without editing Core.
+
+## Forge 2.10 native input boundary
+
+`input_manager.hpp/cpp`, `input_keys.hpp/cpp`, `input_api.hpp/cpp`, the Python facade, profile schema and controls example are independent adaptable components outside the exhaustive Core list. `python_api.cpp` registers the additive public class and native_input capability; its Core-origin bridge contract and API version 1 remain. Action managers have caller/scene ownership, without a mandatory singleton, editor UI or persistence format for games that replace them. No license boundary expands.

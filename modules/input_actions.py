@@ -2,12 +2,53 @@
 import copy
 import json
 import math
+import re
 from pathlib import Path
 import forge
 from saves import SaveManager, _atomic
 
 PAD_BUTTONS = dict(zip(('a','b','x','y','left_bumper','right_bumper','back','start','guide','left_stick','right_stick','up','right','down','left'),range(15)))
 PAD_AXES = dict(zip(('left_x','left_y','right_x','right_y','left_trigger','right_trigger'),range(6)))
+
+class InputManager:
+    """Native actions plus optional automatic updates and managed preferences.
+
+    All action/rebind methods delegate to ``native``. Bindings/defaults are copies;
+    use bind/define/import_profile for mutation. Existing ActionMap stays compatible.
+    """
+    def __init__(self, actions=None, *, deadzone=.15, automatic=True, directory=None,
+                 slot='native_input'):
+        self.native = forge.InputManager(actions, deadzone=deadzone)
+        self.store = SaveManager(directory=directory or forge.settings().get('save_directory', 'saves')+'/preferences')
+        if not isinstance(slot, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', slot):
+            raise ValueError('Invalid input profile slot')
+        self.slot = slot
+        self._listener = forge.on_frame(self.update) if automatic else None
+
+    def __getattr__(self, name):
+        return getattr(self.native, name)
+
+    def update(self, dt=None):
+        # Consume the current native frame directly; no Python snapshot copy.
+        self.native.update(dt)
+
+    def save(self):
+        self.store.write(self.slot, self.native.export_profile())
+
+    def load(self):
+        profile = self.store.read(self.slot, default=None)
+        if profile is None:
+            return False
+        self.native.import_profile(profile)
+        return True
+
+    def close(self):
+        if self._listener is not None:
+            forge.remove_listener(self._listener)
+            self._listener = None
+        self.native.cancel_rebind()
+        self.store.close()
+
 
 class ActionMap:
     def __init__(self, bindings=None, *, deadzone=.15, automatic=True, directory=None):

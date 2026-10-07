@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.9.2 LANGUAGES C CXX)
+project(Forge VERSION 2.10.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -109,7 +109,10 @@ if(FORGE_WITH_DIRECT3D11)
 endif()
 endif()
 include(engine/network.cmake)
+add_library(forge_input STATIC engine/src/input_keys.cpp engine/src/input_manager.cpp)
+target_include_directories(forge_input PUBLIC engine/include vendor PRIVATE vendor/glfw/include)
 add_executable(forge
+  engine/src/input_api.cpp
   engine/src/network_api.cpp
   engine/src/main.cpp
   engine/src/config.cpp
@@ -162,7 +165,7 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle-instance.vert" FORGE_PA
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.frag" FORGE_PARTICLE_FRAGMENT)
 configure_file(engine/resources/shaders.hpp.in generated/forge/shaders.hpp @ONLY)
 target_include_directories(forge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(forge PRIVATE forge_network glfw pybind11::embed OpenGL::GL Threads::Threads assimp BulletDynamics BulletCollision LinearMath)
+target_link_libraries(forge PRIVATE forge_input forge_network glfw pybind11::embed OpenGL::GL Threads::Threads assimp BulletDynamics BulletCollision LinearMath)
 if(FORGE_WITH_DIRECT3D11)
   target_sources(forge PRIVATE engine/src/direct3d11.cpp)
   target_link_libraries(forge PRIVATE forge_shader_compiler d3d11 dxgi d3dcompiler dxguid)
@@ -230,6 +233,10 @@ if(BUILD_TESTING)
   if(NOT FORGE_WITH_NETWORKING)
     set_tests_properties(networking PROPERTIES ENVIRONMENT "FORGE_TEST_LAN=0")
   endif()
+  add_executable(input_manager_tests tests/input_manager.cpp tests/window_input.cpp engine/src/window.cpp)
+  target_include_directories(input_manager_tests PRIVATE vendor/glm)
+  target_link_libraries(input_manager_tests PRIVATE forge_input glfw)
+  add_test(NAME input_native COMMAND input_manager_tests)
   add_executable(numeric_tests tests/numeric.cpp)
   target_include_directories(numeric_tests PRIVATE engine/include)
   add_test(NAME numeric COMMAND numeric_tests)

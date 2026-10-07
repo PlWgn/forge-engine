@@ -87,11 +87,12 @@ python tools/forge.py validate --no-open-log
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The base CTest set has **eleven** suites. Enabling the shader translator registers a twelfth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs seven integration suites, omitting `numeric`, `packager_paths`, and `render_optimization`.
+The base CTest set has **twelve** suites. Enabling the shader translator registers a thirteenth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs seven integration suites, omitting `numeric`, `packager_paths`, `input_native`, `network_native`, and `render_optimization`.
 
 | Check | Command | Requires |
 | --- | --- | --- |
 | Numerical arithmetic, packaging paths, culling geometry | `ctest --test-dir build -C Release --output-on-failure -R "^(numeric\|packager_paths\|render_optimization)$"` | Compiled test targets |
+| Native input actions, physical key snapshots, capture/profile rules | `ctest --test-dir build -C Release --output-on-failure -R '^input_native$'` | Compiled test target; no window |
 | Lifecycle, reload, configuration, localization, packaging | `python tests/integration.py build/bin/forge` | Native runtime; packaging services for OS-specific checks |
 | Assets, audio APIs, input/replay, preferences, distribution | `python tests/features.py build/bin/forge` | Native runtime; macOS system packaging/signing services |
 | Prefabs, property/skeletal clips, retarget, morph, watchers | `python tests/authoring.py build/bin/forge` | Native runtime |

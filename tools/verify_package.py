@@ -44,7 +44,8 @@ def verify(folder, graphics_backend=None):
         scenes=['welcome.json','simulation.json','authoring.py']
         package_data=copy/'Contents/Resources' if copy.suffix.lower()=='.app' else copy
         config=json.loads((package_data/'game.json').read_text(encoding='utf-8'))
-        if (package_data/config['paths']['scenes']/'optimization.py').is_file():scenes.append('optimization.py')
+        for scene in ('optimization.py','input.py'):
+            if (package_data/config['paths']['scenes']/scene).is_file():scenes.append(scene)
         if not graphics_backend and 'lan' in manifest.get('network_backends',[]) and (package_data/config['paths']['scenes']/'networking.py').is_file():scenes.append('networking.py')
         for scene in scenes:
             mode=['--silent-audio'] if graphics_backend else ['--headless']

@@ -1,29 +1,7 @@
 #include <forge/window.hpp>
-#include <cctype>
+#include <forge/input_keys.hpp>
 namespace forge {
-int keyCode(std::string name) {
-    for (auto &c : name)
-        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    if (name.size() == 1)
-        return name[0];
-    static const std::map<std::string, int> keys = {
-        {"PAGEUP", GLFW_KEY_PAGE_UP},      {"PAGEDOWN", GLFW_KEY_PAGE_DOWN},
-        {"SPACE", GLFW_KEY_SPACE},         {"ESCAPE", GLFW_KEY_ESCAPE},
-        {"ENTER", GLFW_KEY_ENTER},         {"TAB", GLFW_KEY_TAB},
-        {"BACKSPACE", GLFW_KEY_BACKSPACE}, {"LEFT", GLFW_KEY_LEFT},
-        {"RIGHT", GLFW_KEY_RIGHT},         {"UP", GLFW_KEY_UP},
-        {"DOWN", GLFW_KEY_DOWN},           {"SHIFT", GLFW_KEY_LEFT_SHIFT},
-        {"CTRL", GLFW_KEY_LEFT_CONTROL},   {"ALT", GLFW_KEY_LEFT_ALT}};
-    if (name.size() >= 2 && name[0] == 'F') {
-        int n = std::stoi(name.substr(1));
-        if (n >= 1 && n <= 25)
-            return GLFW_KEY_F1 + n - 1;
-    }
-    auto it = keys.find(name);
-    if (it == keys.end())
-        throw std::runtime_error("Unknown key: " + name);
-    return it->second;
-}
+int keyCode(std::string name) { return inputPlatformKey(inputKey(name)); }
 void pollInput(GLFWwindow* window,WindowInput& state) {
     state.previous = state.keys;
     state.previousButtons = state.buttons;
@@ -44,50 +22,8 @@ void pollInput(GLFWwindow* window,WindowInput& state) {
 Json windowInput(const WindowInput& state) {
     Json keys = Json::array(), pressed = Json::array(), released = Json::array(), buttons = Json::array(),
          events = Json::array(), pads = Json::array();
-    std::map<int, std::string> names = {{GLFW_KEY_ESCAPE, "ESCAPE"},
-                                        {GLFW_KEY_ENTER, "ENTER"},
-                                        {GLFW_KEY_TAB, "TAB"},
-                                        {GLFW_KEY_BACKSPACE, "BACKSPACE"},
-                                        {GLFW_KEY_INSERT, "INSERT"},
-                                        {GLFW_KEY_DELETE, "DELETE"},
-                                        {GLFW_KEY_PAGE_UP, "PAGEUP"},
-                                        {GLFW_KEY_PAGE_DOWN, "PAGEDOWN"},
-                                        {GLFW_KEY_HOME, "HOME"},
-                                        {GLFW_KEY_END, "END"},
-                                        {GLFW_KEY_LEFT, "LEFT"},
-                                        {GLFW_KEY_RIGHT, "RIGHT"},
-                                        {GLFW_KEY_UP, "UP"},
-                                        {GLFW_KEY_DOWN, "DOWN"},
-                                        {GLFW_KEY_LEFT_SHIFT, "SHIFT"},
-                                        {GLFW_KEY_LEFT_CONTROL, "CTRL"},
-                                        {GLFW_KEY_LEFT_ALT, "ALT"},
-                                        {GLFW_KEY_LEFT_SUPER, "SUPER"},
-                                        {GLFW_KEY_SPACE, "SPACE"}};
-    for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; ++k) {
-        std::string name;
-        if (names.count(k))
-            name = names.at(k);
-        else if (k >= GLFW_KEY_F1 && k <= GLFW_KEY_F25)
-            name = "F" + std::to_string(k - GLFW_KEY_F1 + 1);
-        else if (k >= 32 && k <= 96)
-            name = std::string(1, char(k));
-        else
-            continue;
-        bool down = state.keys[k], before = state.previous[k];
-        if (k == GLFW_KEY_LEFT_SHIFT) {
-            down |= state.keys[GLFW_KEY_RIGHT_SHIFT];
-            before |= state.previous[GLFW_KEY_RIGHT_SHIFT];
-        }
-        if (k == GLFW_KEY_LEFT_CONTROL) {
-            down |= state.keys[GLFW_KEY_RIGHT_CONTROL];
-            before |= state.previous[GLFW_KEY_RIGHT_CONTROL];
-        }
-        if (k == GLFW_KEY_LEFT_ALT) {
-            down |= state.keys[GLFW_KEY_RIGHT_ALT];
-            before |= state.previous[GLFW_KEY_RIGHT_ALT];
-        }
-        if (down)
-            keys.push_back(name);
+    auto appendKey = [&](const std::string& name, bool down, bool before) {
+        if (down) keys.push_back(name);
         if (down && !before) {
             pressed.push_back(name);
             events.push_back({{"type", "key"}, {"key", name}, {"action", "press"}});
@@ -96,6 +32,23 @@ Json windowInput(const WindowInput& state) {
             released.push_back(name);
             events.push_back({{"type", "key"}, {"key", name}, {"action", "release"}});
         }
+    };
+    static const auto names=[] {
+        std::array<std::string,GLFW_KEY_LAST+1> result{};
+        for (int k=GLFW_KEY_SPACE;k<=GLFW_KEY_LAST;++k) result[k]=inputKeyName(k);
+        return result;
+    }();
+    for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; ++k)
+        if (!names[k].empty()) appendKey(names[k], state.keys[k], state.previous[k]);
+    // Preserve generic modifier aliases while also exposing physical left/right keys.
+    for (const auto& pair : {std::pair<int,int>{GLFW_KEY_LEFT_SHIFT,GLFW_KEY_RIGHT_SHIFT},
+                            {GLFW_KEY_LEFT_CONTROL,GLFW_KEY_RIGHT_CONTROL},
+                            {GLFW_KEY_LEFT_ALT,GLFW_KEY_RIGHT_ALT},
+                            {GLFW_KEY_LEFT_SUPER,GLFW_KEY_RIGHT_SUPER}}) {
+        unsigned bit=inputModifier(pair.first);
+        int offset=bit==1?0:bit==2?1:bit==4?2:3;
+        appendKey(inputKeyName(inputShift+offset),state.keys[pair.first] || state.keys[pair.second],
+                  state.previous[pair.first] || state.previous[pair.second]);
     }
     for (int i = 0; i < 8; ++i) {
         if (state.buttons[i])

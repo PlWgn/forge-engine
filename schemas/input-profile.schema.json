@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "input-profile.schema.json",
+  "title": "Forge native input binding profile 1",
+  "type": "object",
+  "required": [
+    "format",
+    "contexts"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "format": {
+      "const": "forge.input.bindings/1"
+    },
+    "deadzone": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMaximum": 1
+    },
+    "contexts": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "additionalProperties": {
+        "type": "object",
+        "maxProperties": 1024,
+        "propertyNames": {
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "$ref": "#/$defs/binding"
+            },
+            {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scale": {
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 1000
+        },
+        "deadzone": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "direction": {
+          "enum": [
+            -1,
+            0,
+            1
+          ]
+        },
+        "modifiers": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SHIFT",
+              "CTRL",
+              "ALT",
+              "SUPER"
+            ]
+          }
+        },
+        "exact_modifiers": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
