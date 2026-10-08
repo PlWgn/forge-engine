@@ -1,5 +1,9 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.10.1
+
+The maintenance release probes audio decodability before miniaudio's failing load path, releases LAN peer numbers for connections canceled before completion, keeps hot-reload changes pending until a candidate commits, replaces regular temporary files left by interrupted saves/document writes, drops failed asset-cache generations, removes stale input contexts on reset, rejects non-finite skinning data and skips non-slot files in slot listings. See [BUGFIX_2_10_1.md](BUGFIX_2_10_1.md).
+
 ## Forge 2.10 Native Input
 
 Independent `input_manager`/`input_keys` implement compiled native actions with keyboard chords, physical/generic modifier keys, mouse/wheel controls, fixed/wildcard gamepads, per-binding deadzones and half axes. Contexts, press/release/held/repeat state, conflict inspection/policies and capture/cancel/timeout are public APIs. Capture ignores opening controls and suppresses gameplay actions until release. The facade supplies optional scene subscriptions and SaveManager preferences, preserving rejected reload candidates and new game defaults on profile import. Editable `input.py` demonstrates a localized controls screen; no UI or configuration layout is mandatory.

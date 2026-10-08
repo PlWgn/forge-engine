@@ -1,4 +1,6 @@
-# Forge 2.10.0
+# Forge 2.10.1
+
+Bugfix 2.10.1 fixes an audio use-after-free on undecodable files, LAN peer-number reuse after canceled connections, stale packages after a failed hot reload, saves blocked by interrupted writes, failed asset-cache growth, input context-stack errors and non-finite skinning data. [Fixes and verification](docs/BUGFIX_2_10_1.md).
 
 Forge 2.10 adds a native action input manager: in-game key/chord/gamepad rebinding, conflict handling, contexts, repeat/held state and recoverable user preferences. The controls screen is optional and editable; raw input and existing action maps stay compatible. [API, profiles and customization](docs/wiki/input.md). Try `python tools/forge.py dev --scene input.py`.
 
