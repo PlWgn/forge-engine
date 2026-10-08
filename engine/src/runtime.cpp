@@ -163,7 +163,10 @@ void Runtime::save(const std::string& name,py::object value) {
     if(tearingDown)return;
     if(reloading || authoringTransaction){auto snapshot=fromPython(value);persistence.push_back(py::cpp_function([this,name,snapshot](){save(name,pythonValue(snapshot));}));return;}
     auto file=savePath(*this,name),temp=file;temp += ".tmp";auto data=fromPython(value);
-    if(fs::exists(temp) || fs::is_symlink(fs::symlink_status(temp)))throw std::runtime_error("Temporary save path already exists: "+temp.u8string());
+    // Never follow or replace a linked/special temp path; a regular file is a stale crash leftover.
+    auto tempStatus=fs::symlink_status(temp);
+    if(fs::exists(tempStatus) && !fs::is_regular_file(tempStatus))throw std::runtime_error("Temporary save path already exists: "+temp.u8string());
+    if(fs::exists(tempStatus))fs::remove(temp);
     try {
         {std::ofstream out(temp);if(!out)throw std::runtime_error("Cannot write save: "+temp.u8string());out<<data.dump(2);out.flush();if(!out)throw std::runtime_error("Save write failed");}
 #ifdef _WIN32

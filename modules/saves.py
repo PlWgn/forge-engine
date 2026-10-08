@@ -187,7 +187,8 @@ class SaveManager:
         self._check_root()
         ids = {path.name[:-5] for path in self.root.glob('*.json')}
         ids.update(path.name[:-9] for path in self.root.glob('*.json.bak'))
-        return [self.info(slot) for slot in sorted(ids)]
+        # Unrelated files in the directory are not slots and must not break listing.
+        return [self.info(slot) for slot in sorted(ids) if re.fullmatch(r'[A-Za-z0-9_-]{1,80}', slot)]
 
     def delete(self, slot):
         self._path(slot)

@@ -144,7 +144,11 @@ Json commitDocument(const fs::path &path,const Json &base,const Json &local,
     if(validate)validate(next);
     if(disk["exists"].get<bool>() && next==disk["data"])return disk; // Do not reformat an unchanged file.
     auto temp=path.parent_path()/fs::u8path("."+path.filename().u8string()+".forge-tmp");
-    if(fs::exists(temp) || fs::is_symlink(fs::symlink_status(temp)))throw std::runtime_error("Temporary document path already exists: "+temp.u8string());
+    // The lock excludes cooperating writers, so a regular temp file is a stale crash leftover.
+    // Never follow or replace a linked/special temp path.
+    auto tempStatus=fs::symlink_status(temp);
+    if(fs::exists(tempStatus) && !fs::is_regular_file(tempStatus))throw std::runtime_error("Temporary document path already exists: "+temp.u8string());
+    if(fs::exists(tempStatus))fs::remove(temp);
     try {
         {std::ofstream out(temp,std::ios::binary|std::ios::trunc);if(!out)throw std::runtime_error("Cannot write document: "+temp.u8string());out<<next.dump(2)<<'\n';out.flush();if(!out)throw std::runtime_error("Document write failed");}
         // Optimistic check also catches manual writers that do not use our lock.

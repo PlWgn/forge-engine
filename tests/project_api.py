@@ -180,7 +180,10 @@ def on_update(dt):
             temp=path.parent/'.editable.json.forge-tmp';temp.symlink_to(target)
             with self.assertRaises(ProjectError):document.save()
             self.assertEqual(target.read_text(),'Keep');self.assertEqual(path.read_bytes(),before)
-            temp.unlink();document.save();self.assertEqual(document.data['entities'][0]['name'],'Changed')
+            temp.unlink()
+            # A regular temp file is a crashed writer's leftover; the lock makes replacing it safe.
+            temp.write_text('partial');document.save();self.assertEqual(document.data['entities'][0]['name'],'Changed')
+            self.assertFalse(temp.exists())
 
     def test_builtin_save_preserves_manual_and_unknown_fields(self):
         self.scene();self.config['entry_scene']='editable.json';self.write_config()

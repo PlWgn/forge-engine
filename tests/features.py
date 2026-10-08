@@ -395,6 +395,42 @@ def on_start():
     forge.log('MODEL_DEPENDENCY_GENERATIONS_OK');forge.quit()
 """)
         self.assertIn('MODEL_DEPENDENCY_GENERATIONS_OK',self.run_engine())
+    def test_model_rejects_nonfinite_skinning_data(self):
+        import base64,struct
+        # Infinite weights pass importer positivity filters and normalize to NaN.
+        for name,field,value in (('weights','WEIGHTS_0',float('inf')),('bind','inverseBindMatrices',float('nan'))):
+            file=self.root/f'models/bad-{name}.gltf';animated_triangle(file)
+            model=json.loads(file.read_text());data=bytearray(base64.b64decode(model['buffers'][0]['uri'].split(',')[1]))
+            primitive=model['meshes'][0]['primitives'][0]['attributes']
+            accessor=primitive[field] if field in primitive else model['skins'][0][field]
+            struct.pack_into('<f',data,model['bufferViews'][model['accessors'][accessor]['bufferView']]['byteOffset'],value)
+            model['buffers'][0]['uri']='data:application/octet-stream;base64,'+base64.b64encode(bytes(data)).decode()
+            file.write_text(json.dumps(model),encoding='utf-8')
+        self.script_scene("""import forge
+def on_start():
+    for name in ('bad-weights.gltf','bad-bind.gltf'):
+        try:forge.model_info(name)
+        except RuntimeError as error:assert 'finite' in str(error),error
+        else:raise AssertionError('Non-finite skinning data accepted: '+name)
+    forge.log('MODEL_SKINNING_FINITE_OK');forge.quit()
+""")
+        self.assertIn('MODEL_SKINNING_FINITE_OK',self.run_engine())
+    def test_failed_asset_generations_do_not_accumulate(self):
+        self.script_scene("""import forge,os
+from pathlib import Path
+def on_start():
+    path=Path(forge.project_path('models'))/'broken.obj'
+    before=forge.asset_stats()['entries']
+    for size in range(1,6):
+        path.write_text('v 0 0 0\\n'+'#'*size);stamp=path.stat()
+        os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns+size*1000000000))
+        try:forge.model_info('broken.obj')
+        except RuntimeError:pass
+        else:raise AssertionError('Broken model loaded')
+    assert forge.asset_stats()['entries']-before<=1,forge.asset_stats()
+    forge.log('FAILED_ASSETS_BOUNDED_OK');forge.quit()
+""")
+        self.assertIn('FAILED_ASSETS_BOUNDED_OK',self.run_engine())
     def test_slot_manager_rechecks_redirected_storage_directory(self):
         self.script_scene("""import forge,tempfile
 from pathlib import Path

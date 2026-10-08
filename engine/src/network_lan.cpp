@@ -1,5 +1,7 @@
 #include <enet/enet.h>
 #include <forge/network.hpp>
+#include <algorithm>
+#include <iterator>
 #include <stdexcept>
 namespace forge {
 namespace {
@@ -33,6 +35,18 @@ class LanTransport final : public NetworkTransport {
     std::unordered_map<uint64_t, ENetPeer *> peers;
     std::unordered_map<ENetPeer *, uint64_t> ids;
     std::unordered_map<uint64_t, std::shared_ptr<Pending>> pending;
+    // Local closures that ENet completes without a service() event.
+    std::vector<NetworkEvent> closed;
+    static std::string text(const ENetAddress &address) {
+        char ip[64]{};
+        enet_address_get_host_ip(&address, ip, sizeof(ip));
+        return std::string(ip) + ":" + std::to_string(address.port);
+    }
+    void forget(uint64_t id, ENetPeer *peer) {
+        peers.erase(id);
+        pending.erase(id);
+        ids.erase(peer);
+    }
     uint64_t identify(ENetPeer *peer) {
         auto it = ids.find(peer);
         if (it != ids.end())
@@ -111,12 +125,30 @@ class LanTransport final : public NetworkTransport {
         auto it = peers.find(id);
         if (it == peers.end())
             return;
-        enet_peer_disconnect(it->second, reason);
+        auto *peer = it->second;
+        auto address = text(peer->address);
+        enet_peer_disconnect(peer, reason);
+        // A peer that was still connecting is reset at once and never reports
+        // ENET_EVENT_TYPE_DISCONNECT. Release its number now; otherwise a later
+        // connection reusing this ENet slot would inherit the retired peer ID.
+        if (peer->state == ENET_PEER_STATE_DISCONNECTED) {
+            forget(id, peer);
+            NetworkEvent e;
+            e.type = "disconnected";
+            e.peer = id;
+            e.address = std::move(address);
+            e.reason = reason;
+            closed.push_back(std::move(e));
+        }
     }
     std::vector<NetworkEvent> service(unsigned budget) override {
         std::vector<NetworkEvent> out;
+        unsigned local = unsigned(std::min<size_t>(budget, closed.size()));
+        out.assign(std::make_move_iterator(closed.begin()),
+                   std::make_move_iterator(closed.begin() + local));
+        closed.erase(closed.begin(), closed.begin() + local);
         ENetEvent event{};
-        for (unsigned i = 0; i < budget; ++i) {
+        for (unsigned i = local; i < budget; ++i) {
             int result = enet_host_service(host, &event, 0);
             if (result < 0)
                 throw std::runtime_error("LAN service failed");
@@ -127,17 +159,13 @@ class LanTransport final : public NetworkTransport {
                 enet_packet_destroy);
             NetworkEvent e;
             e.peer = identify(event.peer);
-            char ip[64]{};
-            enet_address_get_host_ip(&event.peer->address, ip, sizeof(ip));
-            e.address = std::string(ip) + ":" + std::to_string(event.peer->address.port);
+            e.address = text(event.peer->address);
             if (event.type == ENET_EVENT_TYPE_CONNECT)
                 e.type = "connected";
             else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
                 e.type = "disconnected";
                 e.reason = event.data;
-                peers.erase(e.peer);
-                pending.erase(e.peer);
-                ids.erase(event.peer);
+                forget(e.peer, event.peer);
             } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
                 e.type = "message";
                 e.channel = event.channelID;

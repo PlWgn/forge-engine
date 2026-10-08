@@ -267,6 +267,35 @@ def on_update(dt):
             self.assertNotIn('[ERROR] AssertionError',(self.root/'forge.log').read_text())
         finally:
             if process.poll() is None:process.kill();process.wait()
+    def test_hot_reload_retries_packages_changed_during_failed_candidate(self):
+        extras=self.root/'extra';extras.mkdir();(extras/'lib_value.py').write_text('VALUE=1\n')
+        self.config['python_paths']=['extra']
+        good='''import forge,lib_value
+from pathlib import Path
+def on_start(): forge.log('LIB_VALUE_'+str(lib_value.VALUE))
+def on_reload_failed(error): forge.log('LIB_ROLLBACK')
+def on_update(dt):
+    if Path(forge.project_path('stop')).exists(): forge.quit()
+'''
+        self.script_scene(good)
+        process=subprocess.Popen([str(ENGINE),'dev','--project',str(self.root/'engine.json'),'--headless','--no-open-log'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def wait(marker,count=1):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                log=self.root/'forge.log'
+                if log.exists() and log.read_text().count(marker)>=count:return
+                if process.poll() is not None:self.fail(log.read_text())
+                time.sleep(.03)
+            self.fail('Missing '+marker)
+        try:
+            wait('LIB_VALUE_1')
+            (self.root/'scenes/test.py').write_text(good+"raise RuntimeError('CANDIDATE_FAILED')\n",encoding='utf-8');wait('LIB_ROLLBACK')
+            # The package changes while the scene still fails; rollback restores its old module.
+            (extras/'lib_value.py').write_text('VALUE=22\n');wait('LIB_ROLLBACK',2)
+            (self.root/'scenes/test.py').write_text(good,encoding='utf-8');wait('LIB_VALUE_22')
+            (self.root/'stop').touch();self.assertEqual(process.wait(timeout=15),0)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
     def test_physics_lifecycle_saves_and_bridge(self):
         (self.root / 'scripts/body.py').write_text('''import forge
 class Behavior:
@@ -443,6 +472,10 @@ def on_start():
     assert info['status']=='recoverable' and info['source']=='backup'
     assert info['title']=='First' and info['description']=='Backup metadata' and info['version']==1
     assert [i['slot'] for i in saves.slots()]==['1']
+    # Unrelated files are not slots and must not break the listing.
+    path.with_name('notes and drafts.json').write_text('{}')
+    assert [i['slot'] for i in saves.slots()]==['1']
+    path.with_name('notes and drafts.json').unlink()
     assert not path.exists() and before==path.with_suffix('.json.bak').read_bytes()
     assert saves.info('missing')['status']=='empty'
     try: saves.read('1',recover=False)
@@ -896,6 +929,17 @@ def on_update(dt):
 """)
         self.assertIn('LOCALIZATION_CACHE_OK',self.run_engine())
 
+    def test_save_recovers_from_stale_regular_temp_file(self):
+        (self.root/'saves').mkdir(exist_ok=True)
+        (self.root/'saves/crashed.json.tmp').write_text('partial')
+        self.script_scene("""import forge
+def on_start():
+    forge.save('crashed',{'ok':True})
+    assert forge.load('crashed')=={'ok':True}
+    forge.log('STALE_TEMP_SAVE_OK');forge.quit()
+""")
+        self.assertIn('STALE_TEMP_SAVE_OK',self.run_engine())
+        self.assertFalse((self.root/'saves/crashed.json.tmp').exists())
     def test_save_symlinks_and_existing_temp_are_rejected(self):
         with tempfile.TemporaryDirectory(prefix='forge-external-') as folder:
             outside=Path(folder)/'protected.json';outside.write_text('{"private":true}')

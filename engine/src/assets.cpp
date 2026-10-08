@@ -171,6 +171,16 @@ struct Assets::Impl {
             found->second->used = ++clock;
             return found->second;
         }
+        // Failed generations hold no bytes, so LRU eviction never removes them;
+        // drop unreferenced ones for this file before caching its new generation.
+        for (auto it = cache.begin(); it != cache.end();) {
+            const auto &old = *it->second;
+            if (old.status == "failed" && !old.pins && it->second.use_count() == 1 &&
+                old.kind == kind && old.path == path)
+                it = cache.erase(it);
+            else
+                ++it;
+        }
         auto entry = std::make_shared<Entry>();
         entry->path = path;
         entry->root = config.root;

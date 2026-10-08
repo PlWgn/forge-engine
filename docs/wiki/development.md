@@ -28,7 +28,7 @@ Transactions cover managed engine state. forge.save, SaveManager.write, and Save
 
 Reload replaces Forge-managed sys.path entries without accumulating duplicates, removes retired directories, and preserves other paths added by game code. Failure restores sys.path and the engine's managed-path list.
 
-Imports from modules/scripts/scenes are invalidated during reload. Retired python_paths roots also invalidate cached modules and namespace packages; unchanged extra paths retain cached packages, including native extensions. Changed files are selectively invalidated by the watcher. Startup modules can retain imported references; restart to refresh those references. Additional python_paths are watched.
+Imports from modules/scripts/scenes are invalidated during reload. Retired python_paths roots also invalidate cached modules and namespace packages; unchanged extra paths retain cached packages, including native extensions. Changed files are selectively invalidated by the watcher; changes seen while a candidate is rejected stay pending until a reload commits, so a later fix also refreshes packages edited before the failure. Startup modules can retain imported references; restart to refresh those references. Additional python_paths are watched.
 
 ## Terminal and file logging
 

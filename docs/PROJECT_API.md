@@ -62,7 +62,7 @@ base:null creates a file and never overwrites an existing one. For updates, read
 
 Disjoint local/disk changes merge. Incompatible changes to a field, delete-versus-edit, or incompatible order changes return conflict with paths. IDs identify keyed entries; /@order identifies ordering. Draft/disk are retained. Read the new version, present the conflict, and establish a new baseline; the server does not choose a winner by timestamp.
 
-Writes use adjacent temporary files and atomic replacement (MoveFileExW on Windows, rename on POSIX), validating first. Cooperative writers use .name.json.forge-lock; after a crash, remove a stale lock manually once the writer is stopped. Disk content is rechecked before replacement. External editors may ignore locks, leaving a narrow check-to-rename race. This is optimistic coordination, not distributed locking or guaranteed fsync/power-loss recovery. Already-present manual edits are included; conflicts never cause delete-before-rename.
+Writes use adjacent temporary files and atomic replacement (MoveFileExW on Windows, rename on POSIX), validating first. Cooperative writers use .name.json.forge-lock; after a crash, remove a stale lock manually once the writer is stopped. A leftover regular .name.json.forge-tmp is replaced while the lock is held; a symlinked or special temporary path is refused. Disk content is rechecked before replacement. External editors may ignore locks, leaving a narrow check-to-rename race. This is optimistic coordination, not distributed locking or guaranteed fsync/power-loss recovery. Already-present manual edits are included; conflicts never cause delete-before-rename.
 
 ## Python SDK and Extensions
 

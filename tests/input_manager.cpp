@@ -111,6 +111,16 @@ void profiles() {
     check(second.exportProfile() == exported, "Compiled defaults changed across profile roundtrip");
     upgraded.reset();
     check(upgraded.bindings() == upgraded.defaults(), "Full reset failed");
+    // A full reset removes bind-only contexts; lower stack entries must not survive.
+    upgraded.define("accept", "key:ENTER", "menu");
+    upgraded.bind("look", "key:L", "transient");
+    upgraded.pushContext("transient");
+    upgraded.pushContext("menu");
+    upgraded.reset();
+    check(upgraded.context() == "menu", "Reset dropped a context with defaults");
+    upgraded.popContext();
+    check(upgraded.context() == "default", "Reset kept a removed lower context");
+    upgraded.update(frame({"SPACE"}), .1);
     rejects([&] { upgraded.bind("bad", "key:F1garbage"); });
     rejects([&] { upgraded.bind("bad", J{{"input", "key:A"}, {"scale", true}}); });
     rejects([&] { upgraded.bind("bad", J{{"input", "key:A"}, {"deadzone", 1}}); });

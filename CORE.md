@@ -82,3 +82,7 @@ The independent `render_optimization.hpp`, `render_optimization.cpp`, and `rende
 ## Forge 2.10 native input boundary
 
 `input_manager.hpp/cpp`, `input_keys.hpp/cpp`, `input_api.hpp/cpp`, the Python facade, profile schema and controls example are independent adaptable components outside the exhaustive Core list. `python_api.cpp` registers the additive public class and native_input capability; its Core-origin bridge contract and API version 1 remain. Action managers have caller/scene ownership, without a mandatory singleton, editor UI or persistence format for games that replace them. No license boundary expands.
+
+## Post-2.10.0 maintenance fixes
+
+Core-origin `runtime.cpp` changes `forge.save` to replace a regular temporary file left by an interrupted write; symlinked or special temporary paths are still refused. Core-origin `reload.cpp` keeps watcher changes pending until a reload commits, so packages edited before a rejected candidate are invalidated on the next attempt. No public format/API version changes. Asset-cache, audio, LAN transport, input, model import, document and save-slot fixes remain within their existing adaptable components; the Core list is unchanged.

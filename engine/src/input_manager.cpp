@@ -405,8 +405,14 @@ void InputManager::reset(const std::string &action, const std::string &ctx) {
         }
     }
     current.swap(next);
+    // Contexts added only through bind() have no defaults. Besides the active
+    // context, drop stale lower entries so a later pop cannot expose one.
     if (!current.count(context()))
         stack = {"default"};
+    else
+        stack.erase(std::remove_if(stack.begin() + 1, stack.end(),
+                                   [&](const std::string &ctx) { return !current.count(ctx); }),
+                    stack.end());
     clearState();
 }
 void InputManager::clearState() {

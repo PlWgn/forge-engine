@@ -277,6 +277,38 @@ void lanPendingBudget() {
     }
     std::cout << "LAN pending byte/message budgets passed\n";
 }
+void lanEarlyDisconnect() {
+    // One ENet slot forces reuse. A connect canceled before completion must
+    // still report closure and must not lend its peer number to the next connection.
+    auto o = networkOptions({{"bind", "127.0.0.1"}});
+    NetworkHost server(o);
+    auto port = server.stats()["port"].get<unsigned>();
+    o.bind = "";
+    o.peers = 1;
+    NetworkHost client(o);
+    auto canceled = client.connect("127.0.0.1", port);
+    client.disconnect(canceled, 7);
+    bool closed = false;
+    for (auto &event : client.poll())
+        if (event.type == "disconnected" && event.peer == canceled && event.reason == 7)
+            closed = true;
+    require(closed, "Canceled LAN connection reported no closure");
+    require(client.stats()["peers"].empty(), "Canceled LAN peer remained registered");
+    auto peer = client.connect("127.0.0.1", port);
+    require(peer != canceled, "LAN peer number reused after canceled connection");
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    bool connected = false;
+    while (!connected) {
+        require(std::chrono::steady_clock::now() < deadline, "LAN reconnect timed out");
+        server.poll();
+        for (auto &event : client.poll()) {
+            require(event.peer != canceled, "Retired LAN peer number received events");
+            connected = connected || (event.type == "connected" && event.peer == peer);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::cout << "LAN canceled connection lifetime passed\n";
+}
 int main() {
     try {
         for (auto j : {NetworkJson{{"transport_settings", false}},
@@ -295,8 +327,10 @@ int main() {
         for (auto &backend : networkBackends())
             if (backend == "lan" || backend == "sockets") {
                 transport(backend);
-                if (backend == "lan")
+                if (backend == "lan") {
                     lanPendingBudget();
+                    lanEarlyDisconnect();
+                }
             }
         std::cout << "Network checks passed\n";
         return 0;

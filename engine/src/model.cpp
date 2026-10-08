@@ -90,7 +90,12 @@ struct ProjectIO : Assimp::IOSystem {
     }
 };
 glm::mat4 matrix(const aiMatrix4x4 &m) {
-    return glm::transpose(glm::make_mat4(&m.a1));
+    // Node and bone offset transforms feed hierarchy/skinning like vertex data does.
+    auto result = glm::transpose(glm::make_mat4(&m.a1));
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 4; ++r)
+            checkedFloat(result[c][r], "model transform");
+    return result;
 }
 glm::vec3 vec(const aiVector3D &v) {
     return {v.x, v.y, v.z};
@@ -170,6 +175,9 @@ std::shared_ptr<Model> loadModel(const fs::path &file, const fs::path &projectRo
                 part.bones.push_back({found->second, matrix(bone->mOffsetMatrix)});
                 for (unsigned wi = 0; wi < bone->mNumWeights; ++wi) {
                     auto weight = bone->mWeights[wi];
+                    // Skinning divides by the weight sum; NaN/negative input must not reach the GPU.
+                    if (checkedFloat(weight.mWeight, "model bone weight") < 0)
+                        throw std::runtime_error("Model bone weight must be nonnegative");
                     auto &v = vertices.at(weight.mVertexId);
                     for (int k = 0; k < 4; ++k)
                         if (v.weights[k] == 0) {

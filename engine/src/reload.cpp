@@ -26,7 +26,12 @@ bool Runtime::changed(){
     auto result=watcher->poll();
     profile["watcher"]={{"scans",result.scans},{"files",result.files},{"scan_ms",result.scanMs},{"error",result.error}};
     if(!result.error.empty())logger.write("WARN","Development watcher: "+result.error);
-    if(result.changed){changedFiles=std::move(result.filesChanged);changedFilesOverflow=result.overflow;}
+    // Accumulate until a reload commits: a rejected candidate restores sys.modules,
+    // so files changed before that failure must still be invalidated on the next attempt.
+    if(result.changed){
+        if(result.overflow || changedFilesOverflow || changedFiles.size()+result.filesChanged.size()>8192){changedFiles.clear();changedFilesOverflow=true;}
+        else changedFiles.merge(result.filesChanged);
+    }
     return result.changed;
 }
 bool Runtime::tryReload(){
@@ -97,6 +102,6 @@ void Runtime::reload(){
         if(nextWatcher)watcher=std::move(nextWatcher);
         if(renderer)renderer->commit();if(editing)gamePaused=renderer?!renderer->previewing():true;
     }catch(...){assets.budget(previousBudget);reloading=false;persistence=std::move(previousPersistence);if(renderer)renderer->discard();localization=std::move(previousLocalization);config=std::move(previousConfig);pythonPaths=std::move(previousPythonPaths);world.config=&config;sys.attr("path")=previousPath;modules.attr("clear")();modules.attr("update")(previousModules);throw;}
-    reloading=false;auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}
+    reloading=false;changedFiles.clear();changedFilesOverflow=false;auto tasks=std::move(persistence);persistence.clear();for(auto& task:tasks)try{task();}catch(const std::exception& e){logger.error(e.what());}
 }
 }

@@ -76,6 +76,8 @@ struct Audio::Impl {
         bool paused = false, stopAfter = false, streaming = true;
     };
     std::map<unsigned, Voice> voices, backup;
+    // Files known to decode, keyed by path with their size/modification stamp.
+    std::map<std::string, std::pair<fs::file_time_type, uintmax_t>> decodable;
     std::map<std::string, float> volumes, backupVolumes, duckGains, backupDuck;
     Json settings = Json::object(), backupSettings;
     glm::vec3 listenerPosition{0}, listenerDirection{0, 0, -1}, backupPosition{0}, backupDirection{0, 0, -1};
@@ -217,6 +219,25 @@ unsigned Audio::play(const fs::path &path, bool loop, float volume, const std::s
         policy == "stream" ||
             (policy == "auto" &&
              fs::file_size(path) > impl->settings.value("stream_threshold_bytes", size_t(4 * 1024 * 1024))));
+    auto stamp = std::make_pair(fs::last_write_time(path), fs::file_size(path));
+    auto known = impl->decodable.find(path.u8string());
+    if (known == impl->decodable.end() || known->second != stamp) {
+        // miniaudio 0.11.23 reads a freed resource-manager node when a file cannot be
+        // decoded. Probe the format first so undecodable files never reach that path.
+        ma_decoder probe;
+        auto probeConfig = ma_decoder_config_init_default();
+#ifdef _WIN32
+        auto probed = ma_decoder_init_file_w(path.wstring().c_str(), &probeConfig, &probe);
+#else
+        auto probed = ma_decoder_init_file(path.u8string().c_str(), &probeConfig, &probe);
+#endif
+        if (probed != MA_SUCCESS)
+            throw std::runtime_error("Cannot decode audio: " + path.u8string());
+        ma_decoder_uninit(&probe);
+        if (impl->decodable.size() >= 4096)
+            impl->decodable.clear();
+        impl->decodable[path.u8string()] = stamp;
+    }
     auto raw = std::make_unique<ma_sound>();
     auto flags = streaming ? MA_SOUND_FLAG_STREAM : MA_SOUND_FLAG_DECODE;
 #ifdef _WIN32
