@@ -1,0 +1,5 @@
+Android native_app_glue (from the developer-installed Android NDK)
+Copyright (C) 2010 The Android Open Source Project
+Licensed under the Apache License, Version 2.0.
+A copy of Apache-2.0 is included in licenses/openxr/LICENSES/Apache-2.0.txt.
+Source: https://android.googlesource.com/platform/ndk/+/master/sources/android/native_app_glue/

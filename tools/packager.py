@@ -1,7 +1,6 @@
 """Standalone directory bundler. Runs INSIDE the engine's embedded interpreter."""
 from pathlib import Path
 import hashlib, json, os, platform, plistlib, shutil, subprocess, sys, sysconfig, tempfile
-import forge
 
 def _copy_tree(src, dst, *, stdlib=False):
     patterns = ['__pycache__', '*.pyc', '.DS_Store', '.git']
@@ -122,9 +121,12 @@ def _stage_path(stage, relative):
     return target
 
 def build_bundle(config_file, engine_file, output):
+    import forge
     config_file, engine_file, output = map(lambda p: Path(p).resolve(), (config_file, engine_file, output))
     root = config_file.parent
     settings = json.loads(config_file.read_text(encoding='utf-8'))
+    if settings.get('xr', {}).get('enabled', False) and not forge.capabilities().get('openxr', False):
+        raise RuntimeError('Desktop XR packaging requires an OpenXR-enabled Windows engine; use build-quest for Android')
     app = output.suffix.lower() == '.app'
     if app and sys.platform != 'darwin': raise RuntimeError('.app packaging requires macOS')
     if app:
@@ -163,6 +165,10 @@ def build_bundle(config_file, engine_file, output):
             steam_runtime=engine_file.parent / "steam_api64.dll"
             if not steam_runtime.is_file(): raise RuntimeError("SDK runtime missing beside engine: steam_api64.dll")
             shutil.copy2(steam_runtime, binary.parent / steam_runtime.name)
+        if sys.platform == "win32" and forge.capabilities().get("openxr", False):
+            xr_loader = engine_file.parent / "openxr_loader.dll"
+            if not xr_loader.is_file(): raise RuntimeError("OpenXR loader missing beside engine: openxr_loader.dll")
+            shutil.copy2(xr_loader, binary.parent / xr_loader.name)
         _native_libraries(binary, runtime, source_library, engine_file)
         license_candidates = [stdlib / 'LICENSE.txt', Path(sys.base_prefix) / 'LICENSE.txt', Path(sys.base_prefix) / 'LICENSE', Path(sys.base_prefix) / 'Resources/English.lproj/Documentation/_sources/license.rst.txt']
         license_file = next((p for p in license_candidates if p.exists()), None)
@@ -186,6 +192,7 @@ def build_bundle(config_file, engine_file, output):
             if license_file.is_file() and ('license' in license_file.name.lower() or 'copying' in license_file.name.lower()):
                 target = licenses / 'assimp-contrib' / license_file.relative_to(vendor / 'assimp' / 'contrib')
                 target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(license_file, target)
+        copy_xr_licenses(source_root, licenses)
         (stage / 'START.txt').write_text('Open the .app, run Game.exe (Windows), or ./Game (macOS directory).\nStorage is controlled by game.json storage.mode; .app uses Application Support and Library/Logs.\nKeep all files together.\n', encoding='utf-8')
         network_licenses=source_root/'engine/resources/network-licenses'
         if network_licenses.is_dir(): shutil.copytree(network_licenses,licenses/'network')
@@ -209,7 +216,7 @@ def build_bundle(config_file, engine_file, output):
                 info['CFBundleIconFile'] = 'Game.icns'
             (container / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps(info))
             (container / 'Contents' / 'PkgInfo').write_bytes(b'APPL????')
-        manifest = {'engine_version': forge.__version__, 'network_backends': forge.network_backends(), 'steamworks': forge.capabilities()['steamworks'], 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
+        manifest = {'engine_version': forge.__version__, 'openxr': forge.capabilities().get('openxr', False), 'network_backends': forge.network_backends(), 'steamworks': forge.capabilities()['steamworks'], 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
         if app: manifest['signature_managed_files'] = ['Contents/MacOS/Game', 'Contents/_CodeSignature/CodeResources']
         for file in sorted(container.rglob('*')):
             if file.is_file() and not (app and file == binary): manifest['files'][file.relative_to(container).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()
@@ -221,3 +228,15 @@ def build_bundle(config_file, engine_file, output):
         shutil.rmtree(container, ignore_errors=True)
         raise
     print(f'Standalone game ready: {output}')
+
+
+def copy_xr_licenses(source_root, licenses):
+    """Preserve loader, headers, JsonCpp and Android JNI helper notices."""
+    source = source_root / 'vendor/openxr'
+    if not source.is_dir(): return
+    target = licenses / 'openxr'; target.mkdir(parents=True, exist_ok=True)
+    for name in ('LICENSE', 'COPYING.adoc'):
+        shutil.copy2(source / name, target / name)
+    shutil.copytree(source / 'LICENSES', target / 'LICENSES', dirs_exist_ok=True)
+    for name in ('jsoncpp', 'jnipp'):
+        shutil.copy2(source / 'src/external' / name / 'LICENSE', target / (name + '.txt'))

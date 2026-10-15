@@ -502,6 +502,47 @@
         }
       },
       "additionalProperties": true
+    },
+    "xr": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "reference_space": {
+          "enum": [
+            "local",
+            "stage"
+          ],
+          "default": "local"
+        },
+        "near": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 1000,
+          "default": 0.05
+        },
+        "far": {
+          "type": "number",
+          "minimum": 0.002,
+          "maximum": 100000,
+          "default": 1000
+        },
+        "meters_per_unit": {
+          "type": "number",
+          "minimum": 0.0001,
+          "maximum": 10000,
+          "default": 1
+        },
+        "eye_budget_bytes": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 1073741824,
+          "default": 268435456
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true,

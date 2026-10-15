@@ -80,3 +80,12 @@ Desktop.ini
 
 # Local Steam testing marker (never a packaged game asset).
 /steam_appid.txt
+
+# Android source-host build caches and local SDK/signing configuration.
+/android/.gradle/
+/android/.cxx/
+/android/app/.cxx/
+/android/app/build/
+/android/local.properties
+/android/*.jks
+/android/*.keystore

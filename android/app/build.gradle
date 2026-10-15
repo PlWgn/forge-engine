@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+def forgeRoot = file(providers.gradleProperty('forgeSource').get())
+def pythonPrefix = file(providers.gradleProperty('forgePython').get())
+def pythonVersion = providers.gradleProperty('forgePythonVersion').getOrElse('3.14')
+android {
+    namespace 'org.forgeengine.runtime'
+    compileSdk 35
+    ndkVersion providers.gradleProperty('forgeNdkVersion').getOrElse('28.2.13676358')
+    defaultConfig {
+        applicationId providers.gradleProperty('forgeApplicationId').get()
+        minSdk 32
+        targetSdk 35
+        versionCode providers.gradleProperty('forgeVersionCode').getOrElse('1').toInteger()
+        versionName providers.gradleProperty('forgeVersionName').getOrElse('1.0')
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake {
+            arguments '-DANDROID_STL=c++_shared', "-DFORGE_ANDROID_PYTHON_PREFIX=${pythonPrefix}",
+                "-DFORGE_ANDROID_PYTHON_VERSION=${pythonVersion}", '-DBUILD_TESTING=OFF',
+                "-DFORGE_MODULE_SOURCES=${providers.gradleProperty('forgeModuleSources').getOrElse('')}"
+            targets 'forge'
+        } }
+    }
+    externalNativeBuild { cmake { path new File(forgeRoot, 'CMakeLists.txt'); version '3.31.6' } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+    packaging { jniLibs { useLegacyPackaging = true } }
+}

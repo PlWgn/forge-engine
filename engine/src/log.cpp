@@ -2,6 +2,9 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
@@ -33,13 +36,18 @@ void Logger::start(const fs::path& root, bool openFile) {
 void Logger::write(const std::string& level, const std::string& message) {
     auto line = "[" + stamp() + "] [" + level + "] " + message;
     (protocol || level == "ERROR" ? std::cerr : std::cout) << line << std::endl;
+    #ifdef __ANDROID__
+    __android_log_print(level == "ERROR" ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,"Forge","%s",line.c_str());
+    #endif
     if(file) { file << line << '\n'; file.flush(); }
 }
 void Logger::error(const std::string& message) { write("ERROR", message);if(active)try{write("INFO","Crash report: "+crashReport(message).u8string());}catch(const std::exception& error){write("WARN",error.what());} if(autoOpen && !opened) open(); }
 void Logger::open() {
     if(opened || path.empty()) return;
     opened = true;write("INFO","Opening log: " + path.u8string());
-#ifdef _WIN32
+#ifdef __ANDROID__
+    write("INFO", "Read Android logs using adb logcat -s Forge");
+#elif defined(_WIN32)
     auto result = reinterpret_cast<intptr_t>(ShellExecuteW(nullptr, L"open", path.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL));
     if(result <= 32) write("WARN", "Unable to open log automatically: " + path.u8string());
 #else

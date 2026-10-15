@@ -1,4 +1,6 @@
-# Forge 2.10.1
+# Forge 2.11.0
+
+Forge 2.11.0 adds optional OpenXR VR: Windows SteamVR/Quest Link and an Android arm64 standalone Quest 3/3S host share Forge scenes, tracked controllers, stereo rendering and haptics. Quest packaging embeds target Android Python and generates a development APK. XR stays disabled for existing projects. [VR setup, API, build tools and hardware verification limits](docs/wiki/vr.md).
 
 Bugfix 2.10.1 fixes an audio use-after-free on undecodable files, LAN peer-number reuse after canceled connections, stale packages after a failed hot reload, saves blocked by interrupted writes, failed asset-cache growth, input context-stack errors and non-finite skinning data. [Fixes and verification](docs/BUGFIX_2_10_1.md).
 
@@ -6,7 +8,7 @@ Forge 2.10 adds a native action input manager: in-game key/chord/gamepad rebindi
 
 The Metal update reuses pipelines across equivalent mesh layouts, submits bounded asynchronous GPU work, and queues texture updates without forced completion waits. Readback, resize and shutdown retain explicit synchronization and diagnostics. [Fixes and verification](docs/BUGFIX_2_9_2.md).
 
-Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows.
+Modular game runtime: C++17, Python 3.10+, GLFW, OpenGL 3.3 / optional Metal and Direct3D 11, macOS and Windows; optional Android/OpenXR host for standalone Quest.
 
 Forge 2.9 adds independent native ENet LAN, optional open-source Valve IP sockets, and an optional Steamworks SDK adapter for Steam IP/P2P, identity, friends, presence, overlay, achievements/stats and lobbies. Steam is disabled by default; the testing App ID 480 is editable in each project. Bounded messages use bytes directly, and named sessions survive scene/reload changes. [Setup, API, ownership and verification limits](docs/wiki/networking.md). Steam-client integration needs your official SDK and target-platform verification; it is not established by the open-source LAN tests.
 

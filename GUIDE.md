@@ -1,6 +1,6 @@
-# Forge Engine Wiki
+# Forge Engine Wiki — 2.11.0
 
-The current manual for **Forge 2.10.1**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see the [current stability fixes](docs/BUGFIX_2_10_1.md).
+The current manual for **Forge 2.11.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see [2.11 VR support](docs/wiki/vr.md) and the [preceding stability fixes](docs/BUGFIX_2_10_1.md).
 
 ## Start here
 
@@ -31,6 +31,7 @@ The current manual for **Forge 2.10.1**: a modular C++17 runtime with Python sce
 | --- | --- |
 | Install, compile, or select optional graphics/editor components | [Installation](docs/wiki/installation.md) |
 | Create a game, rename content folders, or edit settings | [Projects and configuration](docs/wiki/projects.md) |
+| Build SteamVR, Quest Link or standalone Quest 3/3S games | [VR and OpenXR](docs/wiki/vr.md) |
 | Add LAN, Valve sockets, or optional Steam services | [Networking and Steam](docs/wiki/networking.md) |
 | Create scenes, attach scripts, or understand callback order | [Scenes and lifecycle](docs/wiki/scenes.md) |
 | Find an entity, read input, or call everyday engine functions | [Python API](docs/wiki/api.md) |

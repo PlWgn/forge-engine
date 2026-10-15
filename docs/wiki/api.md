@@ -87,3 +87,7 @@ Use `forge.__version__`, `forge.api_version`, and `forge.capabilities()` inside 
 | Diagnostics | `log`, `profile`, `world_stats`, `crash_report`, `open_log` | [Development](development.md) |
 
 Use these APIs on the runtime main thread. A Python background worker may prepare ordinary data; it must not call scene, input, audio, or GPU APIs concurrently. Retain entity IDs across reloads and look them up again rather than using retired Entity references.
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

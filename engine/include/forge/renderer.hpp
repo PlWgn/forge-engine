@@ -23,6 +23,9 @@ struct Renderer {
     void checkpointInput();
     void rollbackInput();
     void poll();
+    Json xrState() const;
+    void xrOrigin(glm::dvec3, double);
+    bool xrHaptic(const std::string &, double, double, double);
     bool closing() const;
     bool key(const std::string &) const;
     bool pressed(const std::string &) const;

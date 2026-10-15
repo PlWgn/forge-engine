@@ -32,17 +32,18 @@ def binary():
         if path.exists(): return path
     raise RuntimeError('Engine is not compiled. Run: python tools/forge.py compile')
 
-def configure(settings, with_editor=True, with_directx=True, shader_tools=False, with_metal=True, with_networking=True, sockets=False, steamworks_sdk=None):
+def configure(settings, with_editor=True, with_directx=True, shader_tools=False, with_metal=True, with_networking=True, sockets=False, steamworks_sdk=None, openxr=False):
     directx = sys.platform == 'win32' and with_directx
     metal = sys.platform == 'darwin' and with_metal
     translator = directx or metal or shader_tools
-    required = ['glfw', 'assimp', 'bullet'] + (['enet'] if with_networking else []) + (['gns'] if sockets else []) + (['glslang', 'spirv_cross'] if translator else [])
+    required = (['openxr'] if openxr else []) + ['glfw', 'assimp', 'bullet'] + (['enet'] if with_networking else []) + (['gns'] if sockets else []) + (['glslang', 'spirv_cross'] if translator else [])
     missing=any(not (ROOT / f'vendor/{name}/CMakeLists.txt').exists() for name in required)
     if missing or (with_editor and not (ROOT/'vendor/imgui/imgui.cpp').exists()):
         execute([sys.executable, ROOT/'tools/dependencies.py', *([] if with_editor else ['--without-editor']),
-                 *([] if with_directx else ['--without-directx']), *([] if with_metal else ['--without-metal']), *(['--shader-tools'] if translator else []), *([] if with_networking else ['--without-networking']), *(['--sockets'] if sockets else [])])
+                 *([] if with_directx else ['--without-directx']), *([] if with_metal else ['--without-metal']), *(['--shader-tools'] if translator else []), *([] if with_networking else ['--without-networking']), *(['--sockets'] if sockets else []), *(['--openxr'] if openxr else [])])
     args = [cmake_path(), '-S', ROOT, '-B', ROOT / 'build', '-DCMAKE_BUILD_TYPE=Release', f'-DPython_EXECUTABLE={sys.executable}', f'-DFORGE_WITH_EDITOR={"ON" if with_editor else "OFF"}']
     args += [f'-DFORGE_WITH_METAL={"ON" if metal else "OFF"}', f'-DFORGE_WITH_DIRECT3D11={"ON" if directx else "OFF"}', f'-DFORGE_WITH_SHADER_TRANSLATOR={"ON" if translator else "OFF"}']
+    args += [f'-DFORGE_WITH_OPENXR={"ON" if openxr else "OFF"}']
     args += [f'-DFORGE_WITH_NETWORKING={"ON" if with_networking else "OFF"}', f'-DFORGE_WITH_GNS={"ON" if sockets else "OFF"}', f'-DFORGE_WITH_STEAMWORKS={"ON" if steamworks_sdk else "OFF"}', "-DFORGE_STEAMWORKS_SDK=" + (str(steamworks_sdk.resolve()) if steamworks_sdk else "")]
     if sockets and (ROOT/".tools/network").is_dir():
         args += ["-DCMAKE_PREFIX_PATH="+str(ROOT/".tools/network"), "-DOPENSSL_ROOT_DIR="+str(ROOT/".tools/network"), "-DOPENSSL_USE_STATIC_LIBS=TRUE", "-DProtobuf_USE_STATIC_LIBS=ON"]
@@ -74,11 +75,13 @@ def scaffold(destination):
     (destination / 'licenses').mkdir()
     shutil.copy2(ROOT / 'engine/resources/Unicode-LICENSE.txt', destination / 'licenses/Unicode.txt')
     shutil.copytree(ROOT/'engine/resources/network-licenses',destination/'licenses/network')
+    from packager import copy_xr_licenses
+    copy_xr_licenses(ROOT, destination/'licenses')
     log(f'Project created: {destination}')
 
 def main():
     parser = argparse.ArgumentParser(description='Forge engine development tools')
-    parser.add_argument('command', choices=['configure', 'compile', 'validate', 'dev', 'run', 'edit', 'build', 'init', 'test', 'sign', 'notarize', 'project', 'shell'])
+    parser.add_argument('command', choices=['configure', 'compile', 'validate', 'dev', 'run', 'edit', 'build', 'build-quest', 'init', 'test', 'sign', 'notarize', 'project', 'shell'])
     parser.add_argument('--project', type=Path, default=ROOT / 'engine.json')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--shell', help='builtin, none, project-shell.py, or an external SDK shell with the shell command')
@@ -88,6 +91,13 @@ def main():
     parser.add_argument('--without-editor', action='store_true', help='Compile without the builtin ImGui shell')
     parser.add_argument('--without-metal', action='store_true', help='Build without the optional macOS Metal backend')
     parser.add_argument('--without-directx', action='store_true', help='Compile Windows with OpenGL only')
+    parser.add_argument('--python-prefix', type=Path, help='Android arm64 CPython prefix for build-quest')
+    parser.add_argument('--python-version', default='3.14', help='Target Android Python major.minor')
+    parser.add_argument('--application-id', default='org.forge.game', help='Android package ID')
+    parser.add_argument('--version-code', type=int, default=1, help='Android package version code')
+    parser.add_argument('--gradle', default='gradle', help='Installed Gradle 8.11.1 executable')
+    parser.add_argument('--prepare-only', action='store_true', help='Stage Quest project without compiling an APK')
+    parser.add_argument('--openxr', action='store_true', help='Build optional Windows OpenXR PC VR (OpenGL)')
     parser.add_argument('--shader-tools', action='store_true', help='Compile cross-platform GLSL/HLSL/MSL translator tests')
     parser.add_argument('--without-networking', action='store_true', help='Exclude ENet LAN transport')
     parser.add_argument('--sockets', action='store_true', help='Build optional Valve IP sockets; requires Protobuf/OpenSSL')
@@ -126,11 +136,18 @@ def main():
             execute(['xcrun','stapler','staple',app])
             execute(['xcrun','stapler','validate',app])
         return
+    if args.command == 'build-quest':
+        if not args.output or not args.python_prefix: parser.error('build-quest requires --output and --python-prefix')
+        execute([sys.executable,ROOT/'tools/quest.py','--project',settings,'--output',args.output.resolve(),
+                 '--python-prefix',args.python_prefix.resolve(),'--python-version',args.python_version,
+                 '--application-id',args.application_id,'--version-code',str(args.version_code),
+                 '--gradle',args.gradle,'--engine',binary(),*(['--prepare-only'] if args.prepare_only else [])])
+        return
     if args.command == 'init':
         if not args.output: parser.error('init requires --output')
         scaffold(args.output); return
     if args.command in ('configure', 'compile'):
-        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools, not args.without_metal, not args.without_networking, args.sockets, args.steamworks_sdk)
+        configure(settings, not args.without_editor, not args.without_directx, args.shader_tools, not args.without_metal, not args.without_networking, args.sockets, args.steamworks_sdk, args.openxr)
         if args.command == 'compile': execute([cmake_path(), '--build', ROOT / 'build', '--config', 'Release', '--parallel', str(min(os.cpu_count() or 2, 4))])
         return
     if args.command == 'project':

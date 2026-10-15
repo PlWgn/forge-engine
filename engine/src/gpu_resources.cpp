@@ -30,7 +30,19 @@ Mesh upload(const std::vector<Vertex> &vertices) {
 }
 static unsigned compile(unsigned kind, const std::string &source, const std::string &name) {
     auto shader = gl::CreateShader(kind);
+#ifdef __ANDROID__
+    // Forge's portable desktop GLSL subset maps directly to ES 3.2. Custom
+    // desktop-only constructs remain shader compilation errors with their log.
+    auto portable = source;
+    auto start = portable.find("#version");
+    if (start == std::string::npos) throw std::runtime_error("Android shaders need a #version directive");
+    auto end = portable.find('\n', start);
+    portable.replace(start, end == std::string::npos ? portable.size()-start : end-start,
+                     "#version 320 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;");
+    const char *s = portable.c_str();
+#else
     const char *s = source.c_str();
+#endif
     gl::ShaderSource(shader, 1, &s, nullptr);
     gl::CompileShader(shader);
     int ok;

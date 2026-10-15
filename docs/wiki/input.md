@@ -229,3 +229,7 @@ python tools/benchmark_input.py build/bin/forge --actions 256 --frames 2000
 ```
 
 Native tests cover compiled actions, numeric validation, chords/axes, defaults/profile copies/merging, capture/conflicts/timeout and physical key snapshots. Embedded-Python tests check managed preferences, backup-only loading, invalid-state preservation, paused/replay order and rejected reload. The shared GPU regression exercises the shipped controls screen and pixels. `benchmark_input.py` measures native/Python evaluation in the same headless runtime without timing gates or an FPS promise. Target-platform compilation/device tests are required before claiming hardware behavior.
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

@@ -112,6 +112,7 @@ int Runtime::run(int frames) {
                 if(renderer->closing())break;
             }
             inputFrame=renderer?renderer->input():Json::object();
+            inputFrame["xr"]=renderer?renderer->xrState():Json{{"enabled",false}};
             inputFrame["dt"]=dt;inputFrame["time"]=time;inputFrame["frame"]=frame;
             if(dev && changed()){
                 paused=!tryReload();

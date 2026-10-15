@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib, io, json, shutil, tarfile, urllib.request, ssl, time, sys
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
+    'openxr': ('https://codeload.github.com/KhronosGroup/OpenXR-SDK/tar.gz/refs/tags/release-1.1.49', 'archive'),
     'openssl': ('https://codeload.github.com/openssl/openssl/tar.gz/refs/tags/openssl-3.5.9', 'archive'),
     'protobuf': ('https://codeload.github.com/protocolbuffers/protobuf/tar.gz/refs/tags/v21.12', 'archive'),
     'enet': ('https://codeload.github.com/lsalzman/enet/tar.gz/refs/tags/v1.3.18', 'archive'),
@@ -25,6 +26,7 @@ PACKAGES = {
 def main():
     import argparse
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--openxr",action="store_true",help="Fetch the optional pinned Khronos OpenXR loader/headers")
     parser.add_argument("--without-editor",action="store_true")
     parser.add_argument("--without-directx",action="store_true",help="Skip optional Windows shader compiler dependencies")
     parser.add_argument("--without-metal",action="store_true",help="Skip optional macOS shader compiler dependencies")
@@ -37,6 +39,7 @@ def main():
     lock_path = vendor / 'dependencies.lock.json'
     lock = json.loads(lock_path.read_text()) if lock_path.exists() else {}
     for name, (url, filename) in PACKAGES.items():
+        if name=="openxr" and not args.openxr: continue
         if name=="enet" and args.without_networking: continue
         if name=="gns" and not (args.sockets or args.sockets_deps): continue
         if name in ("openssl","protobuf") and not args.sockets_deps: continue

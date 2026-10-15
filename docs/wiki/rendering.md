@@ -107,3 +107,7 @@ prop.optimization = {'culling': False, 'lod': False}
 Static mesh bounds enclose all model levels and inherit parent transforms. Skeletal/morph bounds require an explicit envelope for every pose; model LOD does not replace a skeleton. Occlusion needs authored boxes wholly inside opaque solid geometry for every LOD. Custom shader displacement needs enclosing bounds; cutouts must never be covered by a solid proxy. The conservative CPU grid runs independently per color camera, with no GPU readback. Distance/occlusion do not remove shadow casters. These systems provide no automatic mesh decimation/GPU Hi-Z/gameplay streaming.
 
 Run `python tools/forge.py dev --scene optimization.py` for a visible example. Inspect `forge.renderer_stats()['optimization']` for per-pass culling/LOD/cache/CPU counters. `RenderOptimizationPolicy` and `Renderer::setOptimizationPolicy` are public C++ contracts; `modules/render_optimization_example.cpp` demonstrates replacement/composition. All shader/backend and editor-shell customization remains available. [Complete settings, contracts, schema, examples, and tests](../RENDER_OPTIMIZATION.md).
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

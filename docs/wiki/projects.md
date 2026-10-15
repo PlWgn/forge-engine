@@ -108,3 +108,7 @@ Configuration integers/booleans are checked strictly: fractional dimensions, num
 ## Steam project settings
 
 Optional `steam.enabled` defaults to false, `steam.app_id` to 480 (Spacewar testing), and `steam.relay` to false (no relay prewarm). Change App ID per project, then restart; it never requires recompiling. Enabling Steam requires an SDK-enabled runtime and a running client. Host transport/options belong to game code, so configuration alone opens no LAN listener. See [Networking and Steam](networking.md).
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

@@ -14,6 +14,7 @@
 #include <forge/material.hpp>
 #include <forge/animation.hpp>
 #include <forge/window.hpp>
+#include <forge/xr.hpp>
 #include <forge/shaders.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -68,10 +69,13 @@ double textWorldScale(const Entity &e) {
 struct Renderer::Impl : WindowInput {
     GLFWwindow *window = nullptr;
     std::unique_ptr<GraphicsDevice> device;
+    std::unique_ptr<XrSession> xr;
+    Json xrDefinition = Json::object();
     Json deviceOptions = Json::object(), metalDeviceOptions = Json::object();
     const Config *config = nullptr;
     fs::path screenshotPath, previousScreenshot;
     bool captured = false, previousCaptured = false, vsync = true;
+    unsigned xrPresentProgram = 0;
     unsigned program = 0, postProgram = 0, shadowProgram = 0, particleProgram = 0, whiteTexture = 0;
     std::unique_ptr<ParticleRenderer> particleRenderer;
     bool particleInstanced=false;
@@ -139,6 +143,7 @@ struct Renderer::Impl : WindowInput {
     #endif
     Runtime* context = nullptr;
     ~Impl() {
+        xr.reset();
         #if FORGE_WITH_EDITOR
         if (editorContext) {
             device->shutdownEditor();
@@ -177,7 +182,7 @@ struct Renderer::Impl : WindowInput {
         if (whiteTexture)
             gl::DeleteTextures(1, &whiteTexture);
         whiteTexture = 0;
-        for (auto *p : {&program, &postProgram, &shadowProgram, &particleProgram})
+        for (auto *p : {&program, &postProgram, &shadowProgram, &particleProgram, &xrPresentProgram})
             if (*p) {
                 gl::DeleteProgram(*p);
                 *p = 0;
@@ -187,6 +192,7 @@ struct Renderer::Impl : WindowInput {
     void swapResources(Impl &other) {
         for (auto pair : {std::pair<unsigned *, unsigned *>{&program, &other.program},
                           {&postProgram, &other.postProgram},
+                          {&xrPresentProgram, &other.xrPresentProgram},
                           {&shadowProgram, &other.shadowProgram},
                           {&particleProgram, &other.particleProgram},
                           {&whiteTexture, &other.whiteTexture}})
@@ -257,6 +263,20 @@ struct Renderer::Impl : WindowInput {
             }
             return linkProgram(vertex, fragment, label);
         };
+        if (xrSettings(config->data.value("xr", Json::object())).enabled) {
+            xrPresentProgram = linkProgram(R"(#version 330 core
+layout(location=0) in vec3 a_position;
+layout(location=1) in vec2 a_uv;
+uniform mat4 u_mvp;
+out vec2 v_uv;
+void main(){v_uv=a_uv;gl_Position=u_mvp*vec4(a_position,1);}
+)", R"(#version 330 core
+in vec2 v_uv;
+uniform sampler2D u_texture;
+out vec4 out_color;
+void main(){vec4 c=texture(u_texture,v_uv);vec3 lo=c.rgb/12.92;vec3 hi=pow((c.rgb+.055)/1.055,vec3(2.4));out_color=vec4(mix(lo,hi,step(vec3(.04045),c.rgb)),1);}
+)", "XR display to linear color");
+        }
         batching = options.value("batching", true);
         gpuLimit = options.value("gpu_budget_bytes", size_t(128 * 1024 * 1024));
         auto vertex = options.contains("vertex_shader")
@@ -931,6 +951,12 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
     impl->config = &c;
     auto rendererOptions = c.data.value("renderer", Json::object());
     auto backend = GraphicsDevice::select(rendererOptions);
+    auto xr = xrSettings(c.data.value("xr", Json::object()));
+    if (xr.enabled) {
+        if (!xrCompiled()) throw std::runtime_error("OpenXR was not compiled; compile --openxr on Windows or use build-quest for Android");
+        if (backend != "opengl") throw std::runtime_error("OpenXR requires renderer.backend=opengl in this release");
+        if (context.editing) throw std::runtime_error("OpenXR uses run/dev; the builtin desktop editor is not an XR shell");
+    }
     glfwSetErrorCallback([](int code, const char *message) {
         logger.write("ERROR", "GLFW " + std::to_string(code) + ": " + message);
     });
@@ -938,8 +964,8 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
         throw std::runtime_error("GLFW initialization failed");
     glfwDefaultWindowHints();
     if (backend == "opengl") {
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, xr.enabled ? 4 : 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, xr.enabled ? 5 : 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     } else glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -978,6 +1004,8 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
         stbi_image_free(icon.pixels);
     }
 #endif
+    impl->xrDefinition = c.data.value("xr", Json::object());
+    if (xr.enabled) impl->xr = std::make_unique<XrSession>(xr, c.data["project"]["name"].get<std::string>());
     impl->setup();
     gl::Enable(gl::BLEND);
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
@@ -985,6 +1013,8 @@ void Renderer::init(const Config &c, World &world, Runtime &context) {
         editor(true);
 }
 void Renderer::stage() {
+    if (impl->config->data.value("xr", Json::object()) != impl->xrDefinition)
+        throw std::runtime_error("Changing xr settings requires restarting the runtime");
     auto settings = impl->config->data.value("renderer", Json::object());
     if (GraphicsDevice::select(settings) != impl->device->backend())
         throw std::runtime_error("Changing renderer.backend requires restarting the runtime; the current device is retained");
@@ -1040,6 +1070,7 @@ void Renderer::rollbackInput() {
     impl->screenshotPath = impl->previousScreenshot;
 }
 void Renderer::validateWorld(const World &world) {
+    if (impl->xr && !world.is3d) throw std::runtime_error("XR presentation requires a 3D scene");
     auto &resources = staged ? *staged : *impl;
     resources.frameModels.clear();
     int framebufferWidth, framebufferHeight, width, height;
@@ -1128,7 +1159,7 @@ void Renderer::render(World &world) {
     impl->renderOptions = world.renderSettings;
     auto targets = world.renderSettings.value("targets", Json::object());
     auto lights = world.renderSettings.value("lights", Json::array());
-    std::set<std::string> wanted = {"shadow", "main"};
+    std::set<std::string> wanted = {"shadow", "main", "xr-eye"};
     for (auto it = targets.begin(); it != targets.end(); ++it) {
         wanted.insert("camera:" + it.key());
         impl->target("camera:" + it.key(), it.value().value("width", 320), it.value().value("height", 240));
@@ -1187,6 +1218,7 @@ void Renderer::render(World &world) {
         }
         world.is3d = originalMode;
     }
+    #ifndef __ANDROID__
     auto post = world.renderSettings.value("postprocess", Json::object());
     bool processing = !post.empty() && post.value("enabled", true);
     unsigned mainTexture = 0, mainFbo = 0;
@@ -1224,6 +1256,31 @@ void Renderer::render(World &world) {
         matrix = glm::scale(matrix, glm::vec3(world.width, -world.height, 1));
         impl->draw(impl->meshes.at("sprite"), matrix, ortho, glm::vec4(1), mainTexture, false, nullptr,
                    impl->postProgram);
+    }
+    #endif
+    if (impl->xr) {
+        if (!world.is3d) throw std::runtime_error("XR presentation requires a 3D scene; place UI on world-space entities");
+        impl->xr->render([&](const XrEye &eye) {
+            auto &color = impl->target("xr-eye", eye.width, eye.height);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, color.fbo);
+            gl::Viewport(0, 0, eye.width, eye.height);
+            gl::Disable(gl::SCISSOR_TEST);
+            gl::ClearColor(background.r, background.g, background.b, background.a);
+            gl::DepthMask(1); gl::Clear(gl::COLOR | gl::DEPTH);
+            impl->cameraPosition = eye.position;
+            impl->density = 1;
+            // Independent pass identifiers keep per-eye LOD/culling hysteresis separate.
+            impl->scene(world, eye.clipFromWorld, eye.width, eye.height, eye.width, eye.height,
+                        false, ~0u, "xr:" + std::to_string(eye.framebuffer));
+            // Scene shaders produce display-referred sRGB. OpenXR's RGBA8
+            // swapchain is linear: convert after blending, keeping custom shaders compatible.
+            gl::BindFramebuffer(gl::FRAMEBUFFER, eye.framebuffer);
+            gl::Disable(gl::DEPTH_TEST); gl::Disable(gl::BLEND); gl::Disable(gl::SCISSOR_TEST);
+            auto matrix = glm::scale(glm::mat4(1),glm::vec3(2,2,1));
+            impl->draw(impl->meshes.at("sprite"),matrix,glm::mat4(1),glm::vec4(1),color.color,false,nullptr,impl->xrPresentProgram);
+            gl::Enable(gl::BLEND);
+        });
+        gl::Viewport(0, 0, w, h);
     }
     if (impl->editorEnabled)
         impl->edit(world);
@@ -1270,9 +1327,12 @@ void Renderer::render(World &world) {
     impl->device->present(impl->vsync);
     });
 }
-void Renderer::poll(){pollInput(impl->window,*impl);}
+void Renderer::poll(){pollInput(impl->window,*impl); if(impl->xr)impl->xr->poll();}
+Json Renderer::xrState() const { return impl->xr ? impl->xr->state() : Json{{"enabled",false}}; }
+void Renderer::xrOrigin(glm::dvec3 position, double yaw) { if(!impl->xr)throw std::runtime_error("XR is disabled"); impl->xr->origin(position,yaw); }
+bool Renderer::xrHaptic(const std::string &hand,double amplitude,double duration,double frequency) { if(!impl->xr)throw std::runtime_error("XR is disabled"); return impl->xr->haptic(hand,amplitude,duration,frequency); }
 
-bool Renderer::closing() const { return glfwWindowShouldClose(impl->window); }
+bool Renderer::closing() const { return glfwWindowShouldClose(impl->window) || (impl->xr && impl->xr->closing()); }
 void Renderer::finish() { if (impl->device) impl->device->finish(); }
 bool Renderer::key(const std::string &s) const { return impl->keys.at(keyCode(s)); }
 bool Renderer::pressed(const std::string &s) const {
@@ -1295,7 +1355,13 @@ void Renderer::capture(bool enabled) {
     impl->firstMouse = true;
 }
 void Renderer::quit() { glfwSetWindowShouldClose(impl->window, 1); }
-void Renderer::screenshot(const fs::path &path) { impl->screenshotPath = path; }
+void Renderer::screenshot([[maybe_unused]] const fs::path &path) {
+#ifdef __ANDROID__
+    throw std::runtime_error("Android default-framebuffer screenshots are unavailable; capture a desktop preview");
+#else
+    impl->screenshotPath = path;
+#endif
+}
 Json Renderer::diagnostics() const { return impl->stats; }
 Json Renderer::input() const {return windowInput(*impl);}
 

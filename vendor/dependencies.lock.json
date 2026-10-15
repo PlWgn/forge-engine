@@ -70,5 +70,9 @@
   "protobuf": {
     "url": "https://codeload.github.com/protocolbuffers/protobuf/tar.gz/refs/tags/v21.12",
     "sha256": "22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de"
+  },
+  "openxr": {
+    "url": "https://codeload.github.com/KhronosGroup/OpenXR-SDK/tar.gz/refs/tags/release-1.1.49",
+    "sha256": "74e9260a1876b0540171571a09bad853302ec68a911200321be8b0591ca94111"
   }
 }

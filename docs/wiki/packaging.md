@@ -76,3 +76,7 @@ python tools/verify_package.py dist/MyGame-1.0
 The verifier checks manifest hashes/notices and requires and launches welcome, simulation, and authoring; it also launches optimization when present under private Python from another working directory with hostile host Python environment variables. It uses a temporary package copy so test logs/preferences do not modify the distribution. For a customized game that removes those examples, use its own smoke checks instead of this source-distribution verifier. For actual pixels, use the verifier's graphics options described by `python tools/verify_package.py --help`, with a supported device; a headless pass does not verify graphics/audio hardware.
 
 Do not delete private Python files or dependency/shader/font notices to reduce size. Signing changes must be reflected in the manifest by the signing tool. [Backend documentation](rendering.md#choose-a-graphics-backend) describes platform-specific compiler notices and standalone graphics checks.
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

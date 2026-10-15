@@ -43,5 +43,6 @@
   "input.unbound": "Не назначено",
   "input.action.move": "Движение",
   "input.action.jump": "Прыжок",
-  "input.action.interact": "Действие"
+  "input.action.interact": "Действие",
+  "example.vr.brand": "Использует движок Forge"
 }

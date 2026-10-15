@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <forge/engine.hpp>
+#include <forge/android_host.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -47,6 +48,8 @@ fs::path userPath(const Config &c, const std::string &kind, const std::string &f
         if (raw.empty())
             throw std::runtime_error("Application data directory unavailable");
         base = fs::u8path(raw) / id;
+#elif defined(__ANDROID__)
+        base = fs::path(androidApp()->activity->internalDataPath) / "user" / id;
 #elif defined(__APPLE__)
         auto home = env("HOME");
         if (home.empty())

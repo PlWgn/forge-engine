@@ -79,3 +79,7 @@ python tools/forge.py dev
 ```
 
 The first two commands check configuration/resources and logic. The third opens a real window. Run [tests](development.md#validation-and-test-suites) appropriate to the target device before shipping. Initial downloads need internet access; Forge has no mandatory network service at runtime. If compilation fails, inspect the compiler output and `forge.log`; using an incompatible Python architecture/header/library is a setup error, not a scene error.
+
+## Optional VR (2.11)
+
+See [VR and OpenXR](vr.md) for SteamVR/Quest Link, standalone Quest 3/3S APK builds, tracked input, rig transforms and platform verification limits. Existing flat-screen defaults and APIs are unchanged.

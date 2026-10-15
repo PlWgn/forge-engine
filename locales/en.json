@@ -43,5 +43,6 @@
   "input.unbound": "Unbound",
   "input.action.move": "Movement",
   "input.action.jump": "Jump",
-  "input.action.interact": "Interact"
+  "input.action.interact": "Interact",
+  "example.vr.brand": "Uses the Forge engine"
 }

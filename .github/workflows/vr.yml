@@ -1,0 +1,64 @@
+name: Optional OpenXR and Quest builds
+on: [push, pull_request, workflow_dispatch]
+env:
+  PYTHONUTF8: '1'
+jobs:
+  pc-vr:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install cmake==3.31.6
+      - run: python tools/dependencies.py --openxr --without-editor --without-directx --without-networking
+      - run: python tools/forge.py compile --openxr --without-editor --without-directx --without-networking
+      - run: ctest --test-dir build -C Release --output-on-failure
+      - run: python tools/forge.py build --output dist/PCVR
+      - run: python tools/verify_package.py dist/PCVR
+      - name: Check app-local OpenXR loader
+        shell: pwsh
+        run: |
+          if (!(Test-Path dist/PCVR/openxr_loader.dll)) { throw 'Missing packaged OpenXR loader' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forge-Windows-OpenXR
+          path: dist/PCVR
+  quest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Native desktop prerequisites for complete source-project validation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev xorg-dev
+          python -m pip install cmake==3.31.6
+          python tools/dependencies.py --openxr --without-editor --without-directx --without-metal --without-networking
+          python tools/forge.py compile --without-editor --without-directx --without-metal --without-networking
+      - name: Installed Android build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.31.6'
+      - name: Verified official target CPython (separate from host Python)
+        run: |
+          mkdir -p artifacts/android-python
+          curl --fail --location https://www.python.org/ftp/python/3.14.0/python-3.14.0-aarch64-linux-android.tar.gz -o artifacts/android-python.tar.gz
+          echo 'f09bd8ae86f408580881ae224e848805c267bb65b3111dc77b41bda79456da6c  artifacts/android-python.tar.gz' | sha256sum -c -
+          tar -xzf artifacts/android-python.tar.gz -C artifacts/android-python
+      - name: Stage and compile the shared Forge/Python Quest example APK
+        run: |
+          python tools/forge.py init --output artifacts/QuestProject
+          python -c "import json,pathlib;p=pathlib.Path('artifacts/QuestProject/engine.json');d=json.loads(p.read_text());d['entry_scene']='vr.py';p.write_text(json.dumps(d),encoding='utf-8')"
+          python tools/forge.py build-quest --project artifacts/QuestProject/engine.json --output dist/Quest --python-prefix artifacts/android-python/prefix --application-id org.forgeengine.ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forge-Quest-development-APK
+          path: dist/Quest/Game.apk

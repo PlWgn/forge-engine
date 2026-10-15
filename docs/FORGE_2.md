@@ -1,5 +1,13 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.11.0 — optional OpenXR and standalone Quest host
+
+Independent native OpenXR module adds Windows/OpenGL SteamVR and Quest Link, lifecycle/focus handling, predicted headset/grip/aim poses, Touch/Index/Vive/simple controller profiles, bounded haptics, stereo asymmetric projection and explicit rig origins. Existing projects remain flat-screen by default. Shared scene rendering updates gameplay once and draws each eye separately, with per-eye culling and display-to-linear presentation. Optional eye buffers have a separate budget; renderer-managed intermediate resources retain existing budgets.
+
+An adaptable Android NativeActivity/EGL/OpenGL ES host builds the same Forge sources for Quest 3/3S arm64, embedding developer-supplied target CPython. `build-quest` validates and stages confined content/private Python/licenses/hashes and invokes Gradle for a debug APK. Release signing and platform submission are developer steps. Schema/API/SDK versions remain unchanged. [Setup, APIs, limits and device verification](wiki/vr.md).
+
+Added native XR math/configuration, real bridge and Quest staging regressions, optional Windows adapter compilation and Android APK CI. CTest now has fifteen base suites plus optional shader_compiler (sixteen with the translator). Physical headset tracking/pixels/haptics/performance and store acceptance require target-device validation; compiler/headless results do not certify them. No passthrough, hand skeletons, eye tracking, composition-layer UI or Metal/Direct3D XR binding is claimed.
+
 ## Forge 2.10.1
 
 The maintenance release probes audio decodability before miniaudio's failing load path, releases LAN peer numbers for connections canceled before completion, keeps hot-reload changes pending until a candidate commits, replaces regular temporary files left by interrupted saves/document writes, drops failed asset-cache generations, removes stale input contexts on reset, rejects non-finite skinning data and skips non-slot files in slot listings. See [BUGFIX_2_10_1.md](BUGFIX_2_10_1.md).
