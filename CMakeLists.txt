@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Forge VERSION 2.11.0 LANGUAGES C CXX)
+project(Forge VERSION 2.12.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -127,6 +127,7 @@ include(engine/network.cmake)
 add_library(forge_input STATIC engine/src/input_keys.cpp engine/src/input_manager.cpp)
 target_include_directories(forge_input PUBLIC engine/include vendor PRIVATE vendor/glfw/include)
 set(FORGE_RUNTIME_SOURCES
+  engine/src/content_crypto.cpp
   engine/src/xr_api.cpp
   engine/src/input_api.cpp
   engine/src/network_api.cpp
@@ -191,6 +192,9 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.vert" FORGE_PARTICLE_VE
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle-instance.vert" FORGE_PARTICLE_INSTANCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/graphics/particle.frag" FORGE_PARTICLE_FRAGMENT)
 configure_file(engine/resources/shaders.hpp.in generated/forge/shaders.hpp @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS tools/protected_content.py)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/tools/protected_content.py" FORGE_PROTECTED_CONTENT)
+configure_file(engine/resources/protected_content.hpp.in generated/forge/protected_content.hpp @ONLY)
 target_include_directories(forge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(forge PRIVATE forge_input forge_network glfw forge_python OpenGL::GL Threads::Threads assimp BulletDynamics BulletCollision LinearMath)
 if(FORGE_WITH_DIRECT3D11)
@@ -213,7 +217,7 @@ target_compile_definitions(forge PRIVATE FORGE_VERSION="${PROJECT_VERSION}" FORG
 if(APPLE)
   target_link_libraries(forge PRIVATE "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
 elseif(WIN32)
-  target_link_libraries(forge PRIVATE winmm ole32 shell32)
+  target_link_libraries(forge PRIVATE winmm ole32 shell32 bcrypt)
   target_compile_definitions(forge PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 if(MSVC)
@@ -272,6 +276,7 @@ if(BUILD_TESTING)
   add_executable(numeric_tests tests/numeric.cpp)
   target_include_directories(numeric_tests PRIVATE engine/include)
   add_test(NAME numeric COMMAND numeric_tests)
+  add_test(NAME protected_content COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/protected_content.py $<TARGET_FILE:forge>)
   add_test(NAME packager_paths COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/packager_paths.py)
   add_test(NAME integration COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:forge>)
   add_test(NAME features COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/features.py $<TARGET_FILE:forge>)

@@ -102,6 +102,7 @@ def main():
     parser.add_argument('--without-networking', action='store_true', help='Exclude ENet LAN transport')
     parser.add_argument('--sockets', action='store_true', help='Build optional Valve IP sockets; requires Protobuf/OpenSSL')
     parser.add_argument('--steamworks-sdk', type=Path, help='Official Steamworks SDK root; enable platform/P2P services')
+    parser.add_argument('--protect-content', action='store_true', help='Encrypt desktop packaged content to deter casual extraction; not DRM')
     parser.add_argument('--headless' , action='store_true')
     parser.add_argument('--silent-audio', action='store_true', help='Use PCM audio without opening a hardware device')
     parser.add_argument('--frames', type=int)
@@ -110,6 +111,8 @@ def main():
     parser.add_argument('--identity', help='Developer ID Application certificate name for sign')
     parser.add_argument('--keychain-profile', help='Stored notarytool credential profile for notarize')
     args = parser.parse_args(); settings = args.project.resolve()
+    if args.protect_content and args.command != 'build':
+        parser.error('--protect-content requires build (macOS/Windows)')
     if args.command in ('sign','notarize'):
         if sys.platform != 'darwin' or not args.output or args.output.suffix.lower() != '.app' or not args.output.is_dir():
             parser.error('sign/notarize require macOS and --output Existing.app')
@@ -177,6 +180,7 @@ def main():
         execute([sys.executable, ROOT / 'tests/networking.py', binary()])
         return
     command = [binary(), args.command, '--project', settings]
+    if args.protect_content: command += ['--protect-content']
     if args.output: command += ['--output', args.output.resolve()]
     if args.headless: command += ['--headless']
     if args.silent_audio: command += ['--silent-audio']

@@ -5,6 +5,7 @@
 Build packages the compiled runtime and project content; it does not compile a new engine or require an editor. Ship separately for each operating system and architecture.
 
 - [Standalone builds](#standalone-builds)
+- [Protected content builds](#protected-content-builds-212)
 - [macOS applications and signing](#macos-applications-and-signing)
 - [License and required attribution](#license-and-required-attribution)
 - [Verify a package](#verify-a-package)
@@ -17,7 +18,7 @@ python tools/forge.py build --output dist/MyGame
 
 All copied directories in paths and python_paths are checked before packaging. Output cannot be inside any of them or replace the source project/parent. Paths normalize relative to the root: a valid ../Project/modules alias becomes modules in both copy plan and game.json. Each resource/icon destination is independently checked against the temporary staging directory. Packaged paths/python_paths, project.icon, and save_directory use normalized names. Nested symlinks must stay within the project; cycles and aliases containing output are rejected.
 
-A directory build contains Game / Game.exe, game.json, configured asset directories, extra python_paths, private runtime, licenses, manifest.json with SHA-256 file hashes, and START.txt. Players do not need C++ sources or CMake. Game Python sources are included; packaging is not intellectual-property protection.
+A directory build contains Game / Game.exe, game.json, configured asset directories, extra python_paths, private runtime, licenses, manifest.json with SHA-256 file hashes, and START.txt. Players do not need C++ sources or CMake. Ordinary builds include game Python sources; use the optional protected content mode below to deter casual browsing/extraction.
 
 On macOS:
 
@@ -37,6 +38,26 @@ On Windows, packaging copies the Python DLL, standard library, DLLs, and runtime
 Ordinary build cannot produce a Windows executable on macOS or vice versa. Compile and package separately on each target OS/architecture. .github/workflows/build.yml supplies macOS/Windows build tests and artifacts, plus Linux GPU checks. A workflow file's presence does not establish local Windows validation.
 
 The package includes the selected CPython standard library, potentially tens of megabytes. storage.mode='project' requires the game directory to be writable for logs/saves. For Program Files or another protected directory, use storage.mode='user' to keep player data separately. .app packaging selects user storage automatically. See [storage and transactions](persistence.md#storage-locations-and-persistence-transactions).
+
+## Protected content builds (2.12)
+
+```sh
+python tools/forge.py build --project ../MyGame/engine.json --protect-content --output dist/MyGame-1.0
+# macOS application:
+python tools/forge.py build --project ../MyGame/engine.json --protect-content --output dist/MyGame-1.0.app
+```
+
+This optional **macOS/Windows** mode encrypts configuration, scenes, Python scripts/modules, shaders, models, textures, audio and other files from configured `paths`/`python_paths`. Paths with spaces/Unicode and overlapping content roots are supported. The distribution contains `content.forge`, a small public `game.json` with project/storage/logging metadata, and the usual executable/private Python/licenses/manifest. Project title/version remain public, and a macOS app icon remains visible to the OS. Engine/runtime files and readable third-party notices remain outside the encrypted content. Developer source files are unchanged; ordinary `build`, run/dev/edit and init keep their defaults. The option is rejected on other commands, including `build-quest`.
+
+The launcher uses an embedded loader and private Python, checks the complete container before extracting any content, then loads configuration/assets through existing file APIs. A fresh temporary directory is restricted to its owner on POSIX; Windows uses the current user's temporary directory and inherited ACLs. The runtime deletes it on normal exit and handled failures, after closing runtime resources. No stable decrypted cache is kept. A crash, forced termination or OS shutdown can leave temporary plaintext; game code and another process running as the same user can access it while the game runs. Unpacking adds startup time and requires disk space for both the decrypted compressed archive and extracted content. Python/asset APIs that inspect `project_path` see the temporary root; persistent writes must use the storage/user-path APIs. **Protected builds select `storage.mode=user`**, preserving the configured application ID (default `org.forge.game`); they do not migrate old project-local saves. Choose a unique application ID for each game. Arbitrary Python writes to the project tree are temporary.
+
+Limits: 100,000 archive entries, 64 GiB of uncompressed content, and a 64 GiB compressed archive. Encryption/decryption streams bounded 1 MiB records rather than buffering the game in memory. Archive paths are checked against absolute/parent/Windows-drive paths, reserved names, links/special files, Unicode/case aliases and file/directory conflicts before extraction. Project-native libraries (`.pyd`, `.dll`, `.dylib`, `.so`) are rejected in this mode because loaded libraries can prevent temporary cleanup; use an ordinary build for such projects. Native dependencies of private Python and compiled engine modules keep their usual packaging path. Protected packages support `run` and `validate`; editing/rebuilding needs the source project.
+
+Container format `forge.content/1` is separate from the project schema and API versions. It holds a ZIP stream encrypted using the OS AES-256-CBC implementation (CommonCrypto/BCrypt), fresh IVs, independent random encryption/authentication keys and HMAC-SHA256 for each numbered record. Authentication covers the container identity, sequence, length, IV and ciphertext; an authenticated terminal record detects truncation. Authentication is checked before AES decryption, and the entire stream is checked before ZIP extraction. `manifest.json` hashes the container and directory executable as well as ordinary files; macOS bundle executables remain signature-managed. Manifest hashes and shipped-key authentication detect accidental damage and casual edits; they are not signatures proving publisher identity. Sign the final application/distribution through the platform's normal publishing process.
+
+**This is casual extraction protection, not DRM or a guarantee of unreadable files.** The runnable game must ship its key, here embedded in its executable, and must recover plaintext. Someone with the package can recover that key, unpack the files or copy the whole game. Do not place secrets, private signing keys or server credentials in game content. Encryption creates no additional legal rights or licensing enforcement. Game ownership checks can use the existing optional [Steam services](networking.md#enable-steamworks) or a game-controlled licensing service; games choose the policy and any offline behavior. This option introduces no activation/network service and changes no Forge attribution or third-party license requirements.
+
+`python tools/verify_package.py dist/MyGame-1.0` verifies hashes/notices and launches protected built-in examples from another cwd under private Python. Its `--graphics-backend` probe edits packaged scripts/settings and therefore requires an ordinary build; configure the source project and test actual protected-game frames separately for graphics verification.
 
 ## macOS applications and signing
 

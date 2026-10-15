@@ -1,5 +1,13 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.12.0 — optional protected desktop content
+
+`build --protect-content` packages project configuration, Python and assets into `content.forge` using per-build AES-256-CBC keys and HMAC-SHA256 authenticated records. The native launcher embeds the loader, uses the private Python runtime, authenticates the complete container before extracting any content, and removes the fresh temporary tree on normal exit and handled errors. CommonCrypto (macOS) and BCrypt (Windows) provide AES without an additional dependency. Readable dependency notices, manifests and signing remain available; saves/logs use user storage. Ordinary builds retain their existing layout/defaults.
+
+This is a deterrent to casual extraction, not DRM, ownership enforcement or prevention of copying a whole game. A recoverable per-build key is embedded in the packaged executable; plaintext exists in temporary storage and memory while playing, and forced termination can leave temporary files. Project-native libraries and Quest packages are not supported by this option. The container format is independently versioned `forge.content/1`; project/schema/API/SDK versions stay unchanged. [Usage, format, limits and licensing integration](wiki/packaging.md#protected-content-builds-212).
+
+`protected_content` adds real platform AES known-answer/streaming/tamper tests, archive path/link/collision/budget checks, Unicode/overlapping content paths, standalone launches with hostile host Python settings, persistent saves, failure cleanup and macOS ad-hoc bundle verification. CTest has sixteen base suites plus optional shader_compiler. Windows BCrypt/packaging checks are registered in Windows CI; local macOS results do not establish Windows execution. No graphics/audio backend contract changes.
+
 ## Forge 2.11.0 — optional OpenXR and standalone Quest host
 
 Independent native OpenXR module adds Windows/OpenGL SteamVR and Quest Link, lifecycle/focus handling, predicted headset/grip/aim poses, Touch/Index/Vive/simple controller profiles, bounded haptics, stereo asymmetric projection and explicit rig origins. Existing projects remain flat-screen by default. Shared scene rendering updates gameplay once and draws each eye separately, with per-eye culling and display-to-linear presentation. Optional eye buffers have a separate budget; renderer-managed intermediate resources retain existing budgets.

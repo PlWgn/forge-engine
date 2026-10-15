@@ -1,0 +1,4 @@
+#pragma once
+namespace forge {
+inline constexpr const char* protectedContentSource = R"FORGE_CONTENT(@FORGE_PROTECTED_CONTENT@)FORGE_CONTENT";
+}

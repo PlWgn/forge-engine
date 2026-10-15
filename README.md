@@ -1,4 +1,6 @@
-# Forge 2.11.0
+# Forge 2.12.0
+
+Forge 2.12.0 adds optional encrypted desktop content: `python tools/forge.py build --protect-content --output dist/MyGame`. Scripts, scenes and assets are packaged in an authenticated container; saves use user storage. This deters casual extraction, with a shipped key and temporary plaintext at runtime; it is not DRM or copy prevention. [Packaging and protection limits](docs/wiki/packaging.md#protected-content-builds-212).
 
 Forge 2.11.0 adds optional OpenXR VR: Windows SteamVR/Quest Link and an Android arm64 standalone Quest 3/3S host share Forge scenes, tracked controllers, stereo rendering and haptics. Quest packaging embeds target Android Python and generates a development APK. XR stays disabled for existing projects. [VR setup, API, build tools and hardware verification limits](docs/wiki/vr.md).
 

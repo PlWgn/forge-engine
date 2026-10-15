@@ -120,7 +120,7 @@ def _stage_path(stage, relative):
         raise RuntimeError(f'Copy destination escapes temporary build: {relative}')
     return target
 
-def build_bundle(config_file, engine_file, output):
+def build_bundle(config_file, engine_file, output, protect_content=False):
     import forge
     config_file, engine_file, output = map(lambda p: Path(p).resolve(), (config_file, engine_file, output))
     root = config_file.parent
@@ -129,7 +129,7 @@ def build_bundle(config_file, engine_file, output):
         raise RuntimeError('Desktop XR packaging requires an OpenXR-enabled Windows engine; use build-quest for Android')
     app = output.suffix.lower() == '.app'
     if app and sys.platform != 'darwin': raise RuntimeError('.app packaging requires macOS')
-    if app:
+    if app or protect_content:
         settings.setdefault('storage', {})['mode'] = 'user'
         settings['storage'].setdefault('application_id', 'org.forge.game')
     plan = _copy_plan(root, settings, output)
@@ -138,16 +138,32 @@ def build_bundle(config_file, engine_file, output):
     stage = container / 'Contents' / 'Resources' if app else container
     stage.mkdir(parents=True, exist_ok=True)
     try:
+        content = container / '.forge-content' if protect_content else stage
+        content.mkdir(parents=True, exist_ok=True)
         for relative, source in plan.items():
-            _copy_tree(source, _stage_path(stage, relative))
+            _copy_tree(source, _stage_path(content, relative))
         icon = settings.get('project', {}).get('icon')
         if icon:
-            target = _stage_path(stage, icon); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root / icon, target)
+            target = _stage_path(content, icon); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root / icon, target)
         # Game code is shipped independently from the engine C++ sources.
-        (stage / 'game.json').write_text(json.dumps(settings, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        (content / 'game.json').write_text(json.dumps(settings, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        content_key = None
+        if protect_content:
+            # Readable text notices come from the validated, copied tree, so nested
+            # directory aliases are included without exposing licensing scripts.
+            for notice in content.rglob('*'):
+                name = notice.stem.lower()
+                if (notice.is_file() and notice.suffix.lower() in ('', '.txt', '.md', '.rst', '.adoc')
+                        and ('license' in name or name in ('notice', 'copying', 'ofl'))):
+                    target = stage / 'licenses/content' / notice.relative_to(content)
+                    target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(notice, target)
+            from _forge_protected import seal, embed_key
+            content_key = seal(content, stage, settings)
+            shutil.rmtree(content)
         binary = container / 'Contents' / 'MacOS' / 'Game' if app else stage / ('Game.exe' if sys.platform == 'win32' else 'Game')
         binary.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(engine_file, binary)
+        if content_key is not None: embed_key(binary, content_key)
         runtime = stage / 'runtime'; runtime.mkdir()
         version = f'{sys.version_info.major}.{sys.version_info.minor}'
         stdlib = Path(sysconfig.get_path('stdlib'))
@@ -178,7 +194,7 @@ def build_bundle(config_file, engine_file, output):
         for filename in ('LICENSE', 'NOTICE', 'CORE.md', 'ATTRIBUTION.md'):
             shutil.copy2(source_root / filename, stage / filename)
         if (source_root / 'THIRD_PARTY.md').exists(): shutil.copy2(source_root / 'THIRD_PARTY.md', stage / 'THIRD_PARTY.md')
-        licenses = stage / 'licenses'; licenses.mkdir()
+        licenses = stage / 'licenses'; licenses.mkdir(exist_ok=True)
         vendor = source_root / 'vendor'
         for name, filename in [('glfw','LICENSE.md'), ('glm','copying.txt'), ('pybind11','LICENSE'), ('assimp','LICENSE'), ('imgui','LICENSE.txt'), ('bullet','LICENSE.txt'), ('glslang','LICENSE.txt'), ('spirv_cross','LICENSE')]:
             f = vendor / name / filename
@@ -217,6 +233,10 @@ def build_bundle(config_file, engine_file, output):
             (container / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps(info))
             (container / 'Contents' / 'PkgInfo').write_bytes(b'APPL????')
         manifest = {'engine_version': forge.__version__, 'openxr': forge.capabilities().get('openxr', False), 'network_backends': forge.network_backends(), 'steamworks': forge.capabilities()['steamworks'], 'platform': platform.system(), 'architecture': platform.machine(), 'python': platform.python_version(), 'files': {}}
+        if protect_content:
+            manifest['protected_content'] = 'forge.content/1'
+            scenes = root / settings['paths']['scenes']
+            manifest['example_scenes'] = [name for name in ('welcome.json', 'simulation.json', 'authoring.py', 'optimization.py', 'input.py', 'vr.py', 'networking.py') if (scenes / name).is_file()]
         if app: manifest['signature_managed_files'] = ['Contents/MacOS/Game', 'Contents/_CodeSignature/CodeResources']
         for file in sorted(container.rglob('*')):
             if file.is_file() and not (app and file == binary): manifest['files'][file.relative_to(container).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()

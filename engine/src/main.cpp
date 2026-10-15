@@ -1,6 +1,7 @@
 #include <forge/engine.hpp>
 #include <iostream>
 #include <forge/documents.hpp>
+#include <forge/protected_content.hpp>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -46,7 +47,7 @@ int main(int argc,char** argv) {
     bool packaged=fs::is_regular_file(dataRoot/"game.json");if(packaged)defaultSettings=dataRoot/"game.json";
     std::string command=packaged?"run":"help";int index=1;
     if(argc>1 && argv[1][0]!='-'){command=argv[1];index=2;}
-    std::string sceneOverride;fs::path settings=defaultSettings,out,requestFile;bool serve=false;std::string shell="builtin";std::vector<std::string> extensions;bool headless=false,noOpen=false,silentAudio=false;int frames=-1;
+    std::string sceneOverride;fs::path settings=defaultSettings,out,requestFile;bool serve=false,protectContent=false;std::string shell="builtin";std::vector<std::string> extensions;bool headless=false,noOpen=false,silentAudio=false;int frames=-1;
     try {
         for(int i=index;i<argc;++i){std::string arg=argv[i];auto value=[&](){if(++i>=argc)throw std::runtime_error("Missing value after "+arg);return std::string(argv[i]);};
             if(arg=="--extension")extensions.push_back(value());else if(arg=="--request")requestFile=fs::u8path(value());else if(arg=="--serve")serve=true;else if(arg=="--shell")shell=value();else if(arg=="--scene")sceneOverride=value();else if(arg=="--project")settings=fs::absolute(fs::u8path(value()));else if(arg=="--output")out=fs::absolute(fs::u8path(value()));else if(arg=="--frames"){
@@ -56,19 +57,27 @@ int main(int argc,char** argv) {
                 catch(const std::invalid_argument&){throw std::runtime_error(error);}
                 catch(const std::out_of_range&){throw std::runtime_error(error);}
                 if(consumed!=text.size() || frames<1)throw std::runtime_error(error);
-            }else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--silent-audio")silentAudio=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
+            }else if(arg=="--protect-content")protectContent=true;else if(arg=="--help")command="help";else if(arg=="--headless")headless=true;else if(arg=="--silent-audio")silentAudio=true;else if(arg=="--no-open-log")noOpen=true;else throw std::runtime_error("Unknown argument: "+arg);
         }
-        if(command=="help" || command=="--help") {std::cout<<"Forge " FORGE_VERSION " | C++ / Python modular game engine\n\nCommands: validate, dev, run, edit, build, project\nProject API: forge project --serve (JSON lines) or --request request.json\nEditor: edit --shell builtin|none|project-shell.py; external shells use the project API\nOptions: --project engine.json --headless --silent-audio --frames N --no-open-log\nBuild: forge build --output dist/MyGame\nScaffold/build engine: python tools/forge.py --help\n";return 0;}
+        if(command=="help" || command=="--help") {std::cout<<"Forge " FORGE_VERSION " | C++ / Python modular game engine\n\nCommands: validate, dev, run, edit, build, project\nProject API: forge project --serve (JSON lines) or --request request.json\nEditor: edit --shell builtin|none|project-shell.py; external shells use the project API\nOptions: --project engine.json --headless --silent-audio --frames N --no-open-log\nBuild: forge build --output dist/MyGame [--protect-content]\nScaffold/build engine: python tools/forge.py --help\n";return 0;}
         if(command!="validate" && command!="dev" && command!="run" && command!="build" && command!="edit" && command!="project")throw std::runtime_error("Unknown command: "+command);
+        if(protectContent && command!="build")throw std::runtime_error("--protect-content requires build (macOS/Windows)");
         fs::path logRoot=fs::absolute(settings).parent_path();if(!fs::is_directory(logRoot))logRoot=fs::current_path();
         try{Config boot;boot.root=logRoot;boot.data=readJson(settings);if(boot.data.value("storage",Json::object()).value("mode","project")=="user")logRoot=userPath(boot,"logs");}catch(...){}
         logger.protocol=command=="project";
         logger.start(logRoot,false);
-        if(command=="project")return projectProtocol(settings,requestFile,serve);
+        bool protectedPackage=false;
+        if(packaged && fs::weakly_canonical(settings)==fs::weakly_canonical(defaultSettings)){
+            auto boot=readJson(settings);protectedPackage=boot.contains("protected_content");
+            if(protectedPackage)logger.autoOpen=!noOpen && command=="run" && boot.value("logging",Json::object()).value("open_on_error",true);
+        }
+        if(command=="project"){
+            if(protectedPackage)
+                throw std::runtime_error("Protected packages support run/validate; use the source project for development");
+            return projectProtocol(settings,requestFile,serve);
+        }
         if(serve || !requestFile.empty())throw std::runtime_error("--serve/--request require the project command");
         if(command=="edit" && shell=="builtin" && !FORGE_WITH_EDITOR && !headless)throw std::runtime_error("Builtin editor was not compiled; use --shell none or an external shell");
-        auto config=Config::load(settings);logger.autoOpen=!noOpen && (command=="run" || command=="dev" || command=="edit") && config.data.value("logging",Json::object()).value("open_on_error",true);
-        if(!sceneOverride.empty())config.data["entry_scene"]=sceneOverride;config.validate(command=="validate" || command=="build");
         // Packaged games use their private CPython distribution, without PYTHONPATH contamination.
         PyPreConfig pre;PyPreConfig_InitIsolatedConfig(&pre);pre.utf8_mode=1;
         auto preStatus=Py_PreInitialize(&pre);if(PyStatus_Exception(preStatus))throw std::runtime_error("Cannot initialize UTF-8 Python runtime");
@@ -77,7 +86,20 @@ int main(int argc,char** argv) {
         if(packaged){auto status=PyConfig_SetBytesString(&pythonConfig,&pythonConfig.home,home.u8string().c_str());if(PyStatus_Exception(status)){PyConfig_Clear(&pythonConfig);throw std::runtime_error("Cannot configure packaged Python");}}
         py::scoped_interpreter interpreter(&pythonConfig,0,nullptr,false);
         int exitCode=1;
+        py::object content=py::none();
         auto execute=[&]() -> int {
+        if(protectContent || protectedPackage){
+            auto module=py::module_::import("types").attr("ModuleType")("_forge_protected");
+            py::module_::import("sys").attr("modules")["_forge_protected"]=module;
+            py::exec(protectedContentSource,module.attr("__dict__"));
+            if(protectedPackage){
+                if(command!="run" && command!="validate")throw std::runtime_error("Protected packages support run/validate; use the source project for development");
+                content=module.attr("open_bundle")(dataRoot.u8string());
+                settings=fs::u8path(content.attr("name").cast<std::string>())/"game.json";
+            }
+        }
+        auto config=Config::load(settings);logger.autoOpen=!noOpen && (command=="run" || command=="dev" || command=="edit") && config.data.value("logging",Json::object()).value("open_on_error",true);
+        if(!sceneOverride.empty())config.data["entry_scene"]=sceneOverride;config.validate(command=="validate" || command=="build");
         syntax(config);
         if(command=="validate"){logger.write("INFO","Project assets and Python syntax validated");return 0;}
         if(command=="build"){
@@ -86,7 +108,7 @@ int main(int argc,char** argv) {
             py::dict globals;globals["__file__"]=(tools/"packager.py").u8string();
             py::eval_file((tools/"packager.py").u8string(),globals);
             if(out.empty())out=config.root/"dist"/"game";
-            globals["build_bundle"](config.file.u8string(),exe.u8string(),out.u8string());
+            globals["build_bundle"](config.file.u8string(),exe.u8string(),out.u8string(),protectContent);
             logger.write("INFO","Build complete: "+out.u8string());return 0;
         }
         if(command=="edit" && packaged)throw std::runtime_error("Editor requires the engine development installation");
@@ -95,6 +117,9 @@ int main(int argc,char** argv) {
         };
         // Format and destroy Python exceptions while CPython is still alive.
         try {exitCode=execute();}catch(const std::exception& e){logger.error(e.what());}
+        if(!content.is_none()){
+            try{content.attr("cleanup")();}catch(const std::exception& e){logger.error(e.what());exitCode=1;}
+        }
         return exitCode;
     }catch(const std::exception& e){logger.error(e.what());return 1;}
 }

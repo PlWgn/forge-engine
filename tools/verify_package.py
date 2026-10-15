@@ -6,6 +6,9 @@ def verify(folder, graphics_backend=None):
     folder=Path(folder).resolve()
     data=folder/'Contents/Resources' if folder.suffix.lower()=='.app' else folder
     manifest=json.loads((data/'manifest.json').read_text(encoding='utf-8'))
+    protected=manifest.get('protected_content')=='forge.content/1'
+    if protected and graphics_backend:
+        raise RuntimeError('Protected content cannot be edited for a backend probe; verify graphics with an ordinary build or configure the protected source project before building')
     for relative,digest in manifest['files'].items():
         file=(folder/relative).resolve()
         if not file.is_relative_to(folder) or not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest()!=digest:
@@ -44,9 +47,11 @@ def verify(folder, graphics_backend=None):
         scenes=['welcome.json','simulation.json','authoring.py']
         package_data=copy/'Contents/Resources' if copy.suffix.lower()=='.app' else copy
         config=json.loads((package_data/'game.json').read_text(encoding='utf-8'))
+        def has_scene(name):
+            return name in manifest.get('example_scenes', []) if protected else (package_data/config['paths']['scenes']/name).is_file()
         for scene in ('optimization.py','input.py','vr.py'):
-            if (package_data/config['paths']['scenes']/scene).is_file():scenes.append(scene)
-        if not graphics_backend and 'lan' in manifest.get('network_backends',[]) and (package_data/config['paths']['scenes']/'networking.py').is_file():scenes.append('networking.py')
+            if has_scene(scene):scenes.append(scene)
+        if not graphics_backend and 'lan' in manifest.get('network_backends',[]) and has_scene('networking.py'):scenes.append('networking.py')
         for scene in scenes:
             mode=['--silent-audio'] if graphics_backend else ['--headless']
             result=subprocess.run([str(binary),'run','--scene',scene,*mode,'--frames','12','--no-open-log'],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',timeout=90)

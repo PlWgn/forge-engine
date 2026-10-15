@@ -77,6 +77,10 @@ jobs:
       - run: python tools/forge.py build --output dist/Game
       - name: Verify standalone hashes and launch outside checkout
         run: python tools/verify_package.py dist/Game
+      - name: Build and verify protected standalone content
+        run: |
+          python tools/forge.py build --protect-content --output dist/ProtectedGame
+          python tools/verify_package.py dist/ProtectedGame
       - name: Verify standalone Direct3D GLSL compilation and launch
         if: runner.os == 'Windows'
         run: python tools/verify_package.py dist/Game --graphics-backend direct3d11
