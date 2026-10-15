@@ -164,7 +164,7 @@ python tools/forge.py edit --shell none
 python tools/forge.py build --output dist/Game
 ```
 
-CMake: -DFORGE_WITH_EDITOR=OFF. Bootstrap with --without-editor does not download ImGui; editor.cpp/animation_editor.cpp are excluded. Document service, runtime editing, scenes, renderer, animation APIs, validate/build/run remain. capabilities.base_shell / forge.capabilities().base_editor report the actual build. Windowed edit --shell builtin without it gives a clear error; select none/custom. Headless edit needs no UI. Ordinary compile restores ON. Games do not load SDK/plugins or require an installed editor.
+CMake: -DFORGE_WITH_EDITOR=OFF. Bootstrap with --without-editor does not download ImGui; editor.cpp/editor_workspace.cpp/animation_editor.cpp are excluded. Document service, runtime editing, scenes, renderer, animation APIs, validate/build/run remain. capabilities.base_shell / forge.capabilities().base_editor report the actual build. Windowed edit --shell builtin without it gives a clear error; select none/custom. Headless edit needs no UI. Ordinary compile restores ON. Games do not load SDK/plugins or require an installed editor.
 
 ## Verification
 
@@ -176,3 +176,9 @@ tests/project_api.py <binary> checks independent shells/manual edits/unknown fie
 The document capabilities response includes `graphics_backends` (compiled support). Shells use the same document operations to edit backend settings, native shader pairs, entry points, and budgets while preserving unknown fields. Supported backends are OpenGL and, when compiled for the corresponding OS, Metal and Direct3D 11. See [Direct3D](DIRECT3D11.md), [Metal](METAL.md), and the project schema for their contracts.
 
 Backend/driver/debug settings and the Metal uniform budget require runtime restart; live shader candidates retain rollback. SDK `Client.launch(silent_audio=True)` disables hardware audio independently of graphics. Project/shell protocol and schema versions remain 1, without a builtin-editor dependency.
+
+## Default workspace in Forge 2.13
+
+The builtin shell is a complete default host for everyday scene authoring: resizable Hierarchy/Scene/Inspector panels, Project assets, a bounded file-backed Console and an Extensions tab. Inspector/Create/duplicate/delete and texture/model assignment submit the same `apply`/`patch` transactions as alternative shells. Rejected candidates retain managed state/history; applying may repeat lifecycle callbacks. The full entity JSON inspector exposes existing script/data/physics/material contracts without a separate editor component schema. Public SDK/package and protocol versions remain unchanged.
+
+See the [workspace guide](wiki/editor.md) for gestures, local-transform reparenting, limits, language keys and preview behavior. Rendered editor chrome/layout are private to the adaptable builtin UI; `--shell none`, custom viewport shells, the document service, headless use and builds without ImGui retain their existing behavior. Third-party shells do not acquire an ImGui ABI or the builtin panel layout through API 1.

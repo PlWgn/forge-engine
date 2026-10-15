@@ -22,6 +22,6 @@ Start with the [Forge wiki](../GUIDE.md) for setup, a first scene, examples, and
 
 ## Releases and licensing
 
-[2.12.2 maintenance notes](BUGFIX_2_12_2.md) describe the current documentation/starter update. [Release history and archived fixes](releases/README.md) preserve past changes and release-specific validation; use the current manuals for commands and supported behavior. Earlier `docs/BUGFIX_*.md` notes have moved under `docs/releases/`.
+[2.13.0 release notes](FORGE_2.md#forge-2130--default-editor-workspace) describe the default editor workspace. [Release history and archived fixes](releases/README.md) preserve past changes and release-specific validation; use the current manuals for commands and supported behavior. Earlier `docs/BUGFIX_*.md` notes have moved under `docs/releases/`.
 
 The binding [license](../LICENSE), [Core boundary and origin](../CORE.md), [attribution](../ATTRIBUTION.md), and [third-party notices](../THIRD_PARTY.md) remain at the project root. Generated games include this documentation, schemas, examples, and licenses. Local reports, screenshots, builds, and dependency downloads belong in ignored output directories and are not documentation dependencies.

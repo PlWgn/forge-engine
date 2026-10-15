@@ -29,6 +29,55 @@ class FeatureGraphicsTests(unittest.TestCase):
         result=subprocess.run([*base.engine_command(command),'--project',str(self.root/'engine.json'),'--frames',str(frames),'--no-open-log',*extra],capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result.stdout+result.stderr
+    def test_builtin_workspace_viewport_and_postprocess_at_multiple_sizes(self):
+        # Exercise actual editor compositing, including HiDPI framebuffer scaling.
+        # The center sprite uses game-window coordinates; the shell fits it into
+        # the scene panel while retaining the original logical coordinates.
+        # A normal SDK extension starts preview after edit initialization, so
+        # the probe can capture settled panels and then return to paused editing.
+        (self.root/'workspace_extension.py').write_text("""import forge
+API_VERSION=1
+def register(client):forge.editor_command({'op':'preview','enabled':True})
+""")
+        self.config['editor']={'extensions':['workspace_extension.py']}
+        for width,height,fade in [(640,480,0),(1280,720,0),(1600,900,.5)]:
+            with self.subTest(width=width,height=height,fade=fade):
+                source=f"""import forge
+frame=0
+initial=None
+def build():return {{'mode':'2d','physics_enabled':False,'background':[.08,.1,.12,1],'camera':{{'position':[0,0,5],'target':[0,0,0]}},'rendering':{{'postprocess':{{'enabled':True,'fade':{fade}}}}}}}
+def on_start():
+    global initial
+    forge.set_window({{'width':{width},'height':{height}}})
+    forge.spawn({{'id':'panel-probe','kind':'sprite','screen':True,'position':[{width}/2,{height}/2,0],'scale':[{width}/3,{height}/3,1],'color':[.1,.85,.2,1]}})
+    initial=forge.editor_command({{'op':'snapshot'}})['scene']
+def on_update(dt):
+    global frame
+    frame+=1
+    if frame==3:
+        state=forge.editor_command({{'op':'snapshot'}})
+        assert state['scene']==initial and state['undo']==0,state
+        forge.editor_command({{'op':'preview','enabled':False}})
+        forge.screenshot('workspace.ppm')
+"""
+                output=self.run_scene(source,command='edit',frames=5)
+                self.assertNotIn('[ERROR]',output)
+                w,h,pixels=ppm(self.root/'workspace.ppm')
+                # Default workspace: 19% hierarchy, 27% inspector; toolbar 74px,
+                # status 24px, and a bottom dock using 30% of remaining height.
+                x=(width*.19+4+(width*(1-.19-.27)-8)/2)/width
+                bottom=max(80,(height-74)*.30)
+                y=(74+(height-74-bottom-28)/2)/height
+                offset=(int(y*h)*w+int(x*w))*3
+                center=tuple(pixels[offset:offset+3])
+                self.assertGreater(center[1],90 if fade else 190,center)
+                self.assertGreater(center[1],center[0]*3,center)
+                # Scene pixels cannot spill into any surrounding workspace panel.
+                for x,y in [(10,100),(width-15,100),(width*.45,height-35)]:
+                    offset=(int(y*h/height)*w+int(x*w/width))*3
+                    sample=tuple(pixels[offset:offset+3])
+                    self.assertLess(sample[1],100,sample)
+
     def test_native_controls_ui_rebinding_and_preference_pixels(self):
         # Use the shipped shell and real renderer, feeding reproducible native input.
         source=(ROOT/'scenes/input.py').read_text(encoding='utf-8')

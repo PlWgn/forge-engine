@@ -8,6 +8,7 @@ This archive describes when features and fixes arrived. Past test counts, comman
 
 | Version | Changes and migration records |
 | --- | --- |
+| [2.13.0](../FORGE_2.md#forge-2130--default-editor-workspace) | Default workspace, scene viewport, searchable hierarchy/assets, transactional inspector and log console |
 | [2.12.2](../BUGFIX_2_12_2.md) | Documentation organization, current test inventory, complete starter documentation |
 | [2.12.1](BUGFIX_2_12_1.md) | Shared JSON/Python scene validation, preloader cleanup/retry, VR Euler order, hierarchy/cache bookkeeping |
 | 2.12.0 | Optional authenticated/encrypted desktop content; shipped key and runtime plaintext remain explicit limits. [Current packaging contract](../wiki/packaging.md#protected-content-builds-212) |

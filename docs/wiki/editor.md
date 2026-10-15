@@ -10,9 +10,38 @@ The builtin editor is one optional shell over the open format and public APIs. T
 
 ## Builtin scene editor
 
-edit --scene editor-empty.json opens the windowed editor with simulation initially paused. Hierarchy selects entities; Inspector edits transforms, collider, color, visibility, screen/dynamic/trigger/casts_shadow, and text. Add/Duplicate/Delete, resource browsing, lights/camera/gravity, Undo/Redo (100 snapshots), Play preview, and JSON saving are available. Middle mouse moves the camera; WASD moves; Ctrl+S/Cmd+S saves the selected JSON name inside scenes. Dev/edit supports reload; an unsaved editor draft blocks automatic world replacement.
+`python tools/forge.py edit --scene editor-empty.json` opens the default Forge workspace with gameplay paused. Compile normally to include it; no additional GUI installation or service is needed. Forge 2.13 uses a dark, pane-based layout inspired by familiar game editors.
 
-scene_data()/save_scene(file) serialize declarative data including scripts/data and JSON scene.script. Updates to original JSON preserve unknown fields and project authored changes onto the source with external-edit merging; exporting to another file creates a complete snapshot. Conflicts do not overwrite the file. Python source, closures, and arbitrary state are not serialized. Runtime-created objects, including UI, enter snapshots; start authoring with editor-empty.json and attach Behavior through JSON scripts/data or code. Preview scripts may change the world; undo restores scene data while simulation is paused, not arbitrary Python state. Stopping preview does not reset; Reload reads the source. The editor has no visual scripting, shader/animation graph, or transform gizmos.
+| Area | Tools |
+| --- | --- |
+| Toolbar | File/save/reload, Create, Undo/Redo, Play/Pause, World settings, workspace reset and language switching |
+| Hierarchy, left | Parent/child tree, search by name or ID, shared selection, double-click to frame an entity |
+| Scene, center | Dedicated rendered viewport, optional ground grid, selected-center marker, center picking, camera navigation |
+| Inspector, right | Name, local TRS/parent, color/visibility, texture/model, PBR metallic/roughness, collider/dynamic/trigger, text and complete entity JSON |
+| Project, bottom | Configured path groups, searchable file/type list; double-click scenes to open, textures/models to assign, or a model to create a mesh when nothing is selected |
+| Console, bottom | Last 64 KiB of the session log, refreshed twice per second; text filter, warnings/errors filter, follow scrolling |
+| Extensions, bottom | Registered SDK commands with JSON arguments and results/errors in the status bar |
+
+Drag the vertical separators to resize Hierarchy and Inspector; drag the horizontal separator to resize the bottom dock. Proportions adapt when the window resizes. **Workspace → Reset layout** restores the defaults. Layout is session-local. English/Russian labels use engine localization keys, so projects can override `engine.editor.*`; Workspace changes language without saving a game preference.
+
+The Scene view renders into its own target, including postprocessing, rather than hiding the game behind panels. 3D uses the panel aspect ratio; 2D preserves the game-window aspect with letterboxing. Logical game-window dimensions and ordinary run/dev/custom-shell rendering retain their contracts. Screen UI inside a 3D scene follows the panel fit; game input coordinates are still window coordinates, so interactive game UI should also be tested with `run`/`dev`.
+
+Create an empty object, cube, flat cube ground plane, sprite, or text from **Create**. Select an object to edit it; use **World** for scene mode/background, physics/gravity, camera/FOV and lights. Reparenting keeps local TRS and validates hierarchy rules, including cycles. The advanced entity JSON editor supports scripts/data, rigid-body settings, full material fields and other existing entity properties without inventing a second component format. **Read selection** refreshes its draft after undo or another change; **Apply JSON** validates the full candidate. The buffer is 32 KiB; larger entities remain editable through the document SDK or source file. Asset listings are cached until Refresh or a configured-path change, exclude escaping symlinks, and stop at 10,000 files.
+
+Inspector, create, duplicate/delete and asset assignment use the same transactional scene API as custom shells. Failed candidates preserve the managed scene/resources and undo history. Edits may reconstruct the scene and repeat initialization callbacks; callbacks with external side effects need a game-defined strategy. Gameplay preview disables these authoring controls. Animation authoring retains its separate validated window, opened explicitly for an imported model. Undo/Redo stores up to 100 declarative snapshots.
+
+| Shortcut / gesture | Action |
+| --- | --- |
+| Ctrl+S / Cmd+S | Save to the Scene file / Save as field |
+| Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z, Ctrl/Cmd+Y | Undo / redo while paused and outside a text field |
+| F over the scene / Frame selection | Aim the camera at the selected object |
+| WASD over the scene | Move the camera while paused |
+| Middle mouse over the scene | Pan while paused |
+| Click within 24 logical pixels of an entity center | Select the nearest projected center; click empty space to deselect |
+
+Picking is a center-distance aid, not mesh/occlusion raycasting. Grid and selection markers are editor overlays without scene depth testing. There are no draggable transform gizmos, arbitrary panel docking, visual scripting or shader/animation graphs. Tiny windows may require scrolling inside panels; 1280×720 or larger is recommended.
+
+`scene_data()` / `save_scene(file)` serialize declarative data including scripts/data and JSON `scene.script`. Saving original JSON preserves unknown fields and projects authored changes onto the source with external-edit merging; Save As creates a complete snapshot and requires a fresh target. Conflicts do not overwrite files. Python source, closures, and arbitrary state are not serialized. Runtime-created objects, including UI, enter snapshots; start authoring with `editor-empty.json` and attach Behavior through JSON scripts/data or code. Play preview does not reset the scene; Pause retains its current state and Reload explicitly reads the source. An unsaved editor draft blocks automatic world replacement. Undo restores declarations while paused, not Python state, external I/O or audio progress.
 
 ## Launch or replace the shell
 

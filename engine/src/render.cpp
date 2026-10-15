@@ -1221,39 +1221,52 @@ void Renderer::render(World &world) {
     #ifndef __ANDROID__
     auto post = world.renderSettings.value("postprocess", Json::object());
     bool processing = !post.empty() && post.value("enabled", true);
+    glm::vec4 editorViewport(0,0,float(world.width),float(world.height));
+    #if FORGE_WITH_EDITOR
+    if(impl->editorEnabled) {
+        auto area=impl->editorState.viewport(float(world.width),float(world.height),world.is3d);
+        editorViewport={area.x,area.y,area.width,area.height};
+    }
+    #endif
+    bool compositing=processing || impl->editorEnabled;
+    int sceneWidth=int(std::clamp(double(editorViewport.z)*w/world.width,1.0,double(w)));
+    int sceneHeight=int(std::clamp(double(editorViewport.w)*h/world.height,1.0,double(h)));
     unsigned mainTexture = 0, mainFbo = 0;
-    if (processing) {
-        auto &main = impl->target("main", w, h);
+    if (compositing) {
+        auto &main = impl->target("main", sceneWidth, sceneHeight);
         mainTexture = main.color;
         mainFbo = main.fbo;
     }
     gl::BindFramebuffer(gl::FRAMEBUFFER, mainFbo);
-    gl::Viewport(0, 0, w, h);
+    gl::Viewport(0, 0, sceneWidth, sceneHeight);
     gl::Disable(gl::SCISSOR_TEST);
     gl::ClearColor(background.r, background.g, background.b, background.a);
     gl::Clear(gl::COLOR | gl::DEPTH);
     auto ortho = glm::ortho(0.f, float(world.width), float(world.height), 0.f, -10000.f, 10000.f);
-    auto view = world.is3d ? cameraProjection(world.cameraPosition,world.cameraTarget,world.fov,double(w)/h)
+    auto view = world.is3d ? cameraProjection(world.cameraPosition,world.cameraTarget,world.fov,double(sceneWidth)/sceneHeight)
                            : ortho * glm::translate(glm::mat4(1), glm::vec3(-world.cameraPosition.x,
                                                                             -world.cameraPosition.y, 0));
     impl->cameraPosition = world.cameraPosition;
-    impl->scene(world, view, w, h, world.width, world.height, true, ~0u);
-    if (processing) {
+    impl->scene(world, view, sceneWidth, sceneHeight, world.width, world.height, true, ~0u);
+    if (compositing) {
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         gl::Viewport(0, 0, w, h);
+        gl::Disable(gl::SCISSOR_TEST);
+        gl::ClearColor(.08f,.09f,.11f,1);gl::Clear(gl::COLOR | gl::DEPTH);
         gl::Disable(gl::DEPTH_TEST);
+        if(!processing)post=Json::object();
         gl::UseProgram(impl->postProgram);
         impl->postUniforms.prepare(impl->postProgram, post.value("uniforms", Json::object()));
         for (auto field : {"grain", "bloom", "aberration", "scanlines", "vignette", "fade", "gamma"})
             gl::Uniform1f(gl::GetUniformLocation(impl->postProgram, (std::string("u_") + field).c_str()),
                           post.value(field, std::string(field) == "gamma" ? 1.f : 0.f));
-        glm::vec2 resolution(w, h);
+        glm::vec2 resolution(sceneWidth, sceneHeight);
         gl::Uniform2fv(gl::GetUniformLocation(impl->postProgram, "u_resolution"), 1,
                        glm::value_ptr(resolution));
         uniforms(impl->postProgram, post.value("uniforms", Json::object()));
         // Framebuffer textures have bottom-left origin. The full-screen quad reverses Y.
-        auto matrix = glm::translate(glm::mat4(1), glm::vec3(world.width * .5f, world.height * .5f, 0));
-        matrix = glm::scale(matrix, glm::vec3(world.width, -world.height, 1));
+        auto matrix = glm::translate(glm::mat4(1), glm::vec3(editorViewport.x+editorViewport.z*.5f, editorViewport.y+editorViewport.w*.5f, 0));
+        matrix = glm::scale(matrix, glm::vec3(editorViewport.z, -editorViewport.w, 1));
         impl->draw(impl->meshes.at("sprite"), matrix, ortho, glm::vec4(1), mainTexture, false, nullptr,
                    impl->postProgram);
     }
@@ -1380,7 +1393,7 @@ void Renderer::editor(bool enabled) {
         ImGui::CreateContext();
         auto &io = ImGui::GetIO();
         io.IniFilename = nullptr;
-        io.Fonts->AddFontFromFileTTF(impl->fontFaces.front()->name.c_str(), 18, nullptr,
+        io.Fonts->AddFontFromFileTTF(impl->fontFaces.front()->name.c_str(), 15, nullptr,
                                      io.Fonts->GetGlyphRangesCyrillic());
         ImGui::StyleColorsDark();
         try { impl->device->initializeEditor(); }

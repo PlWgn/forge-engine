@@ -1,6 +1,6 @@
-# Forge 2.12.2
+# Forge 2.13.0
 
-Forge 2.12.2 is a modular C++17 engine with Python scenes and scripts for macOS and Windows, with an optional Android/OpenXR host for Quest. This maintenance release organizes the documentation and includes the complete public manual and release archive in generated projects. [Release notes](docs/BUGFIX_2_12_2.md).
+Forge 2.13.0 is a modular C++17 engine with Python scenes and scripts for macOS and Windows, with an optional Android/OpenXR host for Quest. This release upgrades the default editor to a resizable workspace with Hierarchy, Scene, Inspector, Project, Console, and SDK extension tools. [Workspace guide](docs/wiki/editor.md).
 
 Use configuration and Python for ordinary game development; C++ recompilation is needed only for engine or native-module changes. The runtime supports 2D/3D scenes, UI/dialogue, animation, physics, particles, audio, localization, networking, and optional editing tools. OpenGL is the default; Metal on macOS and Direct3D 11 on Windows are optional. [Capabilities and limits](docs/FORGE_2.md).
 

@@ -4,9 +4,13 @@
 
 This page describes the current implementation and the checks registered for it. A test or CI definition describes coverage; it does not prove that a particular platform or device passed. Historical release results and migrations belong in the release archive.
 
-## Forge 2.12.2 — documentation and starter cleanup
+## Forge 2.13.0 — default editor workspace
 
-Current usage lives in the wiki and focused reference guides. Historical maintenance notes are grouped under `docs/releases/`; README provides setup and navigation instead of repeating the release history. Generated projects include the complete curated documentation tree, including the older release notes. Project, game API, schema, save, replay, and SDK versions remain unchanged. [Release details](BUGFIX_2_12_2.md).
+The optional builtin shell now provides resizable Hierarchy/Scene/Inspector/Project panels, a bounded log Console, extension commands, language switching, center picking/framing and a grid. Scene rendering has a dedicated target and panel aspect; 2D is letterboxed. Inspector/Create/asset edits use the existing transactional runtime SDK, preserving rejection and undo semantics. Imported-model animation tools open explicitly. [Workspace usage and limits](wiki/editor.md).
+
+The native editor and workspace helper remain independent adaptable modules; this release does not change Core contracts or the exhaustive license boundary. Project/schema/game API/SDK protocol versions remain 1, and the Python SDK package version remains unchanged because its contract is unchanged. The engine version advances for the new default interface. Reparenting now explicitly keeps local transforms; preview locks authoring controls, and initialization callbacks can repeat when applying a candidate. Existing projects and custom shells require no format migration.
+
+GPU coverage adds workspace compositing, postprocessing, panel isolation and three window sizes; existing custom-shell and animation checks remain. Device-specific results must be reported separately; source tests alone do not establish Windows/Direct3D verification.
 
 ## Capabilities and implementation coverage
 
