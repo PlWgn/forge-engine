@@ -1,4 +1,4 @@
-# Metal on macOS (Forge 2.7)
+# Metal on macOS
 
 Forge adds optional native Metal rendering for Apple Silicon while retaining OpenGL 3.3 and the Windows Direct3D 11 backend. Scenes, Python scripts, materials, animation, text/UI, particles, cameras, postprocessing, and editor commands use the same APIs. Shader sources and backend implementations remain editable, adaptable modules outside the exhaustive license Core list.
 
@@ -14,9 +14,9 @@ Add the backend to the existing renderer object in `engine.json`:
 }
 ```
 
-This is a fragment; retain your other project settings. Omitting `backend` or selecting `opengl` preserves the previous default. `metal` requires a macOS build with Metal enabled and a Metal-capable device. An explicit unavailable backend reports an error. `auto` now chooses Metal when compiled on macOS, Direct3D 11 on Windows, and OpenGL otherwise; it selects build capabilities, without benchmarking or falling back after a native-device initialization failure. Existing projects that explicitly chose `auto` on macOS may therefore render through Metal after rebuilding in 2.7. Choose `opengl` to retain their previous device.
+This is a fragment; retain your other project settings. Omitting `backend` or selecting `opengl` uses the OpenGL default. `metal` requires a macOS build with Metal enabled and a Metal-capable device. An explicit unavailable backend reports an error. `auto` chooses Metal when compiled on macOS, Direct3D 11 on Windows, and OpenGL otherwise; it selects build capabilities, without benchmarking or falling back after a native-device initialization failure. Existing projects that explicitly chose `auto` on macOS may therefore render through Metal after rebuilding in 2.7. Choose `opengl` to retain their previous device.
 
-Metal targets macOS 11+ and Metal Shading Language 2.0. The implementation is tested on Apple M2; Intel Metal GPUs are not locally verified. Runtime shader compilation uses macOS's system Metal compiler and does not require the `xcrun metal` command or a full Xcode installation. Building the engine needs Command Line Tools and the standard pinned dependencies.
+Metal targets macOS 11+ and Metal Shading Language 2.0. Device-specific results belong in the [release archive](releases/README.md); test the target GPU before shipping. Runtime shader compilation uses macOS's system Metal compiler and does not require the `xcrun metal` command or a full Xcode installation. Building the engine needs Command Line Tools and the standard pinned dependencies.
 
 ```python
 import forge
@@ -51,7 +51,7 @@ python tools/forge.py compile --without-metal
 
 CMake uses `FORGE_WITH_METAL`, independent of `FORGE_WITH_EDITOR` and `FORGE_WITH_DIRECT3D11`. Metal requires `FORGE_WITH_SHADER_TRANSLATOR`; enabling Metal outside macOS or disabling its translator is a configuration error. With Metal disabled, Objective-C++ and Metal frameworks are not required by Forge's backend. `--shader-tools` may still build translator tests on any platform.
 
-The existing pinned glslang/SPIRV-Cross sources supply GLSL parsing and MSL generation. Standard macOS bootstrap now fetches these compiler dependencies for Metal; OpenGL-only builds can omit them. Their pinned versions and checksums are unchanged. Shader sources and compiler notices/licenses are retained in standalone packages; Metal/Cocoa/QuartzCore are macOS system frameworks. No Apple SDK component is redistributed. Standalone launch uses private Python and does not depend on a developer's working directory or Python environment.
+The existing pinned glslang/SPIRV-Cross sources supply GLSL parsing and MSL generation. Standard macOS bootstrap fetches these compiler dependencies for Metal; OpenGL-only builds can omit them. The dependency lock records their pinned versions/checksums. Shader sources and compiler notices/licenses are retained in standalone packages; Metal/Cocoa/QuartzCore are macOS system frameworks. No Apple SDK component is redistributed. Standalone launch uses private Python and does not depend on a developer's working directory or Python environment.
 
 ## Editable Portable Shaders
 
@@ -115,7 +115,7 @@ Draw pipelines use shader-specific effective vertex descriptors (formats, offset
 
 ## Verification
 
-Eleven base CTest suites plus the optional shader-compiler suite include HLSL/MSL translation, varying-order regression, logical-array shapes, and configuration/path validation. Real Metal suites verify pixels and runtime compilation:
+CTest includes configuration/path checks and, when compiled, shader translation, varying-order regression, and logical-array shapes. The [testing guide](wiki/development.md#validation-and-test-suites) maintains the full suite list. Real Metal suites verify pixels and runtime compilation:
 
 ```sh
 export FORGE_TEST_BACKEND=metal

@@ -1,9 +1,9 @@
-Native libraries are fetched by `tools/dependencies.py` at pinned versions. The lock stores download checksums. Keep `dependencies.lock.json` in source control; generated library directories may be excluded.
+# Pinned Build Dependencies
 
-The default free font is copied to `graphics` only if no font is already there. Its SIL OFL license is retained beside it.
+Only this README and [dependencies.lock.json](dependencies.lock.json) belong in source control. `tools/dependencies.py` fetches pinned sources and verifies their SHA-256 checksums over TLS. Downloaded libraries stay ignored; CMake does not fetch them. The lock is the version/checksum source of truth.
 
-Forge 2.0 also pins Assimp 6.0.5 and Dear ImGui 1.91.9b. Assimp importers are restricted to OBJ, glTF/GLB, FBX and COLLADA. License notices from its contrib directory and Dear ImGui are included in packaged games.
+The build uses GLFW, GLM, pybind11, nlohmann JSON, stb, miniaudio, Assimp, and double-precision Bullet CPU libraries. The optional editor uses Dear ImGui; native Metal/Direct3D backends use glslang/SPIRV-Cross. Assimp importers are restricted to OBJ, glTF/GLB, FBX, and COLLADA. The default Noto Sans font is copied to `graphics` only when no font is present, with its SIL OFL license retained.
 
-Forge 2.1 pins Bullet Physics 3.25 (zlib license) and compiles only its CPU LinearMath, BulletCollision and BulletDynamics libraries with double precision. The downloaded source remains ignored; its notice is included in standalone builds as `licenses/bullet.txt`.
+ENet supplies the default independent LAN transport. Optional Valve sockets use private Protobuf/OpenSSL dependencies; the official Steamworks SDK is supplied separately by the developer. Optional VR uses the pinned OpenXR sources. See [installation](../docs/wiki/installation.md), [networking](../docs/wiki/networking.md), and [VR](../docs/wiki/vr.md) for setup and flags.
 
-Forge 2.9 pins ENet 1.3.18 for independent default LAN, optional Valve GameNetworkingSockets 1.4.1, and optional private Protobuf 3.21.12/OpenSSL 3.5.9. Bootstrap/build instructions are in docs/wiki/networking.md. Downloads remain ignored; networking license snapshots are tracked under engine/resources/network-licenses. The official Steamworks SDK is supplied separately by the developer and is not part of this vendor bootstrap.
+Dependency notices and license files remain in source resources and standalone packages, including Assimp's compiled contrib components. [THIRD_PARTY.md](../THIRD_PARTY.md) records their origin and licensing; no dependency version is changed by documentation cleanup.

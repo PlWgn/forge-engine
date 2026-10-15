@@ -1,6 +1,6 @@
-# Forge Engine Wiki — 2.12.1
+# Forge Engine Wiki — 2.12.2
 
-The current manual for **Forge 2.12.1**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see [current stability and optimization fixes](docs/BUGFIX_2_12_1.md), [2.12 protected content builds](docs/wiki/packaging.md#protected-content-builds-212) and [2.11 VR support](docs/wiki/vr.md).
+The current manual for **Forge 2.12.2**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes current APIs and defaults. Browse the [documentation index](docs/README.md), [capabilities and limits](docs/FORGE_2.md), [current maintenance notes](docs/BUGFIX_2_12_2.md), or [release archive](docs/releases/README.md).
 
 ## Start here
 
@@ -120,6 +120,8 @@ Use `python tools/forge.py dev --scene <file>` from the engine checkout, adding 
 | [materials.json](scenes/materials.json) | PBR, hierarchy, procedural geometry |
 | [authoring.py](scenes/authoring.py) | Prefab instances, layers, retargeting, morphs, property clips |
 | [optimization.py](scenes/optimization.py) | Optional LOD, distance/frustum/occlusion culling |
+| [networking.py](scenes/networking.py) | Independent LAN hosts and bytes/events |
+| [vr.py](scenes/vr.py) | Optional OpenXR rig/controllers; needs a supported target/runtime |
 | [editor-empty.json](scenes/editor-empty.json) | Empty authoring scene; launch with `edit` |
 
 ## Compatibility and customization

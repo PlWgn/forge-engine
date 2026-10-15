@@ -56,6 +56,7 @@ The launcher enables the builtin ImGui editor and the platform-native backend by
 | `compile --sockets` | Adds Valve IP sockets; requires Protobuf/crypto dependencies |
 | `compile --steamworks-sdk <root>` | Adds official Steamworks platform/P2P; SDK supplied by developer |
 | `compile --shader-tools` | Enables translator/compiler tests even without a native graphics backend |
+| `compile --openxr` | Adds the optional Windows/OpenGL XR adapter; target/runtime setup is described in the VR guide |
 
 These switches also apply to `configure` and dependency setup where relevant. Repeat the chosen flags when reconfiguring/compiling; an ordinary compile restores the default components. To build without the builtin shell:
 

@@ -1,6 +1,6 @@
-# Direct3D 11 and Editable Shaders (Forge 2.6+)
+# Direct3D 11 and Editable Shaders
 
-Forge keeps OpenGL 3.3 and adds an optional Direct3D 11 backend on Windows. Forge 2.7 also adds [Metal on macOS](METAL.md); auto prefers it on builds with Metal enabled. Game scenes, Python modules, materials, geometry, animation, text, particles, cameras, and editor commands keep the same API. Select the device in `engine.json`; do not put platform-specific drawing rules in game scripts.
+Forge supports OpenGL 3.3, optional Direct3D 11 on Windows, and [Metal on macOS](METAL.md); auto prefers Metal on macOS builds with it enabled. Game scenes, Python modules, materials, geometry, animation, text, particles, cameras, and editor commands keep the same API. Select the device in `engine.json`; do not put platform-specific drawing rules in game scripts.
 
 ## Selecting a Backend
 
@@ -28,7 +28,7 @@ This is a configuration fragment, not a complete project. Preserve the other ren
 | `warp` | Windows software Direct3D; useful for tests and machines without a suitable GPU |
 | `direct3d11.debug: true` | Request the Windows debug layer; Graphics Tools must be installed |
 
-Direct3D requires Windows 10 or newer, feature level 11_0, and Shader Model 5.0. The implementation uses the Windows SDK's D3D11/DXGI/compiler APIs; no DirectX service, account, network access, or separate proprietary shader tool is required at runtime. It is Direct3D **11**, not Direct3D 12, DXR, or a new lighting/physics system. macOS retains OpenGL.
+Direct3D requires Windows 10 or newer, feature level 11_0, and Shader Model 5.0. The implementation uses the Windows SDK's D3D11/DXGI/compiler APIs; no DirectX service, account, network access, or separate proprietary shader tool is required at runtime. It is Direct3D **11**, not Direct3D 12, DXR, or a new lighting/physics system. macOS uses OpenGL or the optional Metal backend.
 
 ```python
 import forge
@@ -62,7 +62,7 @@ python tools/forge.py compile --without-directx
 
 `--without-editor` is independent: Direct3D run/dev/build and custom shells work without ImGui. CMake exposes `FORGE_WITH_DIRECT3D11` and `FORGE_WITH_SHADER_TRANSLATOR`. Explicitly enabling Direct3D on a non-Windows target fails configuration. Disabling its translator while retaining Direct3D also fails rather than silently losing GLSL support.
 
-On macOS in Forge 2.7, ordinary bootstrap/compile includes OpenGL and Metal. Use --without-metal for OpenGL-only; the optional shader compiler can be tested without a Direct3D device:
+On macOS, ordinary bootstrap/compile includes OpenGL and Metal. Use --without-metal for OpenGL-only; the optional shader compiler can be tested without a Direct3D device:
 
 ```sh
 python tools/dependencies.py --shader-tools
@@ -141,7 +141,7 @@ Direct3D allocates an internal color/depth presentation pair in addition to the 
 
 ## Verification
 
-Eight base CTest suites remain. Enabling the translator adds `shader_compiler`: portable default/PBR/post/particle/custom/shadow translation, sampler limits, mismatched stages, and invalid-source diagnostics. On Windows this test also invokes the real D3D compiler on translated shaders and the native examples.
+Enabling the translator adds `shader_compiler` to the [desktop CTest suite list](wiki/development.md#validation-and-test-suites): portable default/PBR/post/particle/custom/shadow translation, sampler limits, mismatched stages, and invalid-source diagnostics. On Windows this test also invokes the real D3D compiler on translated shaders and the native examples.
 
 The four shared GPU suites can run against either backend. Windows CI uses WARP and silent audio:
 
@@ -158,8 +158,6 @@ python tools/verify_package.py dist/Game --graphics-backend direct3d11
 
 The Direct3D-specific suite covers native HLSL uniforms/UV/clipping/orientation, rejected shader reload/recovery, auto selection, and GLSL uniform names that require HLSL keyword renaming. Shared suites cover PBR, cameras/shadows/postprocessing, skinning/morphs, particles, text/UI, and editor pixels. The package verifier modifies a disposable copy, poisons host Python variables, launches three graphical scenes from another directory, and confirms the selected backend.
 
-This update was developed on macOS: shader translation and OpenGL can be executed locally; Windows-specific code can be cross-compiled. Neither proves Windows device behavior. Windows CI/WARP runs must pass before treating Direct3D runtime rendering as verified. WARP does not validate physical GPU performance or hardware audio.
-
-Local validation passed nine CTest suites with the editor/translator enabled, eight base suites with both disabled, all 30 shared OpenGL GPU tests, an alternative viewport shell without ImGui, a fresh project validate/run, and standalone headless/OpenGL verification. The Direct3D source compiled into a Windows object; an editor-free link probe resolved the Windows graphics libraries with stubbed engine services. This is a cross-compilation/link check, not a full Windows engine build or an executed Direct3D test. Windows CI has been configured but was not run during this macOS session.
+Shader translation, OpenGL execution, or cross-compilation on another OS do not establish Windows device behavior. Run the Windows runtime and WARP/device regressions on the target platform. WARP does not validate physical GPU performance or hardware audio. Historical release-session results are in the [release archive](releases/README.md); current suite requirements are in the [testing guide](wiki/development.md#validation-and-test-suites).
 
 Implementation references: [Microsoft Direct3D/WARP](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-devices-create-warp), [Khronos glslang](https://github.com/KhronosGroup/glslang), and [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross).

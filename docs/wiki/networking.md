@@ -132,10 +132,12 @@ On Windows pass the SDK path in Developer PowerShell. CMake flags are `FORGE_WIT
 Configure each project's `engine.json`:
 
 ```json
-"steam": {
-  "enabled": false,
-  "app_id": 480,
-  "relay": false
+{
+  "steam": {
+    "enabled": false,
+    "app_id": 480,
+    "relay": false
+  }
 }
 ```
 

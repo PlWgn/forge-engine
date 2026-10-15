@@ -1,4 +1,4 @@
-# Forge 2.5 Shells and Open Project Format
+# Editor Shells and Open Project API 1
 
 The developer owns the project. Builtin ImGui, third-party GUIs, terminal tools, and manual edits share configuration/resources without a hidden editor database. run/dev/validate/build require neither UI nor SDK. The game runtime uses C++/CPython and GLFW with OpenGL or a compiled optional Metal/Direct3D backend.
 
@@ -152,7 +152,7 @@ Saving original JSON computes a runtime-baseline delta and applies it to source 
 
 Automatic reload refuses a world with unsaved editor changes and reports the preserved work. Save/undo or explicitly reload, then edit a watched file to retry. A clean draft keeps ordinary reload behavior. Play preview does not reset the scene. Direct Python setters remain available, but shared undo is guaranteed for editor_command/builtin authoring, not arbitrary Python.
 
-In 2.5.1, JSON candidates isolate procedural registries/listener membership. Synchronous on_frame apply stops remaining old-scene callbacks. Managed forge.save/SaveManager.write/delete defer until commit and cancel on rejection; write data/metadata are copied. This is not arbitrary Python serialization or a filesystem-wide transaction: completed commit callbacks do not roll back if another fails. Ordinary loading outside authoring/reload keeps immediate save behavior.
+JSON candidates isolate procedural registries/listener membership. Synchronous on_frame apply stops remaining old-scene callbacks. Managed forge.save/SaveManager.write/delete defer until commit and cancel on rejection; write data/metadata are copied. This is not arbitrary Python serialization or a filesystem-wide transaction: completed commit callbacks do not roll back if another fails. Ordinary loading outside authoring/reload keeps immediate save behavior.
 
 ## Building Without the Builtin Interface
 
@@ -171,11 +171,8 @@ CMake: -DFORGE_WITH_EDITOR=OFF. Bootstrap with --without-editor does not downloa
 tests/project_api.py <binary> checks independent shells/manual edits/unknown fields, ID/order merging/conflicts, atomic failure, Unicode/paths/symlinks, config/material/prefab checks, SDK history, shared adapters, CLI stdout/status, and paused lifecycle/rollback. CTest/launcher include it; GPU suites cover viewport/ImGui/animation tools. CI builds macOS/Windows ON/OFF; GPU suites use builtin UI. One active Python runtime, existing subsystem limits, and dependency licenses remain.
 
 
-## Graphics Backends in Forge 2.6
+## Graphics backend capabilities
 
-The document capabilities response includes graphics_backends (compiled support). Renderer fields are documented in [DIRECT3D11.md](DIRECT3D11.md) and schemas/project.schema.json. Every shell may edit backend/shader settings through the same document API, preserving unknown fields. Backend/driver/debug changes take effect after runtime restart; live shader candidates retain rollback. SDK Client.launch(silent_audio=True) disables hardware audio independently of graphics. Project and shell protocol versions remain 1.
+The document capabilities response includes `graphics_backends` (compiled support). Shells use the same document operations to edit backend settings, native shader pairs, entry points, and budgets while preserving unknown fields. Supported backends are OpenGL and, when compiled for the corresponding OS, Metal and Direct3D 11. See [Direct3D](DIRECT3D11.md), [Metal](METAL.md), and the project schema for their contracts.
 
-
-## Metal in Forge 2.7
-
-Compiled graphics_backends may include metal on macOS. Shells use the same document operations to preserve/edit renderer.metal shader pairs, entry points, and uniform_budget_bytes. Changes to backend or Metal uniform budget require runtime restart; shader candidates retain rollback. No shell/API/schema version increase or builtin-editor dependency is introduced. [Metal configuration and native shaders](METAL.md).
+Backend/driver/debug settings and the Metal uniform budget require runtime restart; live shader candidates retain rollback. SDK `Client.launch(silent_audio=True)` disables hardware audio independently of graphics. Project/shell protocol and schema versions remain 1, without a builtin-editor dependency.

@@ -1,6 +1,6 @@
 # VR: OpenXR, SteamVR and Meta Quest
 
-Forge 2.11 adds optional OpenXR for **Windows PC VR** (SteamVR or Meta Quest Link/Air Link) and an **Android arm64 standalone host** for Quest 3 and Quest 3S. The same C++ runtime, Python scenes, world entities, physics, assets and VR APIs serve both targets. Flat-screen projects keep XR disabled. OpenXR is independent of Steamworks: no Steam account, Steam App ID or Steam SDK is required by this module.
+Forge supports optional OpenXR for **Windows PC VR** (SteamVR or Meta Quest Link/Air Link) and an **Android arm64 standalone host** for Quest 3 and Quest 3S. The same C++ runtime, Python scenes, world entities, physics, assets and VR APIs serve both targets. Flat-screen projects keep XR disabled. OpenXR is independent of Steamworks: no Steam account, Steam App ID or Steam SDK is required by this module.
 
 The implementation targets OpenXR primary stereo, Windows OpenGL 4.5 and Android OpenGL ES 3.2. Metal/Direct3D XR bindings, Linux XR hosting, hand skeletons, passthrough, eye tracking, spatial anchors, composition-layer UI and foveation are not implemented. Headset and store verification remain separate from compilation and headless tests.
 

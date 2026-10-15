@@ -1,8 +1,10 @@
 # Forge 2.12.1 — Stability and Optimization Fixes
 
-[Forge wiki](../GUIDE.md) · [Release coverage](FORGE_2.md)
+Historical release record. For current behavior and commands, use the [Forge wiki](../../GUIDE.md).
 
-This maintenance release preserves project/schema/API/SDK versions and existing defaults. Core-origin changes share scene settings validation through `scene_runtime.cpp` and the `scene.hpp` World contract; see [CORE.md](../CORE.md).
+[Forge wiki](../../GUIDE.md) · [Release coverage](../FORGE_2.md)
+
+This maintenance release preserves project/schema/API/SDK versions and existing defaults. Core-origin changes share scene settings validation through `scene_runtime.cpp` and the `scene.hpp` World contract; see [CORE.md](../../CORE.md).
 
 ## Fixed behavior
 

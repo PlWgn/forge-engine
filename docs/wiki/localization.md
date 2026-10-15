@@ -13,16 +13,18 @@ C++ localization is shared by Python and UI modules. Translations are separate f
 Add the optional "locales": "locales" group to paths and configure:
 
 ```json
-"localization": {
-  "default_language": "ru",
-  "fallback_language": "en",
-  "auto_detect": false,
-  "save_selection": true,
-  "warn_missing": true,
-  "languages": {
-    "ru": {"name": "Russian", "file": "ru.json"},
-    "en": {"name": "English", "file": "en.json"},
-    "fr": {"name": "Français", "file": "fr.json"}
+{
+  "localization": {
+    "default_language": "ru",
+    "fallback_language": "en",
+    "auto_detect": false,
+    "save_selection": true,
+    "warn_missing": true,
+    "languages": {
+      "ru": {"name": "Russian", "file": "ru.json"},
+      "en": {"name": "English", "file": "en.json"},
+      "fr": {"name": "Français", "file": "fr.json"}
+    }
   }
 }
 ```

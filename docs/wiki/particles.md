@@ -69,7 +69,9 @@ Resolved texture paths cache across frames. GPU handles cache within a frame and
 Disable the optimization in engine.json:
 
 ```json
-"renderer": {"particle_instancing": false}
+{
+  "renderer": {"particle_instancing": false}
+}
 ```
 
 particle_instancing defaults to true. If particle_vertex_shader or graphics/particle.vert differs from the embedded source, the engine selects the legacy six-vertex layout automatically. particle_fragment_shader works in both modes. Change the instanced layout through renderer.particle_instance_shader (default particle-instance.vert). Retain the default legacy vertex shader when you want instancing.

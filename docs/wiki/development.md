@@ -67,7 +67,7 @@ Window/input live in window.cpp, frame orchestration in game_loop.cpp, and dispa
 
 ## World scaling and benchmarks
 
-forge.find uses a hash index of live entities, supporting removal/pruning/ID reuse. Legacy broadphase sorts X bounds and sends only candidate pairs to the solver in original entity-index order. Pairs are fixed before resolving each substep; a new overlap caused by correction may appear next substep. Dense scenes still have quadratic candidate counts. Raycast/controller/descendant queries remain linear or tree-dependent; this is not an all-purpose spatial index. world_stats() reports entities/indexed/candidate_pairs; the last is legacy-step statistics, not Bullet broadphase.
+forge.find uses a hash index of live entities, supporting removal/pruning/ID reuse. Legacy broadphase sorts X bounds and sends only candidate pairs to the solver in original entity-index order. Pairs are fixed before resolving each substep; a new overlap caused by correction may appear next substep. Dense scenes still have quadratic candidate counts. Legacy raycast/controller queries scan entities; recursive descendant queries build a local parent index and retain declaration-scan ordering through an ordered queue. This is not an all-purpose spatial index. world_stats() reports entities/indexed/candidate_pairs; the last is legacy-step statistics, not Bullet broadphase.
 
 ```sh
 python tools/benchmark_world.py build/bin/forge
@@ -87,7 +87,7 @@ python tools/forge.py validate --no-open-log
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The base CTest set has **twelve** suites. Enabling the shader translator registers a thirteenth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs seven integration suites, omitting `numeric`, `packager_paths`, `input_native`, `network_native`, and `render_optimization`.
+The desktop base CTest set has **16** suites. Enabling the shader translator registers a seventeenth, `shader_compiler` (enabled by the default macOS/Windows native-backend builds). The launcher `test` runs only these seven integration suites: `integration`, `features`, `simulation`, `rendering`, `authoring`, `project_api`, and `networking`. Run CTest for the additional native, XR, Quest-staging, and protected-content checks.
 
 | Check | Command | Requires |
 | --- | --- | --- |
@@ -100,6 +100,9 @@ The base CTest set has **twelve** suites. Enabling the shader translator registe
 | PBR, hierarchy, procedural meshes, LOD/culling APIs | `python tests/rendering.py build/bin/forge` | Native runtime |
 | Bullet, particles, forces/queries, rejected reload | `python tests/simulation.py build/bin/forge` | Native runtime |
 | Native ENet/Valve sockets, bytes, scene/reload lifetime | `ctest --test-dir build -C Release --output-on-failure -R "^(network_native\|networking)$"` | Localhost UDP allowed; `sockets` covered when compiled |
+| XR settings/projection and Python helpers/defaults | `ctest --test-dir build -C Release --output-on-failure -R "^(xr_native\|xr_bridge)$"` | Native runtime; no headset required; not tracking/pixel/haptic verification |
+| Quest staging/path/private-Python rules | `ctest --test-dir build -C Release --output-on-failure -R '^quest_packager$'` | Host Python; APK builds/device checks are separate |
+| Protected desktop archives/platform AES/private runtime | `ctest --test-dir build -C Release --output-on-failure -R '^protected_content$'` | macOS/Windows compiled runtime and packaging services; unsupported platforms skip platform checks |
 | Optional GLSL/HLSL/MSL translator | `ctest --test-dir build -C Release --output-on-failure -R '^shader_compiler$'` | Translator compiled; no device required |
 | UI/text/shader reload/audio hardware | `python tests/graphics.py build/bin/forge` | Desktop, graphics device, audio device unless silent |
 | Cameras/UV/batching/shadows/skinning/editor | `python tests/features_graphics.py build/bin/forge` | Desktop/graphics; editor checks require builtin shell |
@@ -108,16 +111,16 @@ The base CTest set has **twelve** suites. Enabling the shader translator registe
 
 GPU suites are separate from CTest; run them one at a time. Their default backend is OpenGL. `FORGE_TEST_BACKEND=metal` or `direct3d11` selects a compiled native backend on its OS. `FORGE_TEST_SILENT_AUDIO=1` avoids hardware playback and therefore cannot verify it. [Metal](../METAL.md) and [Direct3D](../DIRECT3D11.md) describe backend-specific suites and device validation. `ui_components.py` and `model_fixture.py` are helpers, not standalone suite entry points.
 
-CI builds macOS/Windows with and without builtin editor, runs CTest and standalone verification, and has separate shared/backend-specific graphics jobs. Linux Mesa/Xvfb provides software OpenGL coverage; Windows WARP provides software Direct3D coverage. A configured CI job is not proof that it passed. Software rendering, headless checks, and one device's results do not certify all physical macOS/Windows GPUs, audio hardware, architectures, or OS versions. [Coverage map and release records](../FORGE_2.md) distinguish implementation from actual verification.
+CI builds macOS/Windows with and without builtin editor, runs CTest and standalone verification, and has separate shared/backend-specific graphics jobs. Linux Mesa/Xvfb provides software OpenGL coverage; Windows WARP provides software Direct3D coverage. A configured CI job is not proof that it passed. Software rendering, headless checks, and one device's results do not certify all physical macOS/Windows GPUs, audio hardware, architectures, or OS versions. The [coverage map](../FORGE_2.md) and [release archive](../releases/README.md) distinguish implementation from actual verification. Optional OpenXR/Quest CI builds check target compilation and packaging; physical headsets still require tracking/pixel/haptic checks.
 
 ## Measure performance
 
 ```sh
 python tools/benchmark_hotpaths.py build/bin/forge
-python tools/benchmark_hotpaths.py build/bin/forge --particles
+python tools/benchmark_hotpaths.py build/bin/forge --particles 5000
 ```
 
-The optional particle benchmark opens a real graphics window. It measures scalar/bulk transforms, rays, Python transfer, and particle work without timing gates or promised FPS. Use `forge.profile()`, `world_stats()`, `physics_stats()`, `asset_stats()`, and `renderer_stats()` to locate your own workload. Rendering optimization has [per-camera counters](../RENDER_OPTIMIZATION.md); it does not suspend game logic/physics or automatically stream the world.
+The optional particle benchmark opens a real graphics window. It measures scalar transform setters, rays, Python transfer, and particle work without timing gates or promised FPS. Use `forge.profile()`, `world_stats()`, `physics_stats()`, `asset_stats()`, and `renderer_stats()` to locate your own workload. Rendering optimization has [per-camera counters](../RENDER_OPTIMIZATION.md); it does not suspend game logic/physics or automatically stream the world.
 
 ## Troubleshooting
 

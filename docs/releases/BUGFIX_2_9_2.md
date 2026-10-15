@@ -1,6 +1,8 @@
 # Forge 2.9.2 — Metal Pipeline Reuse and GPU Synchronization
 
-[Forge wiki](../GUIDE.md) · [Metal configuration and shaders](METAL.md)
+Historical release record. For current behavior and commands, use the [Forge wiki](../../GUIDE.md).
+
+[Forge wiki](../../GUIDE.md) · [Metal configuration and shaders](../METAL.md)
 
 This update addresses runtime stalls caused by rebuilding procedural geometry and forced GPU completion waits. Project/schema/API versions, default OpenGL selection, editor independence, editable shaders and Core boundaries are unchanged. The implementation is engine-wide and contains no pickup or other game-specific rules.
 
@@ -10,7 +12,7 @@ This update addresses runtime stalls caused by rebuilding procedural geometry an
 - **Bounded submissions:** Presentation submits asynchronously, with at most three command buffers in flight. Uniform arenas remain owned by their submission until completion; the existing arena budget covers all current/pending/idle chunks together. Capacity or budget pressure waits for safe reuse.
 - **Ordered texture updates:** Subupdates copy from retained staging buffers on the GPU, preserving earlier draws without draining the queue. Full texture replacement creates a new resource version. Mutable vertex uploads continue to retain encoded versions even when a mesh/buffer is replaced or deleted.
 - **Explicit completion:** Readback, resize and shutdown still drain outstanding work. Completed command errors are collected during later frames or drains. A small Core-origin runtime/renderer shutdown hook checks final GPU work before returning success; errors use the existing terminal/log and exit-result path.
-- **Diagnostics:** `renderer_stats()` exposes cumulative draw-pipeline builds/cache entries, submissions, completion waits, explicit drains and current/peak/maximum in-flight commands. See the [Metal guide](METAL.md) for counter semantics. These are diagnostics, not FPS guarantees.
+- **Diagnostics:** `renderer_stats()` exposes cumulative draw-pipeline builds/cache entries, submissions, completion waits, explicit drains and current/peak/maximum in-flight commands. See the [Metal guide](../METAL.md) for counter semantics. These are diagnostics, not FPS guarantees.
 
 Drawable availability, vsync, actual new layouts, resource uploads, shaders, the driver and insufficient budgets can still cause waits. The fix removes the identified unnecessary work; it does not promise that every game frame is free of stalls. GLSL/MSL overrides and adaptable native graphics modules remain supported.
 

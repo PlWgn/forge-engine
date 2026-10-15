@@ -1,14 +1,16 @@
-# Native rendering optimization — Forge 2.8
+# Native Rendering Optimization
 
 Forge provides optional distance LOD, frustum culling, distance culling, and conservative software occlusion. They share one backend-independent policy and work with OpenGL, Metal, and Direct3D 11. Existing projects keep their rendering behavior: optimization is disabled by default. Physics, scripts, animation clocks, events, audio, and entity visibility properties continue running when a draw is culled.
 
 ## Enable it
 
-Put this in project `engine.json`, a scene's `rendering` object, or the result of `build()`:
+Merge this fragment into project `engine.json` or a scene description (JSON or the result of `build()`):
 
 ```json
-"rendering": {
-  "optimization": { "enabled": true, "occlusion": true }
+{
+  "rendering": {
+    "optimization": { "enabled": true, "occlusion": true }
+  }
 }
 ```
 

@@ -1,5 +1,7 @@
 # Forge 2.7.1 — Stability and Resource Cleanup
 
+Historical release record. For current behavior and commands, use the [Forge wiki](../../GUIDE.md).
+
 This update preserves project format, Python API, shell protocol, and save envelope version 1. OpenGL remains the default; Metal and Windows Direct3D 11 remain optional. The editor, built-in examples, editable shaders, license, and exhaustive Core boundary are unchanged.
 
 ## Fixes

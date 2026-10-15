@@ -1,6 +1,8 @@
 # Forge 2.9.1 — Stability and Optimization
 
-[Forge wiki](../GUIDE.md) · [Release coverage](FORGE_2.md)
+Historical release record. For current behavior and commands, use the [Forge wiki](../../GUIDE.md).
+
+[Forge wiki](../../GUIDE.md) · [Release coverage](../FORGE_2.md)
 
 This update preserves project/schema/API versions and existing defaults. Native transport, physics, graphics, asset and Python library implementations remain replaceable outside the documented Core boundary. Core changes enforce existing validation contracts and compile Python sources through canonical project paths.
 

@@ -862,8 +862,11 @@ def on_destroy():
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((target/'locales/en.json').exists())
         self.assertFalse((target/'Инструкция.md').exists())
-        for relative in [Path('GUIDE.md'), *(file.relative_to(ROOT) for file in (ROOT/'docs/wiki').glob('*.md'))]:
+        public_docs=[file for file in (ROOT/'docs').rglob('*.md') if file.name!='FORGE_EXPERIENCE.md']
+        for relative in [Path('GUIDE.md'), *(file.relative_to(ROOT) for file in public_docs)]:
             self.assertEqual((target/relative).read_bytes(), (ROOT/relative).read_bytes())
+        for name in ('AGENTS.md','Проверка.md','docs/FORGE_EXPERIENCE.md','artifacts','.git','.tools','build','dist'):
+            self.assertFalse((target/name).exists(),name)
         self.assertEqual((target/'licenses/Unicode.txt').read_bytes(),(ROOT/'engine/resources/Unicode-LICENSE.txt').read_bytes())
         output=self.run_engine('validate',extra=('--project',target/'engine.json'))
         self.assertIn('validated',output)

@@ -2,7 +2,7 @@
 
 [Forge wiki](../../GUIDE.md) · **Input, Actions, and Replay**
 
-Forge 2.10 supplies a native C++ action manager with live rebinding. You can use it with any game UI, editor shell, headless runtime or recorded input. Raw input and the existing Python `ActionMap` remain available.
+Forge supplies a native C++ action manager with live rebinding. You can use it with any game UI, editor shell, headless runtime or recorded input. Raw input and the existing Python `ActionMap` remain available.
 
 - [Quick start](#quick-start)
 - [Bindings and keys](#bindings-and-keys)

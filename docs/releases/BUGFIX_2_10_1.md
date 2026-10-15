@@ -1,8 +1,10 @@
 # Forge 2.10.1 — Memory, Lifecycle and Recovery Fixes
 
-[Forge wiki](../GUIDE.md) · [Release coverage](FORGE_2.md)
+Historical release record. For current behavior and commands, use the [Forge wiki](../../GUIDE.md).
 
-This update preserves project/schema/API versions and existing defaults. Core-origin changes are limited to `runtime.cpp` (save temporary files) and `reload.cpp` (pending watcher changes); see [CORE.md](../CORE.md). All other fixes stay within their adaptable components.
+[Forge wiki](../../GUIDE.md) · [Release coverage](../FORGE_2.md)
+
+This update preserves project/schema/API versions and existing defaults. Core-origin changes are limited to `runtime.cpp` (save temporary files) and `reload.cpp` (pending watcher changes); see [CORE.md](../../CORE.md). All other fixes stay within their adaptable components.
 
 ## Fixed behavior
 
