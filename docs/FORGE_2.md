@@ -1,5 +1,11 @@
 # Forge 2.x — Capabilities and Test Coverage
 
+## Forge 2.12.1 — stability and bookkeeping costs
+
+Python scene builders now share JSON scene settings validation without discarding objects or view settings created by `build()`. Malformed vector sizes and boolean numeric components are rejected consistently. Failed preloader construction releases its handles immediately, and model dependency discovery remains retryable after an error. VR quaternion conversion matches Forge's native XYZ transform order, including combined rotations and gimbal poles.
+
+Recursive hierarchy queries/cascade destruction index parent relationships instead of repeatedly scanning the scene; their existing declaration/scan-wave order is preserved. Asset generation cleanup searches only matching cache keys, and loading statistics use a counter instead of walking the cache every frame. Public format/API versions, pins, budgets and defaults remain unchanged. See [BUGFIX_2_12_1.md](BUGFIX_2_12_1.md) for regressions, measurements and platform verification limits.
+
 ## Forge 2.12.0 — optional protected desktop content
 
 `build --protect-content` packages project configuration, Python and assets into `content.forge` using per-build AES-256-CBC keys and HMAC-SHA256 authenticated records. The native launcher embeds the loader, uses the private Python runtime, authenticates the complete container before extracting any content, and removes the fresh temporary tree on normal exit and handled errors. CommonCrypto (macOS) and BCrypt (Windows) provide AES without an additional dependency. Readable dependency notices, manifests and signing remain available; saves/logs use user storage. Ordinary builds retain their existing layout/defaults.

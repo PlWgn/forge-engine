@@ -6,6 +6,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <unordered_map>
+#include <unordered_set>
+#include <queue>
 namespace forge {
 namespace {
 glm::dmat4 local(const Entity& e){
@@ -160,8 +162,24 @@ void World::reparent(Entity& e,const std::string& id,bool keepWorld){
     }catch(...){e.parent=oldParent;e.position=pos;e.rotation=rot;e.scale=scale;syncTransforms();throw;}
 }
 std::vector<std::shared_ptr<Entity>> World::children(const Entity& e,bool recursive){
-    std::vector<std::shared_ptr<Entity>> result;std::set<std::string> parents{e.id};
-    do {size_t previous=parents.size();for(auto& child:entities)if(child->alive && !parents.count(child->id) && parents.count(child->parent)){result.push_back(child);if(recursive)parents.insert(child->id);}if(!recursive || previous==parents.size())break;}while(true);
+    std::vector<std::shared_ptr<Entity>> result;
+    if(!recursive){for(auto& child:entities)if(child->alive && child->id!=e.id && child->parent==e.id)result.push_back(child);return result;}
+    std::unordered_map<std::string,std::vector<size_t>> byParent;
+    for(size_t i=0;i<entities.size();++i)if(entities[i]->alive)byParent[entities[i]->parent].push_back(i);
+    // Retain the original declaration-order scan waves without rescanning the
+    // entire scene once per level in a reverse-declared hierarchy.
+    using Visit=std::pair<size_t,size_t>; // scan wave, declaration index
+    std::priority_queue<Visit,std::vector<Visit>,std::greater<Visit>> pending;
+    std::unordered_set<std::string> seen{e.id};
+    auto enqueue=[&](const std::string& parent,size_t wave,size_t after){
+        auto found=byParent.find(parent);if(found==byParent.end())return;
+        for(auto index:found->second)if(seen.insert(entities[index]->id).second)pending.emplace(wave+(index<after),index);
+    };
+    enqueue(e.id,0,0);
+    while(!pending.empty()){
+        auto [wave,index]=pending.top();pending.pop();auto child=entities[index];
+        result.push_back(child);enqueue(child->id,wave,index);
+    }
     return result;
 }
 void World::destroy(Entity& e,bool cascade){

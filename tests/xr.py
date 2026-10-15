@@ -47,6 +47,27 @@ def on_start():
 ''')
         self.assertIn('VR_HELPERS_OK',self.run_engine())
 
+    def test_pose_rotation_matches_native_xyz_transforms(self):
+        self.script_scene('''import forge,math
+from vr_input import pose_rotation,aim_ray
+def multiply(a,b):
+    x,y,z,w=a;X,Y,Z,W=b
+    return (w*X+x*W+y*Z-z*Y,w*Y-x*Z+y*W+z*X,w*Z+x*Y-y*X+z*W,w*W-x*X-y*Y-z*Z)
+def on_start():
+    entity=forge.spawn({'kind':'empty'})
+    for angles in ((25,40,65),(-40,30,-80),(30,90,40),(-20,-90,15),(100,120,-140)):
+        x,y,z=(math.radians(a)/2 for a in angles)
+        q=multiply(multiply((math.sin(x),0,0,math.cos(x)),(0,math.sin(y),0,math.cos(y))),(0,0,math.sin(z),math.cos(z)))
+        pose={'valid':True,'position':[0,0,0],'orientation':q}
+        entity.rotation=angles;expected=entity.world_matrix
+        entity.rotation=pose_rotation(pose);actual=entity.world_matrix
+        assert max(abs(a-b) for row1,row2 in zip(expected,actual) for a,b in zip(row1,row2))<1e-5,(angles,pose_rotation(pose))
+        direction=aim_ray(pose)[1]
+        assert max(abs(direction[i]+actual[i][2]) for i in range(3))<1e-5
+    forge.log('VR_XYZ_ROTATION_OK');forge.quit()
+''')
+        self.assertIn('VR_XYZ_ROTATION_OK',self.run_engine())
+
     def test_invalid_configuration_is_rejected(self):
         for value in (None, [], {'enabled':1}, {'reference_space':'floor'}, {'meters_per_unit':0}, {'near':5,'far':1}, {'far':1e100}):
             with self.subTest(value=value):

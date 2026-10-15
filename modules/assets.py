@@ -43,7 +43,11 @@ class ScenePreloader:
         if budget_bytes is not None: forge.set_asset_budget(budget_bytes)
         self.handles = {}
         self._dependencies = set()
-        for group, file in resources: self.add(group, file)
+        try:
+            for group, file in resources: self.add(group, file)
+        except BaseException:
+            self.close()
+            raise
     def add(self, group, file):
         key = (group, file)
         if key not in self.handles: self.handles[key] = AssetHandle(group, file)
@@ -52,8 +56,15 @@ class ScenePreloader:
     def scene(cls, file):
         data = json.loads(Path(forge.asset_path('scenes', file)).read_text(encoding='utf-8'))
         result = cls((entry['group'], entry['file']) for entry in data.get('preload', []))
+        try:
+            result._scene_resources(data)
+            return result
+        except BaseException:
+            result.close()
+            raise
+    def _scene_resources(self, data):
         def add(group, name):
-            if name and not name.startswith(('@target:', '@mesh:')): result.add(group, name)
+            if name and not name.startswith(('@target:', '@mesh:')): self.add(group, name)
         for emitter in data.get('emitters', []): add('textures', emitter.get('texture'))
         for original in data.get('entities', []):
             entity = dict(original)
@@ -79,16 +90,15 @@ class ScenePreloader:
             for material in materials:
                 for field in ('texture','albedo_texture','normal_texture','metallic_texture','roughness_texture','metallic_roughness_texture','occlusion_texture','emissive_texture'):
                     add('textures', material.get(field))
-        return result
     def _expand(self):
         for key, handle in list(self.handles.items()):
             info = handle.info
             if info['status'] == 'failed': raise AssetError(info['error'])
             if info['status'] == 'ready' and 'model' in info and key not in self._dependencies:
-                self._dependencies.add(key)
                 for path in info['model'].get('textures',[]):
                     relative = os.path.relpath(path, forge.asset_path('textures','.'))
                     self.add('textures', relative)
+                self._dependencies.add(key)
     @property
     def progress(self):
         self._expand()

@@ -1,4 +1,6 @@
-# Forge 2.12.0
+# Forge 2.12.1
+
+Forge 2.12.1 aligns Python/JSON scene validation, fixes preloader cleanup/retry and VR controller rotations, and reduces deep-hierarchy traversal and asset-cache bookkeeping costs. Existing project/API formats and defaults remain unchanged. [Fixes, measurements and verification](docs/BUGFIX_2_12_1.md).
 
 Forge 2.12.0 adds optional encrypted desktop content: `python tools/forge.py build --protect-content --output dist/MyGame`. Scripts, scenes and assets are packaged in an authenticated container; saves use user storage. This deters casual extraction, with a shipped key and temporary plaintext at runtime; it is not DRM or copy prevention. [Packaging and protection limits](docs/wiki/packaging.md#protected-content-builds-212).
 

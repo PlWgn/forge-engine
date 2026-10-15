@@ -1,6 +1,6 @@
-# Forge Engine Wiki — 2.12.0
+# Forge Engine Wiki — 2.12.1
 
-The current manual for **Forge 2.12.0**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see [2.12 protected content builds](docs/wiki/packaging.md#protected-content-builds-212), [2.11 VR support](docs/wiki/vr.md) and the [preceding stability fixes](docs/BUGFIX_2_10_1.md).
+The current manual for **Forge 2.12.1**: a modular C++17 runtime with Python scenes and scripts for macOS and Windows. This wiki describes the current APIs and defaults. [Release history and coverage](docs/FORGE_2.md) are maintained separately; see [current stability and optimization fixes](docs/BUGFIX_2_12_1.md), [2.12 protected content builds](docs/wiki/packaging.md#protected-content-builds-212) and [2.11 VR support](docs/wiki/vr.md).
 
 ## Start here
 

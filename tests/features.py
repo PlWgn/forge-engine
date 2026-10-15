@@ -415,6 +415,78 @@ def on_start():
     forge.log('MODEL_SKINNING_FINITE_OK');forge.quit()
 """)
         self.assertIn('MODEL_SKINNING_FINITE_OK',self.run_engine())
+    def test_preloader_construction_failures_release_handles(self):
+        self.script_scene('''import forge,json
+from pathlib import Path
+from assets import ScenePreloader
+def on_start():
+    before=forge.asset_stats()['handles'];errors=[]
+    Path(forge.asset_path('scenes','.')).joinpath('bad-preload.json').write_text(json.dumps({'entities':[
+        {'texture':'icon.png'},{'material':'missing.json'}]}))
+    for create in (lambda:ScenePreloader([('textures','icon.png'),('textures','missing.png')]),
+                   lambda:ScenePreloader.scene('bad-preload.json')):
+        try:create()
+        except RuntimeError as error:errors.append(error)
+        else:raise AssertionError('Missing resource accepted')
+        assert forge.asset_stats()['handles']==before,forge.asset_stats()
+    forge.log('PRELOADER_FAILURES_OK');forge.quit()
+''')
+        self.assertIn('PRELOADER_FAILURES_OK',self.run_engine())
+
+    def test_preloader_retries_missing_model_dependencies(self):
+        self.script_scene('''import forge
+from pathlib import Path
+from assets import ScenePreloader
+def on_start():
+    before=forge.asset_stats()['handles']
+    texture=Path(forge.asset_path('textures','icon.png'));late=texture.with_name('late.png')
+    late.write_bytes(texture.read_bytes())
+    with ScenePreloader([('models','preload.gltf')]) as loader:
+        loader.handles[('models','preload.gltf')].wait()
+        late.unlink()
+        try:loader.progress
+        except RuntimeError:pass
+        else:raise AssertionError('Missing model texture accepted')
+        late.write_bytes(texture.read_bytes())
+        loader.wait()
+        assert ('textures','late.png') in loader.handles,'Dependency skipped after a failed expansion'
+    assert forge.asset_stats()['handles']==before
+    forge.log('PRELOADER_RETRY_OK');forge.quit()
+''')
+        model=self.root/'models/preload.gltf';animated_triangle(model)
+        data=json.loads(model.read_text())
+        data['images']=[{'uri':'../textures/late.png'}]
+        data['textures']=[{'source':0}]
+        data['materials']=[{'pbrMetallicRoughness':{'baseColorTexture':{'index':0}}}]
+        data['meshes'][0]['primitives'][0]['material']=0
+        model.write_text(json.dumps(data),encoding='utf-8')
+        self.assertIn('PRELOADER_RETRY_OK',self.run_engine())
+
+    def test_asset_loading_counts_finish_for_shared_successes_and_failures(self):
+        self.script_scene('''import forge,time
+from pathlib import Path
+def on_start():
+    folder=Path(forge.project_path('objects'))/'loading';folder.mkdir()
+    ids=[]
+    for i in range(100):
+        file=folder/(str(i)+'.txt');file.write_bytes(b'payload')
+        for _ in range(2):ids.append(forge.asset_request('objects','loading/'+file.name))
+    broken=Path(forge.project_path('textures'))/'broken.png';broken.write_bytes(b'bad image')
+    for _ in range(10):ids.append(forge.asset_request('textures','broken.png'))
+    deadline=time.monotonic()+5
+    while forge.asset_stats()['loading']:
+        assert time.monotonic()<deadline,forge.asset_stats()
+        time.sleep(.001)
+    assert all(forge.asset_info(id)['status']=='ready' for id in ids[:-10])
+    assert all(forge.asset_info(id)['status']=='failed' for id in ids[-10:])
+    for id in ids:forge.asset_release(id)
+    forge.set_asset_budget(1)
+    stats=forge.asset_stats()
+    assert stats['loading']==0 and stats['handles']==0 and stats['resident_bytes']==0,stats
+    forge.log('ASSET_LOADING_COUNTS_OK');forge.quit()
+''')
+        self.assertIn('ASSET_LOADING_COUNTS_OK',self.run_engine())
+
     def test_failed_asset_generations_do_not_accumulate(self):
         self.script_scene("""import forge,os
 from pathlib import Path

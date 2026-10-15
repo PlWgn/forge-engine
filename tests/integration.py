@@ -84,6 +84,59 @@ def on_start():
     forge.log('SHARED_ENTITY_VALIDATION_OK');forge.quit()
 """)
         self.assertIn('SHARED_ENTITY_VALIDATION_OK',self.run_engine())
+    def test_scene_settings_validation_matches_json_and_python(self):
+        cases = [
+            {'gravity':[True,0,0]}, {'gravity':[0,0,0,1]},
+            {'background':[0,0,0,True]}, {'background':[0,0,0,1,1]},
+            {'camera':{'position':[0,0,5,1]}}, {'camera':{'target':[False,0,0]}},
+            {'camera':{'fov':True}}, {'camera':{'fov':1e100}},
+        ]
+        for data in cases:
+            with self.subTest(data=data):
+                (self.root/'scenes/invalid.json').write_text(json.dumps(data),encoding='utf-8')
+                self.config['entry_scene']='invalid.json';self.write_config()
+                self.run_engine(expected=1)
+                (self.root/'scenes/invalid.json').unlink()
+                self.script_scene('def build():return '+repr(data)+'\n')
+                self.run_engine(expected=1)
+        # build() may create resources/entities before returning its scene settings.
+        self.script_scene('''import forge
+def build():
+    forge.spawn({'id':'built','kind':'empty'})
+    forge.set_camera((1,2,8),(1,2,0))
+    return {'physics_enabled':False,'gravity':None,'background':None,
+            'camera':{'position':None,'target':None},'entities':[{'id':'returned','kind':'empty'}]}
+def on_start():
+    assert forge.find('built') is not None and forge.find('returned') is not None
+    assert tuple(forge.camera_position())==(1,2,8)
+    assert forge.scene_data()['camera']['fov']==60
+    forge.log('SCENE_SETTINGS_SHARED_OK');forge.quit()
+''')
+        self.assertIn('SCENE_SETTINGS_SHARED_OK',self.run_engine())
+
+    def test_rejected_scene_settings_preserve_live_world(self):
+        self.config['development']={'watch_interval':.05}
+        self.script_scene('''import forge
+from pathlib import Path
+changed=False
+def build():
+    return {'physics_enabled':False,'camera':{'position':[1,2,8]},'entities':[{'id':'safe','kind':'empty'}]}
+def on_update(dt):
+    global changed
+    if changed:return
+    changed=True
+    Path(__file__).write_text("def build():return {'camera':{'fov':True},'entities':[{'id':'bad','kind':'empty'}]}\\n")
+def on_reload_failed(error):
+    assert 'camera.fov' in error,error
+    assert forge.find('safe').alive and forge.find('bad') is None
+    assert tuple(forge.camera_position())==(1,2,8)
+    Path(__file__).write_text("import forge\\ndef on_start():forge.log('SCENE_SETTINGS_RECOVERED');forge.quit()\\n")
+    forge.log('SCENE_SETTINGS_ROLLBACK_OK')
+''')
+        output=self.run_engine('dev',frames=600)
+        self.assertIn('SCENE_SETTINGS_ROLLBACK_OK',output)
+        self.assertIn('SCENE_SETTINGS_RECOVERED',output)
+
     def test_python_scene_and_mutations_reject_invalid_numbers(self):
         self.script_scene("def build(): return {'entities':[{'position':[1e100,0,0]}]}\n")
         self.assertIn('position must be finite',self.run_engine(expected=1))

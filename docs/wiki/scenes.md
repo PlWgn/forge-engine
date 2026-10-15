@@ -62,6 +62,8 @@ def on_destroy():
 
 `build()` is optional. It can return a scene dictionary, return None, or create objects through `forge.spawn()`. When returning None, call `set_mode`, `set_background`, `set_gravity`, and `set_camera` directly. A returned description is loaded after build completes; do not create the same objects through both approaches.
 
+JSON and returned Python descriptions share settings validation: gravity/camera vectors need exactly three numeric components, background needs four, and camera fov is a finite number strictly between 0 and 179. Booleans are not numeric components. Since 2.12.1, Python builders also reject extra vector components and boolean fov values; replace them with correctly sized numeric values. Builder-created objects/resources remain available when the returned description is applied, and omitted background/camera position/target fields preserve changes made during `build()`.
+
 A scene change is deferred to the start of the next frame; the last request in a frame takes precedence. The previous scene remains available until the new scene initializes successfully. References to old entities have `alive == False` after the switch. Scene objects are not automatically preserved across scenes; use a startup module or save files for shared state.
 
 ## Object behaviors

@@ -12,10 +12,15 @@ def pose_rotation(pose):
     if not pose.get('valid'):
         raise ValueError('Pose is not valid')
     x, y, z, w = pose['orientation']
-    # Match glm::eulerAngles (pitch/yaw/roll), used by Forge's composeTransform.
-    pitch = math.atan2(2*(y*z+w*x), w*w-x*x-y*y+z*z)
-    yaw = math.asin(max(-1, min(1, -2*(x*z-w*y))))
-    roll = math.atan2(2*(x*y+w*z), w*w+x*x-y*y-z*z)
+    # Match composeTransform's Rx * Ry * Rz and extractEulerAngleXYZ,
+    # including a stable equivalent rotation at the +/-90 degree yaw poles.
+    m00, m01, m02 = 1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y)
+    m10, m11, m12 = 2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x)
+    m20, m21, m22 = 2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y)
+    pitch = math.atan2(-m12, m22)
+    yaw = math.atan2(m02, math.hypot(m00, m01))
+    s, c = math.sin(pitch), math.cos(pitch)
+    roll = math.atan2(s*m20+c*m10, c*m11+s*m21)
     return tuple(math.degrees(a) for a in (pitch, yaw, roll))
 
 

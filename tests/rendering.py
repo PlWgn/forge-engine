@@ -271,6 +271,30 @@ def on_start():
     forge.log('INDEX_OK lookup_seconds='+str(lookup));forge.quit()
 ''')
         self.assertIn('INDEX_OK',self.run_engine())
+    def test_deep_reverse_hierarchy_queries_preserve_scan_order(self):
+        self.script_scene('''import forge,time
+COUNT=4000
+def build():
+    return {'physics_enabled':False,'entities':[{'id':'e'+str(i),'kind':'empty','parent':'e'+str(i-1) if i else ''} for i in reversed(range(COUNT))]}
+def on_start():
+    root=forge.find('e0');start=time.perf_counter()
+    assert [e.id for e in root.children(recursive=True)]==['e'+str(i) for i in range(1,COUNT)]
+    forge.log('DEEP_HIERARCHY_SECONDS '+str(time.perf_counter()-start))
+    root.destroy();assert not any(e.alive for e in forge.entities())
+    # Mixed declaration order retains the original scan-wave ordering.
+    for id in ('c','a','d','b','root','gone'):forge.spawn({'id':id,'kind':'empty'})
+    for id,parent in (('c','a'),('a','root'),('d','b'),('b','root'),('gone','root')):forge.find(id).set_parent(parent)
+    forge.find('gone').destroy()
+    root=forge.find('root')
+    assert [e.id for e in root.children()]==['a','b']
+    assert [e.id for e in root.children(recursive=True)]==['a','b','c','d']
+    root.destroy(children=False)
+    assert forge.find('a').parent is None and forge.find('b').parent is None
+    assert forge.find('c').parent.id=='a' and forge.find('d').parent.id=='b'
+    forge.log('DEEP_HIERARCHY_OK');forge.quit()
+''')
+        self.assertIn('DEEP_HIERARCHY_OK',self.run_engine())
+
     def test_hierarchy_static_colliders_follow_in_both_backends(self):
         for backend in ('legacy','bullet'):
             with self.subTest(backend=backend):

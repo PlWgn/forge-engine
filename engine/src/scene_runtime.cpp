@@ -8,8 +8,6 @@
 #include <pybind11/stl.h>
 #include <algorithm>
 namespace forge {
-static glm::vec3 vector(std::array<float,3> v){return {finiteNumber(v[0],"vector"),finiteNumber(v[1],"vector"),finiteNumber(v[2],"vector")};}
-static glm::vec4 color(std::array<float,4> v,const std::string& field){return {finiteNumber(v[0],field),finiteNumber(v[1],field),finiteNumber(v[2],field),finiteNumber(v[3],field)};}
 py::object Runtime::loadModule(const fs::path& file) {
     if(!fs::is_regular_file(file))throw std::runtime_error("Script not found: "+file.u8string());
     auto types=py::module_::import("types");auto module=types.attr("ModuleType")("_forge_script_"+std::to_string(++moduleIndex));
@@ -75,12 +73,7 @@ void Runtime::loadScene(const std::string& name,const Localization* teardownLoca
                 if(!result.is_none()) {
                     auto j=fromPython(result);
                     if(!j.is_object())throw std::runtime_error("Scene build() must return dict or None");
-                    world.scene=j;auto mode=j.value("mode","2d");if(mode!="2d" && mode!="3d")throw std::runtime_error("Scene mode must be 2d or 3d");world.is3d=mode=="3d";
-                    world.physicsEnabled=j.value("physics_enabled",true);world.renderSettings=config.data.value("rendering",Json::object());world.renderSettings.merge_patch(j.value("rendering",Json::object()));world.renderSettings=validateRenderSettings(std::move(world.renderSettings));
-                    world.gravity=world.is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0);
-                    if(j.contains("gravity"))world.gravity=vector(j["gravity"].get<std::array<float,3>>());
-                    if(j.contains("background"))world.background=color(j["background"].get<std::array<float,4>>(),"background");
-                    auto camera=j.value("camera",Json::object());if(camera.contains("position"))world.cameraPosition=vector(camera["position"].get<std::array<float,3>>());if(camera.contains("target"))world.cameraTarget=vector(camera["target"].get<std::array<float,3>>());world.fov=camera.value("fov",60.0f);if(world.fov<=0 || world.fov>=179)throw std::runtime_error("Camera fov must be between 0 and 179");
+                    world.configureScene(j,true);
                     world.loadEntities(j.value("entities",Json::array()));
                     world.configureSimulation(j);
                 }

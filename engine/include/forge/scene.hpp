@@ -84,6 +84,7 @@ struct World {
     void configureSimulation(const Json &);
     std::shared_ptr<Entity> find(const std::string &id);
     void load(const std::string &scenePath);
+    void configureScene(const Json &, bool preserveView = false);
     void loadDocument(const Json &);
     std::set<std::pair<std::string, std::string>> contacts;
     void physics(float dt);

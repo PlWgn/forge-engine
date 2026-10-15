@@ -86,20 +86,24 @@ void World::load(const std::string& scenePath) {
     else throw std::runtime_error("Scene must be .json or .py: "+file.u8string());
     loadDocument(scene);
 }
-void World::loadDocument(const Json &document) {
+void World::configureScene(const Json &document,bool preserveView) {
     if(!document.is_object())throw std::runtime_error("Scene must be an object");
     auto mode=document.value("mode","2d");
     if(mode!="2d" && mode!="3d")throw std::runtime_error("Scene mode must be 2d or 3d");
     if(document.contains("physics_enabled") && !document["physics_enabled"].is_boolean())throw std::runtime_error("physics_enabled must be boolean");
     if(!document.value("entities",Json::array()).is_array())throw std::runtime_error("Scene.entities must be array");
-    clearEntities();contacts.clear();physics3d.reset();particles.reset();scene=document;
+    scene=document;
     is3d=scene.value("mode","2d")=="3d";
     physicsEnabled=scene.value("physics_enabled",true);renderSettings=config->data.value("rendering",Json::object());renderSettings.merge_patch(scene.value("rendering",Json::object()));renderSettings=validateRenderSettings(std::move(renderSettings));
     gravity=vec3(scene.value("gravity",Json()),is3d?glm::vec3(0,-9.81f,0):glm::vec3(0,980,0));
-    background=vec4(scene.value("background",Json()),glm::vec4(0.025f,0.04f,0.075f,1));
+    background=vec4(scene.value("background",Json()),preserveView?background:glm::vec4(0.025f,0.04f,0.075f,1));
     auto camera=scene.value("camera",Json::object());
-    cameraPosition=vec3(camera.value("position",Json()),glm::vec3(0,0,5)); cameraTarget=vec3(camera.value("target",Json()),glm::vec3(0)); fov=finiteNumber(camera.value("fov",Json(60)),"camera.fov");
+    cameraPosition=vec3(camera.value("position",Json()),preserveView?cameraPosition:glm::vec3(0,0,5)); cameraTarget=vec3(camera.value("target",Json()),preserveView?cameraTarget:glm::vec3(0)); fov=finiteNumber(camera.value("fov",Json(60)),"camera.fov");
     if(fov<=0 || fov>=179) throw std::runtime_error("Camera fov must be between 0 and 179");
+}
+void World::loadDocument(const Json &document) {
+    configureScene(document);
+    clearEntities();contacts.clear();physics3d.reset();particles.reset();
     loadEntities(scene.value("entities",Json::array()));
     configureSimulation(scene);
 }

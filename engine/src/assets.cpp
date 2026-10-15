@@ -28,6 +28,7 @@ struct Assets::Impl {
     bool stopping = false;
     unsigned nextId = 0;
     size_t limit = 256 * 1024 * 1024, resident = 0;
+    size_t loading = 0;
     uint64_t clock = 0;
     uint64_t retiredModels = 0;
     explicit Impl(Config &c) : config(c) {
@@ -144,13 +145,15 @@ struct Assets::Impl {
                     entry->status = "failed";
                     entry->error = error;
                 }
+                --loading;
             }
             changed.notify_all();
         }
     }
     std::shared_ptr<Entry> ensure(const fs::path &path, const std::string &kind) {
         auto stamp = fs::last_write_time(path).time_since_epoch().count();
-        auto key = path.u8string() + "#" + kind + "#" + std::to_string(static_cast<long long>(stamp)) +
+        auto prefix = path.u8string() + "#" + kind + "#";
+        auto key = prefix + std::to_string(static_cast<long long>(stamp)) +
                    "#" + std::to_string(fs::file_size(path));
         std::lock_guard<std::mutex> lock(mutex);
         auto found = cache.find(key);
@@ -173,7 +176,7 @@ struct Assets::Impl {
         }
         // Failed generations hold no bytes, so LRU eviction never removes them;
         // drop unreferenced ones for this file before caching its new generation.
-        for (auto it = cache.begin(); it != cache.end();) {
+        for (auto it = cache.lower_bound(prefix); it != cache.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
             const auto &old = *it->second;
             if (old.status == "failed" && !old.pins && it->second.use_count() == 1 &&
                 old.kind == kind && old.path == path)
@@ -188,6 +191,7 @@ struct Assets::Impl {
         entry->used = ++clock;
         cache[key] = entry;
         queue.push_back(entry);
+        ++loading;
         changed.notify_one();
         return entry;
     }
@@ -273,13 +277,9 @@ void Assets::budget(size_t value) {
 }
 Json Assets::stats() {
     std::lock_guard<std::mutex> lock(impl->mutex);
-    unsigned loading = 0;
-    for (auto &[key, e] : impl->cache)
-        if (e->status == "loading" || e->status == "queued")
-            ++loading;
     return {
         {"resident_bytes", impl->resident}, {"budget_bytes", impl->limit}, {"handles", impl->handles.size()},
-        {"entries", impl->cache.size()},    {"loading", loading},          {"workers", 4}};
+        {"entries", impl->cache.size()},    {"loading", impl->loading},    {"workers", 4}};
 }
 unsigned Assets::checkpoint() {
     std::lock_guard<std::mutex> lock(impl->mutex);
